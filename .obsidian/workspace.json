@@ -1,0 +1,202 @@
+{
+  "main": {
+    "id": "6ca54163d47acf95",
+    "type": "split",
+    "children": [
+      {
+        "id": "a8fbef57a68edbc1",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f080730e869c47c7",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "iOS/dyld.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "dyld"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "8200bc6aaaa1bece",
+    "type": "split",
+    "children": [
+      {
+        "id": "344e7df21bf9f64c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "55e33ed19a249cf9",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "文件列表"
+            }
+          },
+          {
+            "id": "da0a0767384c2e12",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "搜索"
+            }
+          },
+          {
+            "id": "430005fe8e628bb7",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "书签"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "3b72cca323c8a388",
+    "type": "split",
+    "children": [
+      {
+        "id": "a9ba827bf4e83dc8",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "5b7556bf038a3fa2",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "iOS/dyld.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "dyld 的反向链接列表"
+            }
+          },
+          {
+            "id": "6249ba2a0a39aa4e",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "iOS/dyld.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "dyld 的出链列表"
+            }
+          },
+          {
+            "id": "17138030799f6881",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "标签"
+            }
+          },
+          {
+            "id": "2b83452a366dcfb7",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "添加笔记属性"
+            }
+          },
+          {
+            "id": "4767f910d19f590e",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "iOS/dyld.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "dyld 的大纲"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:打开快速切换": false,
+      "graph:查看关系图谱": false,
+      "canvas:新建白板": false,
+      "daily-notes:打开/创建今天的日记": false,
+      "templates:插入模板": false,
+      "command-palette:打开命令面板": false,
+      "bases:新建数据库": false,
+      "omnisearch:Omnisearch": false,
+      "table-editor-obsidian:Advanced Tables Toolbar": false,
+      "obsidian-excalidraw-plugin:New drawing": false
+    }
+  },
+  "active": "f080730e869c47c7",
+  "lastOpenFiles": [
+    "AI/RAG.md",
+    "AI/LLM.md",
+    "AI/Transformer.md",
+    "iOS/Mach-O.md",
+    "iOS/dyld.md",
+    "iOS/Runtime.md",
+    "欢迎.md",
+    "Projects",
+    "AI",
+    "iOS"
+  ]
+}
