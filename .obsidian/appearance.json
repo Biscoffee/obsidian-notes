@@ -1,4 +1,6 @@
 {
-  "cssTheme": "",
-  "translucency": true
+  "cssTheme": "Minimal",
+  "translucency": true,
+  "accentColor": "",
+  "theme": "obsidian"
 }

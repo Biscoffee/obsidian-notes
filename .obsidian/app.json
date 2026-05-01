@@ -1,6 +1,7 @@
 {
-  "showLineNumber": true,
+  "showLineNumber": false,
   "newFileLocation": "current",
   "attachmentFolderPath": "./",
-  "alwaysUpdateLinks": true
+  "alwaysUpdateLinks": true,
+  "promptDelete": false
 }

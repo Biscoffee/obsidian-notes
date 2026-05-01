@@ -1,5 +1,8 @@
 [
   "omnisearch",
   "table-editor-obsidian",
-  "obsidian-excalidraw-plugin"
+  "obsidian-excalidraw-plugin",
+  "obsidian-git",
+  "dataview",
+  "obsidian-local-rest-api"
 ]
