@@ -1,117 +1,3 @@
-# LLM 学习路径：从 LLM 到 Agent Harness
-
-> **核心原则**：不要自下而上从理论学起，而是从中间切入动手做，遇到瓶颈再回头补底层知识。
-> **本笔记定位**：我自己的学习成果笔记（按章节积累，写到哪记到哪）
-
----
-
-## 一、三层学习模型
-
-| 层次 | 目标 | 投入比例 | 包含概念 |
-|---|---|---|---|
-| **了解层** | 知道原理和边界，能在技术讨论中不露怯 | ~10% | Transformer 原理、Fine-tuning/RLHF/DPO、Scaling Laws |
-| **理解层** | 能做技术选型和方案评审，知道什么场景用什么 | ~30% | LLM 能力边界、Prompt Engineering、RAG、Multi-Agent |
-| **实践层** | 动手写代码、反复调试、积累工程经验 | ~60% | Tool Use、AI Agent、MCP、Context Engineering、Harness Engineering |
-
-**我自己的判断口诀**：
-- 原理类 → 1–2 小时建立直觉就走，不手推公式
-- 选型/边界类 → 必须能讲清楚 trade-off
-- 工程实践类 → 必须有可运行的 Demo
-
----
-
-## 二、了解层
-
-### 2.1 Transformer 架构原理
-
-**我的收获**：LLM 本质就是个超大号"文字接龙"——每次只预测下一个 token。底层是 Transformer 的 Self-Attention，但作为应用层开发者，**不用懂数学**，只要建立直觉就行。
-
-**记住这几点就够**：
-- Token ≠ 字 ≠ 词，中文大约 1 个字 ≈ 1.5–2 个 Token（影响成本估算）
-- 上下文窗口 = 模型一次能看到的最大 Token 数，**不是无限记忆**——这是后面 Context Engineering 的根因
-- 现在主流是 Decoder-only（GPT/Claude/Llama），因为生成效率最高
-- Self-Attention 直觉：每个 token 看一眼其他所有 token，决定该关注谁
-
-> 类比：用 MySQL 不用懂 B+ 树细节。除非要从零训练或做底层推理优化，Transformer 数学不影响日常开发。
-
-### 2.2 Fine-tuning / RLHF / DPO
-
-**我的收获**：90% 的 AI 应用，**Prompt + RAG + Agent 已经够了**，微调是最后手段不是第一选择。
-
-**我自己的决策树**：
-```
-需求是什么？
-├── 需要最新知识 / 企业私有数据 → 用 RAG，不要微调
-├── 需要特定回答风格 / 格式  → 先试 Prompt，不够再考虑微调
-├── 需要教模型一个全新技能   → 才考虑 LoRA 微调
-└── 需要模型行为更安全/对齐  → 这是模型厂商的事（RLHF/DPO）
-```
-
-**概念速记**：
-- **Fine-tuning**：在预训练模型基础上用自己的数据继续训练
-- **LoRA**：只训练一小部分"低秩"参数（~1%），主模型冻结，省显存省时间，是目前微调主流
-- **RLHF**：用人类偏好排序训练 reward model，再用 RL 优化主模型
-- **DPO**：RLHF 的简化版，省掉 reward model，直接用偏好对训练
-
-### 2.3 Scaling Laws
-
-**一句话**：模型性能 ~ 参数量、数据量、计算量的幂律关系，**但有边际递减**。
-
-**实战含义**：选模型按任务复杂度匹配——简单任务 Haiku/Mini 就够，不要无脑上 Opus。
-
----
-
-## 三、理解层
-
-### 3.1 LLM 能力边界
-
-**我的收获**：所有后续技术决策的基础。没建立边界感 → 容易出现"能 RAG 解决的非要微调""Agent 做不了的硬塞给 Agent"。
-
-**判断矩阵**：
-
-| 任务类型 | LLM 表现 | 是否需要辅助 |
-|---|---|---|
-| 创意写作、头脑风暴 | 很强 | 不需要 |
-| 代码生成（常见语言）| 很强 | 不需要 |
-| 实时信息查询 | 做不到 | Tool Use / RAG |
-| 精确数学计算 | 不可靠 | Tool Use（代码执行）|
-| 企业私有知识问答 | 不知道 | RAG |
-| 多步复杂任务 | 单次做不好 | Agent |
-| 长时间任务 | 会"走神" | Context Engineering |
-
-**建立直觉的方式**：
-- 同一个任务用 Haiku / Sonnet / Opus 各跑一遍，对比质量和成本
-- 故意问已知答案的专业问题测幻觉
-- 长文档关键信息放在不同位置，看记忆衰减（参考后面 Lost in the Middle）
-
-### 3.2 Prompt Engineering
-
-**我的收获**：在 Agent 时代，单独的 Prompt 优化重要性在下降——它被吸收进了 **System Prompt 设计**和**工具描述设计**。底层功力要扎实，但不必当 Prompt 大师。
-
-**我会用的核心技巧**：
-- **Role Prompting**：给身份（"你是一位资深 SRE"）
-- **Few-shot**：2–5 个高质量示例让模型模仿格式
-- **CoT**：`Let's think step by step`，逼模型显式思考
-- **结构化输入**：XML / Markdown / JSON 比纯文本鲁棒得多
-- **明确约束**：说清"不能做什么"和边界条件
-
-**System Prompt 五要素**（我打算照这个套路写）：
-1. **角色**：身份与经验
-2. **输入格式**：约定输入长什么样
-3. **输出格式**：约定输出长什么样
-4. **行为约束**：不确定时怎么办、能否擅自行动
-5. **错误处理**：输入不符合预期时怎么办
-
-> ⏳ 待练习：为"代码审查 Agent"写一份 System Prompt，跑 3 个真实 PR diff 验证。
-
-### 3.3 RAG 检索增强生成
-
-> **本节状态**：✅ 已完成实战闭环（项目：`~/rag_learning`）
-
-#### 3.3.1 为什么不归入实践层
-
-RAG 已经是非常成熟的技术，有大量现成框架/服务。除非核心工作就是搭 RAG，否则**理解原理 + 会调参**就够。Agent 的 RAG 能力通常由框架/平台提供。
-
 #### 3.3.2 LangChain 官方架构（两阶段）
 
 LangChain 把 RAG 分成两个核心阶段：
@@ -179,7 +65,6 @@ all_splits = text_splitter.split_documents(docs)
 #### 3.3.6 我的实战闭环：`~/rag_learning` 项目
 
 **项目结构**：
-
 ```
 rag_learning/
 ├── src/
@@ -193,18 +78,18 @@ rag_learning/
 └── .env.example
 ```
 
-**笔记概念 ↔ 我的代码**：
+**笔记概念 ↔ 我的代码**
 
-| 概念 | 代码位置 | 实际选择 |
-|---|---|---|
-| Loader | `rag_system.py:90 load_documents()` | `TextLoader`（本地 Markdown）|
-| RecursiveCharacterTextSplitter 1000+200 | `rag_system.py:99-102` | 照抄笔记，分隔符**中文化**：`["\n## ", "\n### ", "\n\n", "\n", "。", "，", ""]` |
-| Embedding | `rag_system.py:113-117` | BGE-M3 + MPS 加速 + L2 归一化 |
-| Vector Store | `rag_system.py:118-122` | Chroma + 本地持久化 |
-| ANN 索引 | `data_level0.bin` | HNSW（Chroma 底层）|
-| 检索 | `rag_system.py:147` | `similarity_search_with_score(k=5)` |
-| **超出笔记的优化：查询扩展** | `rag_system.py:138-143` | 13 条同义词词典（K8s→Kubernetes、Handler→消息 Looper），让"那个发消息的东西怎么用？"5/5 全过 |
-| Chat Model | `rag_system.py:171-214` | 小米 MiMo（OpenAI 兼容），temperature=0.2 |
+| 概念                                      | 代码位置                                | 实际选择                                                              |
+| --------------------------------------- | ----------------------------------- | ----------------------------------------------------------------- |
+| Loader                                  | `rag_system.py:90 load_documents()` | `TextLoader`（本地 Markdown）                                         |
+| RecursiveCharacterTextSplitter 1000+200 | `rag_system.py:99-102`              | 照抄笔记，分隔符**中文化**：`["\n## ", "\n### ", "\n\n", "\n", "。", "，", ""]` |
+| Embedding                               | `rag_system.py:113-117`             | BGE-M3 + MPS 加速 + L2 归一化                                          |
+| Vector Store                            | `rag_system.py:118-122`             | Chroma + 本地持久化                                                    |
+| ANN 索引                                  | `data_level0.bin`                   | HNSW（Chroma 底层）                                                   |
+| 检索                                      | `rag_system.py:147`                 | `similarity_search_with_score(k=5)`                               |
+| **超出笔记的优化：查询扩展**                        | `rag_system.py:138-143`             | 13 条同义词词典（K8s→Kubernetes、Handler→消息 Looper），让"那个发消息的东西怎么用？"5/5 全过 |
+| Chat Model                              | `rag_system.py:171-214`             | 小米 MiMo（OpenAI 兼容），temperature=0.2                                |
 
 **实验一：分块策略对比**（5 组 × 14 题黄金集）
 
@@ -224,17 +109,16 @@ rag_learning/
 
 **实验二：6 类典型失败模式**
 
-| 类型 | 描述 | 代表问题 | 缓解方向 |
-|---|---|---|---|
-| A. 评测集歧义 | 多文档都对 | "Android 列表卡顿如何优化"（17/20 都对）| 改多答案集合评测 |
-| B. 关键词冲突 | 错误文档语义近 | "K8s 自动扩缩容"误中 Handler | Reranker / 增大 chunk |
-| C. 推理需求 | 要从描述推抽象 | "RecyclerView 为什么用 ViewHolder" | 大 chunk / Reranker |
-| D. 跨文档 | 答案分散 | "K8s 节点 OOM 排查"（04+10）| Reranker / multi-query |
-| E. 模糊查询 | 用代词、缺上下文 | "那个发消息的东西"——查询扩展救场 ✅ 5/5 | 查询扩展词典 |
-| F. 文档外 | 答案不在库 | "Compose 重写 RecyclerView" | 相似度阈值 + Prompt 约束 |
+| 类型       | 描述       | 代表问题                           | 缓解方向                   |
+| -------- | -------- | ------------------------------ | ---------------------- |
+| A. 评测集歧义 | 多文档都对    | "Android 列表卡顿如何优化"（17/20 都对）   | 改多答案集合评测               |
+| B. 关键词冲突 | 错误文档语义近  | "K8s 自动扩缩容"误中 Handler          | Reranker / 增大 chunk    |
+| C. 推理需求  | 要从描述推抽象  | "RecyclerView 为什么用 ViewHolder" | 大 chunk / Reranker     |
+| D. 跨文档   | 答案分散     | "K8s 节点 OOM 排查"（04+10）         | Reranker / multi-query |
+| E. 模糊查询  | 用代词、缺上下文 | "那个发消息的东西"——查询扩展救场 ✅ 5/5       | 查询扩展词典                 |
+| F. 文档外   | 答案不在库    | "Compose 重写 RecyclerView"      | 相似度阈值 + Prompt 约束      |
 
 **实验三：Reranker 对比（反直觉负结果）**
-
 用 `BAAI/bge-reranker-v2-m3` 做交叉编码重排，召回 top_n=20 → 重排 top_5：
 
 | 指标 | 单阶段 | 加 Reranker | Δ |
@@ -265,7 +149,7 @@ rag_learning/
 | 中文短问句 | 找中文专项 Reranker，慎用 v2-m3 | 训练分布要匹配 |
 | 模糊查询 | **查询扩展词典** | 比换模型见效快 |
 
-#### 3.3.8 一句话带走
+#### 3.3.8 总结
 
 笔记说"理解原理 + 会调参就够了"——通过实战我现在知道：
 
@@ -279,11 +163,7 @@ rag_learning/
 ---
 
 ### 3.4 Multi-Agent
-
-> **本节状态**：✅ 概念闭环（实践推迟到 4.x 自然遇到时）
-
 #### 3.4.1 学习目标
-
 **学到什么程度**：理解 5 种协作模式，重点掌握 **Sub-Agent**，能判断**是否真的需要** Multi-Agent。
 
 #### 3.4.2 底层逻辑：为什么是反模式重灾区
@@ -313,13 +193,13 @@ Multi-Agent 听起来很酷，但**绝大多数场景下，一个设计良好的
 
 #### 3.4.4 5 种协作模式
 
-| 模式 | 形态 | 典型场景 | 何时不要用 |
-|---|---|---|---|
-| **Sequential** | A → B → C 流水线 | 写代码 → 审代码 → 写测试 | 上下游强耦合、信息反复来回 |
-| **Parallel** | 分发 → N 并行 → 聚合 | 3 种策略同时跑后投票 | 子任务有依赖、聚合比子任务还复杂 |
-| **Sub-Agent ⭐** | 父 Agent 调子 Agent，独立上下文 | 代码库探索、长链路调试 | 一两个工具调用就能解决 |
-| **Router** | 分类 → 路由到专业 Agent | 客服意图分发 | 意图边界模糊、跨域协作多 |
-| **Hierarchical** | 管理 Agent 派活给执行 Agent | 大型多步项目 | **没有终止条件**——会陷入"再优化一轮"死循环 |
+| 模式               | 形态                     | 典型场景            | 何时不要用                     |
+| ---------------- | ---------------------- | --------------- | ------------------------- |
+| **Sequential**   | A → B → C 流水线          | 写代码 → 审代码 → 写测试 | 上下游强耦合、信息反复来回             |
+| **Parallel**     | 分发 → N 并行 → 聚合         | 3 种策略同时跑后投票     | 子任务有依赖、聚合比子任务还复杂          |
+| **Sub-Agent **   | 父 Agent 调子 Agent，独立上下文 | 代码库探索、长链路调试     | 一两个工具调用就能解决               |
+| **Router**       | 分类 → 路由到专业 Agent       | 客服意图分发          | 意图边界模糊、跨域协作多              |
+| **Hierarchical** | 管理 Agent 派活给执行 Agent   | 大型多步项目          | **没有终止条件**——会陷入"再优化一轮"死循环 |
 
 #### 3.4.5 Sub-Agent 深入（重点）
 
@@ -379,7 +259,7 @@ RAG 系统天然适合做成 Sub-Agent：
 
 ### 4.1 Tool Use
 
-> **本节状态**：✅ Demo 1 v0 已完成（项目：`~/tool_use_learning`）
+> **本节状态**：已完成（项目：`~/tool_use_learning`）
 
 #### 4.1.1 我的收获（顶层）
 
