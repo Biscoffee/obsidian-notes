@@ -1,5 +1,7 @@
 #### 3.3.2 LangChain 官方架构（两阶段）
 
+![[CleanShot 2026-05-03 at 12.58.59@2x.png]]
+
 ![[CleanShot 2026-05-03 at 12.09.36@2x.png]]
 
 LangChain 把 RAG 分成两个核心阶段：
