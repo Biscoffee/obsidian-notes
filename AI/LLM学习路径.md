@@ -1,11 +1,13 @@
 #### 3.3.2 LangChain 官方架构（两阶段）
 
+![[CleanShot 2026-05-03 at 12.09.36@2x.png]]
+
 LangChain 把 RAG 分成两个核心阶段：
 
 1. **Indexing（建立索引）**：把数据从来源加载进来并建立索引
 2. **Retrieval and Generation（检索并生成回答）**：根据用户问题从索引中检索相关数据，再传给模型回答
 
-![[CleanShot 2026-05-01 at 15.28.58@2x.png]]
+![[CleanShot 2026-05-03 at 12.10.07@2x.png]]
 
 搭 RAG 需要选三类组件：
 1. **Chat Model**：OpenAI / Anthropic / Gemini / HuggingFace
