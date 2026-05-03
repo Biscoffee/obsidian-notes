@@ -97,6 +97,49 @@ struct category_t {
 };
 ```
 
+```Objective-C
+struct method_list_t : entsize_list_tt<method_t, method_list_t, 0x3> {
+    // 成员变量和方法
+};
+
+template <typename Element, typename List, uint32_t FlagMask>
+struct entsize_list_tt {
+    uint32_t entsizeAndFlags;
+    uint32_t count;
+    Element first;
+};
+```
+
+这里的 `entsize_list_tt` 可以理解为一个容器，拥有自己的迭代器用于遍历所有元素。 `Element` 表示元素类型，`List` 用于指定容器类型，最后一个参数为标记位。
+
+虽然这段代码实现比较复杂，但仍可了解到 `method_list_t` 是一个存储 `method_t` 类型元素的容器。`method_t` 结构体的定义如下:
+
+```
+struct method_t {
+    SEL name;
+    const char *types;
+    IMP imp;
+};
+
+```
+
+最后，我们还有一个结构体 `category_list` 用来存储所有的 category，它的定义如下:
+
+```
+struct locstamped_category_list_t {
+    uint32_t count;
+    locstamped_category_t list[0];
+};
+struct locstamped_category_t {
+    category_t *cat;
+    struct header_info *hi;
+};
+typedef locstamped_category_list_t category_list;
+```
+
+除了标记存储的 category 的数量外，`locstamped_category_list_t` 结构体还声明了一个长度为零的数组，这其实是 C99 中的一种写法，允许我们在运行期动态的申请内存。
+
+以上就是相关的数据结构，只要了解到这个程度就可以继续读源码了。
 ---
 
 # category如何加载
