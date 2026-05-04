@@ -728,10 +728,9 @@ void objc_removeAssociatedObjects(id object);
 ```
 
 
-Q & A
+# 其他
 
 - 在分类中多次重写方法时，只有最后加载的分类方法会生效，因为分类是按照编译顺序加载的。假如多分分类实现同名函数，没有办法调用到主类的方法或者某个指定的分类实现，只能调用到最后加载的分类的方法实现。
-- 
 
 
 https://itcharge.cn/tech/ios-dev/ios-runtime-03/?utm_source=chatgpt.com
