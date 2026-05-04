@@ -122,13 +122,13 @@ int main(int argc, const char * argv[]) {
 ```
 
 
-![图片](https://i-blog.csdnimg.cn/direct/3bb34fdddbdc4e7b821e2279bf39695d.png)
+![图片](./csdn-148107284-ocfoundation-images/01-3bb34fdddbdc4e7b821e2279bf39695d.png)
 
 
 如果我们用strong修饰，那么就
 
 
-![图片](https://i-blog.csdnimg.cn/direct/d7242baa212c456483cd297a713df582.png)
+![图片](./csdn-148107284-ocfoundation-images/02-d7242baa212c456483cd297a713df582.png)
 
 
 > 因为s1是可变的，person.name属性是copy，所以创建了新的字符串，属于深拷贝，内容拷贝，我们拷贝出来了一个对象，后面的赋值操作都是针对新建的对象进行操作，而我们实际的调用还是原本的对象。所以值并不会改变。 如果设置为strong，strong会持有原来的对象，使原来的对象引用计数+1，其实就是浅拷贝、指针拷贝。这时我们进行操作，更改其值就使本对象发生了改变。
@@ -315,7 +315,7 @@ int main(int argc, const char * argv[]) {
 ```
 
 
-![图片](https://i-blog.csdnimg.cn/direct/2bce35d574e4485497d42d2973c07a9f.png)
+![图片](./csdn-148107284-ocfoundation-images/03-2bce35d574e4485497d42d2973c07a9f.png)
 
 
 我们也可以使用（for  in）语法快速枚举
@@ -342,7 +342,7 @@ int main(int argc, const char * argv[]) {
 ```
 
 
-![图片](https://i-blog.csdnimg.cn/direct/fae3adac43214fb3a5fbc9f9d16bbfb4.png)
+![图片](./csdn-148107284-ocfoundation-images/04-fae3adac43214fb3a5fbc9f9d16bbfb4.png)
 
 
 ### 可变数组
@@ -486,7 +486,7 @@ int main(int argc, const char * argv[]) {
 ```
 
 
-![图片](https://i-blog.csdnimg.cn/direct/64013755d8b2494ebd13028db06b43a0.png)
+![图片](./csdn-148107284-ocfoundation-images/05-64013755d8b2494ebd13028db06b43a0.png)
 
 
 **判断元素重复的标准**
@@ -537,7 +537,7 @@ int main(int argc, const char * argv[]) {
 修改后结果就正常了
 
 
-![图片](https://i-blog.csdnimg.cn/direct/9116326356304d21853a2681052328d6.jpeg)
+![图片](./csdn-148107284-ocfoundation-images/06-9116326356304d21853a2681052328d6.jpeg)
 
 
 这里我们执行了5次hash方法，这一步说明我们每次添加一个集合与元素，总会先调用该元素的hash方法，在重写这两种方法的时候，我们的目的主要是为了满足NSSet性质，为了保证我们的NSSet保持一个较高的性能。
@@ -619,7 +619,7 @@ int main(int argc, const char * argv[]) {
 ```
 
 
-![图片](https://i-blog.csdnimg.cn/direct/e6c58d76ad04416ead85ada33b285414.png)
+![图片](./csdn-148107284-ocfoundation-images/07-e6c58d76ad04416ead85ada33b285414.png)
 
 
 ```objective-c

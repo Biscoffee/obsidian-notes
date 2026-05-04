@@ -109,7 +109,7 @@ int main(int argc, const char * argv[]) {
         还有一个NSMakeRange(loc，len)，它是一个结构体类型，包含两个参数，loc是起始位置，len是长度。表示字符串要传进来的起始位置和长度。
 
 
-![图片](https://i-blog.csdnimg.cn/direct/0bf7bf993f3e49ac9e6ab49112ceef08.png)
+![图片](./csdn-147835869-ocfoundation--images/01-0bf7bf993f3e49ac9e6ab49112ceef08.png)
 
 
 ### 1.2 可变字符串 NSMutableString
@@ -152,7 +152,7 @@ int main(int argc, const char * argv[]) {
 ```
 
 
-![图片](https://i-blog.csdnimg.cn/direct/bfe541a736ed4a659f991265b5a55234.png)
+![图片](./csdn-147835869-ocfoundation--images/02-bfe541a736ed4a659f991265b5a55234.png)
 
 
 ## 二、日期与时间

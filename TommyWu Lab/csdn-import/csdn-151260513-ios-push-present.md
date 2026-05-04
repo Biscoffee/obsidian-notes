@@ -13,7 +13,7 @@ draft: false
 ## pesent和dismiss :
 
 
-![图片](https://i-blog.csdnimg.cn/direct/456da7a46ca64624b9436663279db117.png)
+![图片](./csdn-151260513-ios-push-present-images/01-456da7a46ca64624b9436663279db117.png)
 
 
 ```objective-c
@@ -24,7 +24,7 @@ ViewController3* vc2 = [[ViewController3 alloc] init];
 ```
 
 
-![图片](https://i-blog.csdnimg.cn/direct/7947cbc6cf9b476b8c46badd9b3f6710.gif)
+![图片](./csdn-151260513-ios-push-present-images/02-7947cbc6cf9b476b8c46badd9b3f6710.gif)
 
 
 ### dismiss多级

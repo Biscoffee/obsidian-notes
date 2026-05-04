@@ -16,7 +16,7 @@ draft: false
 
  
 
-![图片](https://i-blog.csdnimg.cn/direct/9445a3ce72f74d9d84152fca72575841.png)
+![图片](./csdn-148030438-oc-foundation-images/01-9445a3ce72f74d9d84152fca72575841.png)
 
 
 这两种方法都是
@@ -30,7 +30,7 @@ draft: false
 我们这个类与上面不同，他的字符序列可以改变，我们通过一些方法对其调用
 
 
-![图片](https://i-blog.csdnimg.cn/direct/0855c48130b4418680f5e3771687df28.png)
+![图片](./csdn-148030438-oc-foundation-images/02-0855c48130b4418680f5e3771687df28.png)
 
 
 注意，我们的a在初始化时不可使用NSString式的方法。
@@ -103,16 +103,16 @@ int main(int argc, const char * argv[]) {
 ```
 
 
-![图片](https://i-blog.csdnimg.cn/direct/de4e71cd02f741d780d4e4b48b045f05.png)
+![图片](./csdn-148030438-oc-foundation-images/03-de4e71cd02f741d780d4e4b48b045f05.png)
 
 
 ## 4、日期格式器
 
 
-![图片](https://i-blog.csdnimg.cn/direct/8e246fea3ba842bba3dd0ac6c8f822a4.png)
+![图片](./csdn-148030438-oc-foundation-images/04-8e246fea3ba842bba3dd0ac6c8f822a4.png)
 
 
-![图片](https://i-blog.csdnimg.cn/direct/250b39f24cfa450aaf5886413c39f2e4.png)
+![图片](./csdn-148030438-oc-foundation-images/05-250b39f24cfa450aaf5886413c39f2e4.png)
 
 
 ## 5、定时器
@@ -133,7 +133,7 @@ int main(int argc, const char * argv[]) {
 然后我们需要看一下如何遍历集合类的元素
 
 
-![图片](https://i-blog.csdnimg.cn/direct/64693fc4fdd743929901b1c03a40cfd2.png)
+![图片](./csdn-148030438-oc-foundation-images/06-64693fc4fdd743929901b1c03a40cfd2.png)
 
 
 ## 8、set
@@ -142,13 +142,13 @@ int main(int argc, const char * argv[]) {
  set中元素没有固定顺序，自动去重，查找比array快。
 
 
-![图片](https://i-blog.csdnimg.cn/direct/e7b66d26e71d4e23a79148cf584eb087.png)
+![图片](./csdn-148030438-oc-foundation-images/07-e7b66d26e71d4e23a79148cf584eb087.png)
 
 
 我们在使用set时需要注意的是我们一般会对hash进行重写，因为我们集合中判断2个元素相等的条件是：方法isEqual返回yes与两个对象的hash方法返回值也相等，set才会判断这两个对象相等。
 
 
-![图片](https://i-blog.csdnimg.cn/direct/e8a02550bcda4bd9820f073381e0bc1b.png)
+![图片](./csdn-148030438-oc-foundation-images/08-e8a02550bcda4bd9820f073381e0bc1b.png)
 
 
 ## 9、dictionary

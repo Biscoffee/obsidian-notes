@@ -418,7 +418,7 @@ UserManager *userManager = [UserManager sharedManager];
 
 因为文章的格式类似如图，我新建了一个cell用于设置所有类似的页面，textTableViewCell
 
-![图片](https://i-blog.csdnimg.cn/direct/05d69ce910de44f9a6b59840dd07d049.png)
+![图片](./csdn-149467095-ios-3gshare-images/01-05d69ce910de44f9a6b59840dd07d049.png)
 
 
 首页中，我们需要在点击假日时跳转到另一个页面，同时实现两个页面之间的点赞同步。
@@ -474,7 +474,7 @@ UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc]
 其实下图中的方法更为简便
 
 
-![图片](https://i-blog.csdnimg.cn/direct/b74094ed04b24ef5b3c87559fcfe4c0d.png)
+![图片](./csdn-149467095-ios-3gshare-images/02-b74094ed04b24ef5b3c87559fcfe4c0d.png)
 
 
 列表页点赞：
@@ -510,7 +510,7 @@ UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc]
 还有一部分是上传页面 
 
 
-![图片](https://i-blog.csdnimg.cn/direct/4d9bea6a78ab417da4eacffd6e3a9be6.png)
+![图片](./csdn-149467095-ios-3gshare-images/03-4d9bea6a78ab417da4eacffd6e3a9be6.png)
 
 
 实现效果如图。两个textField用来输入作品名称和文章内容
@@ -582,7 +582,7 @@ UIAlertAction* boomAction= [UIAlertAction actionWithTitle: @"确定" style: UIAl
  在发布页面修改照片数量，同时修改那个背景。效果如下：
 
 
-![图片](https://i-blog.csdnimg.cn/direct/b9ae50528c5a4425b2d6747e368f4b2e.gif)
+![图片](./csdn-149467095-ios-3gshare-images/04-b9ae50528c5a4425b2d6747e368f4b2e.gif)
 
 
 ## ArticleVC
@@ -664,7 +664,7 @@ UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil messa
 ```
 
 
-![图片](https://i-blog.csdnimg.cn/direct/eddef9dd873b4ccdbc8857feac69b174.gif)
+![图片](./csdn-149467095-ios-3gshare-images/05-eddef9dd873b4ccdbc8857feac69b174.gif)
 
 
 ##### 新关注的
@@ -673,7 +673,7 @@ UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil messa
 这部分需要实现一个关注的留存如下图
 
 
-![图片](https://i-blog.csdnimg.cn/direct/61739ca1fccd43e8a073b62550378015.gif)
+![图片](./csdn-149467095-ios-3gshare-images/06-61739ca1fccd43e8a073b62550378015.gif)
 
 
  通过如下方式可以确保只创建一个followVC，进而保存之前的关注。
@@ -712,7 +712,7 @@ else if ([messageType isEqualToString:@"新关注的"]) {
 ```
 
 
-![图片](https://i-blog.csdnimg.cn/direct/7feec3dccfff4b8ea8a476b6f63dee54.gif)
+![图片](./csdn-149467095-ios-3gshare-images/07-7feec3dccfff4b8ea8a476b6f63dee54.gif)
 
 
 ```objective-c
@@ -847,7 +847,7 @@ UIBarButtonItem* btn = [[UIBarButtonItem alloc] initWithImage: [UIImage imageNam
 ```
 
 
-![图片](https://i-blog.csdnimg.cn/direct/04412391b142447089b2e626240b8c6e.png)
+![图片](./csdn-149467095-ios-3gshare-images/08-04412391b142447089b2e626240b8c6e.png)
 
 
 这个代码可以实现遮挡tabBar和屏幕底部之间的区域，更加美观，当然如果为了更加自然可以自己调颜色。

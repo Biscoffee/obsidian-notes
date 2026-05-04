@@ -77,7 +77,7 @@ NSString *str2 = [NSString stringWithFormat:"%c%c%c", 'i', 'O', 'S'];
 > TaggedPointer的意思是标签指针，这是苹果在 64 位环境下对 NSString,NSNumber 等对象做的一些优化。简单来讲可以理解为把指针指向的内容直接放在了指针变量的内存地址中，因为在 64 位环境下指针变量的大小达到了 8 位足以容纳一些长度较小的内容。于是使用了标签指针这种方式来优化数据的存储方式。从他的引用计数可以看出，这货也是一个释放不掉的单例常量对象。在运行时根据实际情况创建
 
 
-![图片](https://i-blog.csdnimg.cn/direct/e9992c17f8da4ee18d6d144baa8b9331.png)
+![图片](./csdn-148049357-nsstring-images/01-e9992c17f8da4ee18d6d144baa8b9331.png)
 
 
 附上实例一个⬆️

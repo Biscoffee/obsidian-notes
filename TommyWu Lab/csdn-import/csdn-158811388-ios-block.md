@@ -10,7 +10,7 @@ draft: false
 ## block
 
 
-![图片](https://i-blog.csdnimg.cn/direct/6a109bda543e4fffb15e270ba4f33619.png)
+![图片](./csdn-158811388-ios-block-images/01-6a109bda543e4fffb15e270ba4f33619.png)
 
 
 对应结构体的定义如下：
@@ -184,7 +184,7 @@ int main()
 **总结：** block捕获外部变量时，在`内部自动生成同一个属性来保存`
 
 
-![在这里插入图片描述](https://i-blog.csdnimg.cn/direct/16f180f3bef047d0a8b0b4df0f5b971b.png)
+![在这里插入图片描述](./csdn-158811388-ios-block-images/02-16f180f3bef047d0a8b0b4df0f5b971b.png)
 
 
 我们在变量前面加一个__block关键字后，重新观察生成代码：
@@ -244,7 +244,7 @@ int main()
 - (i->__forwarding->i) = 1023; 为什么要这么绕一圈？ 刚执行在栈上时，这个指针指向他自己，forwarding相对于在改变自己的内存。当Block被拷贝到堆上（比如使用GCD异步）时，系统会把这个`__Block_byref_i_0`结构体原封不动复制在堆上一份，此时有两个i结构体，一个在栈一个在堆，系统会把那个旧结构体的`forwarding`指针强行掰弯，让他指向堆上的那个新结构体，同时，堆上新结构体的`__forwarding`指针指向他自己。这样无论从外面栈上的作用域去访问 还是从Block内部（堆上的作用域）去访问i，所有人都要经过`i->__forwarding->i`，所以对最终访问到的，永远是堆上的同一块内存。
 
 
-![在这里插入图片描述](https://i-blog.csdnimg.cn/direct/e351e7c781a347febeae43c76f85036c.png)
+![在这里插入图片描述](./csdn-158811388-ios-block-images/03-e351e7c781a347febeae43c76f85036c.png)
 
 
 ### _NSConcreteMallocBlock
@@ -303,13 +303,13 @@ static void *_Block_copy_internal(const void *arg, const int flags) {
 对应block外的变量引用，block默认是将其复制到其数据结构中实现访问，
 
 
-![在这里插入图片描述](https://i-blog.csdnimg.cn/direct/9f437aa583a34cf89bb873866b498792.png)
+![在这里插入图片描述](./csdn-158811388-ios-block-images/04-9f437aa583a34cf89bb873866b498792.png)
 
 
 对于用__block修饰的外部变量引用，block通过复制其地址来实现
 
 
-![在这里插入图片描述](https://i-blog.csdnimg.cn/direct/1f9902ac6a1f4056a3d2263c24c32cc0.png)
+![在这里插入图片描述](./csdn-158811388-ios-block-images/05-1f9902ac6a1f4056a3d2263c24c32cc0.png)
 
 
 ### Block的三层拷贝

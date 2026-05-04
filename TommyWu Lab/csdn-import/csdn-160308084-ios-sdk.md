@@ -224,7 +224,7 @@ SDK
 - 接入方式，比如 CocoaPods、SPM、npm、Gradle
 - README 文档
 - Demo 或示例代码
-- API 文档和错误码说明 ![在这里插入图片描述](https://i-blog.csdnimg.cn/direct/0344695e6eb148cb9c6572d9a0101516.png)
+- API 文档和错误码说明 ![在这里插入图片描述](./csdn-160308084-ios-sdk-images/01-0344695e6eb148cb9c6572d9a0101516.png)
 
 一般来讲，SDK都会有一个Readme文档，教你快速上手。
 
@@ -249,10 +249,10 @@ SDK 通常需要一些全局配置，比如：
 我们依次设置好URL和accessToken
 
 
-![在这里插入图片描述](https://i-blog.csdnimg.cn/direct/7e648440718b42e18820ad544ee7c65e.png)
+![在这里插入图片描述](./csdn-160308084-ios-sdk-images/02-7e648440718b42e18820ad544ee7c65e.png)
 
 
-![在这里插入图片描述](https://i-blog.csdnimg.cn/direct/db65a28c5fad4aac8e226065ed932311.png)
+![在这里插入图片描述](./csdn-160308084-ios-sdk-images/03-db65a28c5fad4aac8e226065ed932311.png)
 
 
 #### 3. 发起具体调用

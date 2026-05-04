@@ -31,13 +31,13 @@ draft: false
 - 指示箭头（accessoryView）
 
 
-![图片](https://i-blog.csdnimg.cn/direct/1ca37c3a655e49c9a7d77f750d135bb0.jpeg)
+![图片](./csdn-148500158-cellcell-images/01-1ca37c3a655e49c9a7d77f750d135bb0.jpeg)
 
 
 如下图为UITableViewDelegate和UITableViewDataSource:
 
 
-![图片](https://i-blog.csdnimg.cn/direct/1375d7d806e24caf9886af16539ba59d.png)
+![图片](./csdn-148500158-cellcell-images/02-1375d7d806e24caf9886af16539ba59d.png)
 
 
 ## 二、cell的复用机制

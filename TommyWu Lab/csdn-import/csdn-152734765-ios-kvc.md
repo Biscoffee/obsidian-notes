@@ -7,7 +7,7 @@ category: "iOS"
 draft: false
 ---
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/11e9cd845d314cb49fdadd68fbd3ecfa.png)
+![请添加图片描述](./csdn-152734765-ios-kvc-images/01-11e9cd845d314cb49fdadd68fbd3ecfa.png)
 
 
 ## 什么是KVC
@@ -328,7 +328,7 @@ NSNumber *avg = [students valueForKeyPath:@"@avg.age"];
 
 - Left key Path：左键路径，要操作的集合对象，如果消息接受者就是集合对象，则可以省略left部分
 - Collection operator：集合运算符；
-- Right key Path：右键路径，要进行运算的集合中的属性 ![请添加图片描述](https://i-blog.csdnimg.cn/direct/db6cfa57a3874312adf3992487635faf.png)
+- Right key Path：右键路径，要进行运算的集合中的属性 ![请添加图片描述](./csdn-152734765-ios-kvc-images/02-db6cfa57a3874312adf3992487635faf.png)
 
 
 > **[left key path].@运算符.right key path** **[students valueForKeyPath:@“@avg.score”];**
@@ -548,10 +548,10 @@ person.age = [@25 intValue];
 下表是KVC对于基础数据类型和NSNumber对象之间的转换。
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/979c0bc5c8a94dac91411f3672d548d8.png)
+![请添加图片描述](./csdn-152734765-ios-kvc-images/03-979c0bc5c8a94dac91411f3672d548d8.png)
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/0ca7e04037644fc39a5b2fd3337efa12.png)
+![请添加图片描述](./csdn-152734765-ios-kvc-images/04-0ca7e04037644fc39a5b2fd3337efa12.png)
 
 
 ## 属性验证
@@ -656,7 +656,7 @@ error：如果验证失败，可返回一个 NSError 对象说明原因
 【第三步】如果setter方法 或者 实例变量都没有找到，系统会执行该对象的setValue：forUndefinedKey:方法，默认抛出NSUndefinedKeyException类型的异常
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/24be9af7c7524531afcef7818796065d.png)
+![请添加图片描述](./csdn-152734765-ios-kvc-images/05-24be9af7c7524531afcef7818796065d.png)
 
 
 ### get（取值）
@@ -703,7 +703,7 @@ error：如果验证失败，可返回一个 NSError 对象说明原因
 - 【第六步】如果上面5步的方法均失败，系统会执行该对象的valueForUndefinedKey:方法，默认抛出NSUndefinedKeyException类型的异常
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/5b8605d222b04d5cbd6f3bf198ae7a39.png)
+![请添加图片描述](./csdn-152734765-ios-kvc-images/06-5b8605d222b04d5cbd6f3bf198ae7a39.png)
 
 
 ## 异常处理

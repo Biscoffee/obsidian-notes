@@ -10,7 +10,7 @@ draft: false
 ## 1. alloc
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/a285d485763b40cf99f4f13dbeb7fc5e.png)
+![请添加图片描述](./csdn-152164860-ios-alloc-init-new-images/01-a285d485763b40cf99f4f13dbeb7fc5e.png)
 
 
 进入到alloc的源码里面，我们发现alloc调用了_objc_rootAlloc方法，而_objc_rootAlloc调用了callAlloc方法。
@@ -60,7 +60,7 @@ callAlloc(Class cls, bool checkNil, bool allocWithZone=false)
 具体内容本人暂时也一知半解，贴一张图
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/f5df660fc9de46269a9e8cbdb8e12a46.png)
+![请添加图片描述](./csdn-152164860-ios-alloc-init-new-images/02-f5df660fc9de46269a9e8cbdb8e12a46.png)
 
 
 > **alloc为我们创建了1个对象并申请了一块不小于16字节的内存空间**

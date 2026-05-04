@@ -82,7 +82,7 @@ draft: false
 用户点击 View–> 视图响应事件 -->通过代理传递事件到Controller–>发起[网络请求](https://so.csdn.net/so/search?q=%E7%BD%91%E7%BB%9C%E8%AF%B7%E6%B1%82&spm=1001.2101.3001.7020)更新Model—>Model处理完数据–>代理或通知给Controller–>改变视图样式–>完成
 
 
-![图片](https://i-blog.csdnimg.cn/direct/f6f20ec663234c8b8065d091e63a02ff.png)
+![图片](./csdn-151052260-ios-mvc-images/01-f6f20ec663234c8b8065d091e63a02ff.png)
 
 
 ###
@@ -112,7 +112,7 @@ draft: false
 还是用刚刚的栗子说明，**胖Model**对应的是把这个加工过程放在Model里面（所以Model胖了），相反，瘦Model就是把加工过程放在VC里面。
 
 
-![图片](https://i-blog.csdnimg.cn/direct/83e7561240254390926b7e8970966a9f.png)
+![图片](./csdn-151052260-ios-mvc-images/02-83e7561240254390926b7e8970966a9f.png)
 
 
 ## 三、 MVC的问题

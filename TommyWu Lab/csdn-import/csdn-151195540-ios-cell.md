@@ -10,7 +10,7 @@ draft: false
 ## 先给出实现效果：
 
 
-![图片](https://i-blog.csdnimg.cn/direct/e71ff9c89abb4f008d87d41a1352ab78.gif)
+![图片](./csdn-151195540-ios-cell-images/01-e71ff9c89abb4f008d87d41a1352ab78.gif)
 
 
 ## 折叠cell的实现
@@ -56,7 +56,7 @@ draft: false
 然后在数株中移除，并插到头部，然后重新刷新tableView。这样就可以实现效果如下：
 
 
-![图片](https://i-blog.csdnimg.cn/direct/06f6608dc3d3475281af92d1e351b541.gif)
+![图片](./csdn-151195540-ios-cell-images/02-06f6608dc3d3475281af92d1e351b541.gif)
 
 ---
 

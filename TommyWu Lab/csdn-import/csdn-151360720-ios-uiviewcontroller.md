@@ -40,7 +40,7 @@ draft: false
 视图初始化会设计两个方法：loadView和ViewDidload
 
 
-![图片](https://i-blog.csdnimg.cn/direct/0ee63ea2effa47a59ec0ec6f9cbe3600.png)
+![图片](./csdn-151360720-ios-uiviewcontroller-images/01-0ee63ea2effa47a59ec0ec6f9cbe3600.png)
 
 
 当新添加一个视图控制器时，通过xcode生成的代码模版只有viewDidLoad代码。当视图控制器的view被请求时，loadView方法会被调用，但因为他还没背创建，所以会是nil。
@@ -52,7 +52,7 @@ draft: false
 > **如果通过覆写loadview方法创建了自定义UI，需要牢记：** 将view视图设置到视图层级的根上 确保视图正在被其他视图控制器共享 不要调用[super loadView]
 
 
-![图片](https://i-blog.csdnimg.cn/direct/ad8efab32ec742a18d2b5bb4235b497b.png)
+![图片](./csdn-151360720-ios-uiviewcontroller-images/02-ad8efab32ec742a18d2b5bb4235b497b.png)
 
 
 在视图层次结构准备就绪后，视图呈现给用户之前，viewDidload会被调用一次。可以在方法中做一些一次性的初始化操作。
@@ -64,10 +64,10 @@ draft: false
 视图控制器提供了四个生命周期方法，以接收有关视图可视性的通知。
 
 
-![图片](https://i-blog.csdnimg.cn/direct/0d8cd842c7b64d0a9ae727e53ed76c33.png)
+![图片](./csdn-151360720-ios-uiviewcontroller-images/03-0d8cd842c7b64d0a9ae727e53ed76c33.png)
 
 
-![图片](https://i-blog.csdnimg.cn/direct/994b0a3a00f1405a8f858d88ecc764cc.png)
+![图片](./csdn-151360720-ios-uiviewcontroller-images/04-994b0a3a00f1405a8f858d88ecc764cc.png)
 
 
 ### viewWillAppear：

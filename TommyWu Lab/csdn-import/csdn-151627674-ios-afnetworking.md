@@ -45,7 +45,7 @@ AFNetworking的构成很简单，主要就四个部分：
 AFNetworking 中使用最高频率的是 AFHTTPSessionManager，负责各种 HTTP 请求的发起和处理，它继承自 AFURLSessionManager，是各种请求的直接执行者。
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/26266f25c6494449bbf26b50b01c34f8.png)
+![请添加图片描述](./csdn-151627674-ios-afnetworking-images/01-26266f25c6494449bbf26b50b01c34f8.png)
 
 
 ### 一次完整的GET请求过程
@@ -83,7 +83,7 @@ AFNetworking 中使用最高频率的是 AFHTTPSessionManager，负责各种 HTT
 首先，要导入AFNetworking头文件
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/3daf3946218d4cd78a3cba270e91091c.png)
+![请添加图片描述](./csdn-151627674-ios-afnetworking-images/02-3daf3946218d4cd78a3cba270e91091c.png)
 
 
 默认配置设置：
@@ -136,7 +136,7 @@ requestSerializer属性（类型为AFHTTPRequestSerializer）将参数转换为U
  responseSerializer属性（类型为AFHTTPResponseSerializer）将原始响应数据转换为可用的对象
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/d9eb45a475d5450baf7ce9d323777638.png)
+![请添加图片描述](./csdn-151627674-ios-afnetworking-images/03-d9eb45a475d5450baf7ce9d323777638.png)
 
 
  _默认情况下，AFHTTPSessionManager配置为：
@@ -160,7 +160,7 @@ manager.responseSerializer = [AFImageResponseSerializer serializer];
 #### 2. GET请求
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/b40054b9749a43b390c9469d87173a62.png)
+![请添加图片描述](./csdn-151627674-ios-afnetworking-images/04-b40054b9749a43b390c9469d87173a62.png)
 
 
  示例：提出GET请求：
@@ -187,12 +187,12 @@ manager.responseSerializer = [AFJSONResponseSerializer serializer];
  在天气预报的请求中我们时常会遇到
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/d8601658bcce48cebfedb73f028b44f7.png)
+![请添加图片描述](./csdn-151627674-ios-afnetworking-images/05-d8601658bcce48cebfedb73f028b44f7.png)
 
 
  我们需要自己手动拼接字符串，而使用parameters后，我们可以
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/5ba3798086b74cf8b97580d6176fe3c8.png)
+![请添加图片描述](./csdn-151627674-ios-afnetworking-images/06-5ba3798086b74cf8b97580d6176fe3c8.png)
 
 
  这里补充一个细节问题：APIURL是接口的基本路径，而parameters是传给接口的查询参数或请求体，AFN会自动把parameters序列化并拼接到URL或body，但是前提是必须有一个基础URL来承载这些参数。
@@ -307,10 +307,10 @@ GET请求通常用于获取资源，不改变服务器状态；
  通过文档得知，我们通过API访问数据，需要一个访问令牌
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/71ed6e74b82644cbac6f7df322edf834.png)
+![请添加图片描述](./csdn-151627674-ios-afnetworking-images/07-71ed6e74b82644cbac6f7df322edf834.png)
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/261f14693ee24d89a37c4fa5422a8ccc.png)
+![请添加图片描述](./csdn-151627674-ios-afnetworking-images/08-261f14693ee24d89a37c4fa5422a8ccc.png)
 
 
 由图可知，访问令牌需要我们获取ClientID和secret，此过程在网站内进行，当前跳过。
@@ -355,10 +355,10 @@ GET请求通常用于获取资源，不改变服务器状态；
 运行后得出结果：
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/c43016ca24f24e99807e5a2e34e7e9ae.png)
+![请添加图片描述](./csdn-151627674-ios-afnetworking-images/09-c43016ca24f24e99807e5a2e34e7e9ae.png)
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/d8ffc093440446f8b482444d880cc0d6.png)
+![请添加图片描述](./csdn-151627674-ios-afnetworking-images/10-d8ffc093440446f8b482444d880cc0d6.png)
 
 
  在获取到accessToken后，我们在按照官网的流程，GET到对应信息。
@@ -382,10 +382,10 @@ GET请求通常用于获取资源，不改变服务器状态；
 因为输入的是贾斯汀比伯的ID 最终我们成功请求到他的信息：
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/2f62865629e44ab0b90987806a36b358.png)
+![请添加图片描述](./csdn-151627674-ios-afnetworking-images/11-2f62865629e44ab0b90987806a36b358.png)
 
 
-![请添加图片描述](https://i-blog.csdnimg.cn/direct/3e371720eb534ff1a86dc654ef5b27a3.png)
+![请添加图片描述](./csdn-151627674-ios-afnetworking-images/12-3e371720eb534ff1a86dc654ef5b27a3.png)
 
 ---
 
