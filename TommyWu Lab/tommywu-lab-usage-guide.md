@@ -322,6 +322,102 @@ pnpm build
 pnpm preview
 ```
 
+## 修改网站外观和资料
+
+可以改，而且这个博客本质上就是一个普通的 Astro/Fuwari 项目。常见信息主要在：
+
+```text
+/Users/tommywu/tommywu-lab/src/config.ts
+```
+
+常用修改项：
+
+- 网站标题：`siteConfig.title`
+- 网站副标题：`siteConfig.subtitle`
+- 右侧个人卡片名字：`profileConfig.name`
+- 右侧个人卡片简介：`profileConfig.bio`
+- 头像：`profileConfig.avatar`
+- 导航栏链接：`navBarConfig.links`
+- GitHub 等社交链接：`profileConfig.links`
+
+### 修改头像
+
+当前头像配置在：
+
+```ts
+avatar: "assets/images/demo-avatar.png"
+```
+
+最简单的替换方式：
+
+1. 把新头像放到：
+
+```text
+/Users/tommywu/tommywu-lab/src/assets/images/
+```
+
+2. 例如文件名叫：
+
+```text
+tommy-avatar.png
+```
+
+3. 修改 `/Users/tommywu/tommywu-lab/src/config.ts`：
+
+```ts
+avatar: "assets/images/tommy-avatar.png"
+```
+
+4. 本地检查：
+
+```bash
+pnpm build
+```
+
+5. 提交并推送后，Cloudflare Pages 会重新部署。
+
+建议头像使用正方形图片，比如 `512x512` 或 `1024x1024`，格式用 `.png`、`.jpg`、`.jpeg` 或 `.webp` 都可以。
+
+### 修改关于页
+
+关于页内容在：
+
+```text
+/Users/tommywu/tommywu-lab/src/content/spec/about.md
+```
+
+这里适合写站点介绍、个人介绍、联系方式、这个博客会记录什么内容。
+
+### 修改 favicon
+
+favicon 文件在：
+
+```text
+/Users/tommywu/tommywu-lab/public/favicon/
+```
+
+如果只是想快速替换，可以保留原文件名，直接替换对应尺寸的图片。更系统的做法是在 `/Users/tommywu/tommywu-lab/src/config.ts` 里的 `siteConfig.favicon` 配置新路径。
+
+### 修改主题色
+
+主题色在 `/Users/tommywu/tommywu-lab/src/config.ts`：
+
+```ts
+themeColor: {
+  hue: 210,
+  fixed: false,
+}
+```
+
+`hue` 是色相，范围是 `0` 到 `360`。例如：
+
+- `0`：偏红
+- `120`：偏绿
+- `210`：偏蓝
+- `280`：偏紫
+
+`fixed: false` 表示访客可以自己调整主题色；改成 `true` 就会固定站点主题色。
+
 ## 发布前检查清单
 
 发布文章前可以扫一遍：
@@ -402,7 +498,6 @@ pnpm preview
 
 现在这套流程已经能稳定写作和发布。之后还可以继续优化：
 
-- 替换默认头像和 favicon。
 - 配置真实域名到 `astro.config.mjs` 的 `site`。
 - 接入 Cloudflare Pages 自动部署。
 - 给 Obsidian 增加文章模板。
