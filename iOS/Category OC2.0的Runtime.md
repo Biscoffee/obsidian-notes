@@ -236,4 +236,99 @@ auto rw = cls->data();
 rw->methods.attachLists(mlists, mcount);
 ```
 ![](https://img.halfrost.com/Blog/ArticleImage/23_6.png)
-![[Pasted image 20260504153045.png]]
+![[Pasted image 20260504153045.png]]```
+
+```
+class_rw_t
+
+bits 中包含了一个指向 class_rw_t 结构体的指针，它的定义如下:
+
+struct class_rw_t {
+    uint32_t flags;
+    uint32_t version;
+
+    const class_ro_t *ro;
+
+    method_array_t methods;
+    property_array_t properties;
+    protocol_array_t protocols;
+}
+```
+在 Objective-C 2.0 的 non-fragile ABI 中，类的实例布局信息保存在 class_ro_t 中，例如 instanceStart 和 instanceSize 分别描述本类实例变量的起始位置和对象实例总大小。更重要的是，ivar 的偏移量不再被编译期完全写死，而是通过 ivar_list_t 中的 offset 指针等运行时元数据进行间接访问。这样当父类新增实例变量导致实例大小变化时，runtime 可以在类 realization 阶段重新调整子类 ivar 的偏移量，从而避免子类必须重新编译。这就是 Objective-C 2.0 ABI 稳定性的一部分。
+
+`class_rw_t` 结构体中还有一个 `methods` 成员变量，它的类型是 `method_array_t`，继承自 `list_array_tt`。
+
+`list_array_tt` 是一个泛型结构体，用于存储一些元数据，而它实际上是元数据的二维数组:
+```
+template <typename Element, typename List>{
+    struct array_t {
+        uint32_t count;
+        List* lists[0];
+    };
+}
+class method_array_t : public list_array_tt<method_t, method_list_t>
+
+```
+
+class_rw_t 结构体中还有一个 methods 成员变量，它的类型是 method_array_t，继承自 list_array_tt。
+list_array_tt 是一个用于管理若干个 list 的容器。对 methods 来说，它管理的是多个 method_list_t，每个 method_list_t 里面再存多个 method_t。因此从逻辑上可以类比为二维数组。
+
+```Objective-C
+template <typename Element, typename List>
+class list_array_tt {
+    struct array_t {
+        uint32_t count;
+        List* lists[0];
+    };
+
+    // 内部可能用一个指针/位标记来表示 empty / single list / array
+};
+```
+Element 表示元数据的类型，比如 method_t，而 List 则表示用于存储元数据的一维数组，比如 method_list_t。
+
+list_array_tt有三种状态：
+1. 空：没有任何 method_list_t，可以类比为 []
+2. 单列表：直接指向一个 method_list_t，可以类比为 [[m1, m2]]
+3. 多列表：指向一个 array_t，array_t 里保存多个 method_list_t*，可以类比为 [[m1, m2], [m3, m4]]
+
+类刚 realize 后，通常会把 `class_ro_t` 里的 `baseMethods` 放进 `class_rw_t.methods`。如果类本身没有方法，可能为空；如果有方法，可能是单列表状态。
+当 runtime 后续通过 Category、class_addMethod 等方式追加新的方法列表时，methods 通常会从空/单列表形态扩展为多列表形态。
+
+```
+void attachLists(List* const * addedLists, uint32_t addedCount) {
+    if (addedCount == 0) return;
+    uint32_t oldCount = array()->count;
+    uint32_t newCount = oldCount + addedCount;
+    setArray((array_t *)realloc(array(), array_t::byteSize(newCount)));
+    array()->count = newCount;
+    memmove(array()->lists + addedCount, array()->lists, oldCount * sizeof(array()->lists[0]));
+    memcpy(array()->lists, addedLists, addedCount * sizeof(array()->lists[0]));
+}
+```
+这段代码很简单，其实就是先调用 `realloc()` 函数将原来的空间拓展，然后把原来的数组复制到后面，最后再把新数组复制到前面。
+
+在实际代码中，比上面略复杂一些。因为为了提高性能，苹果做了一些优化，比如当 List 处于第二种状态(只有一个指针，指向一个元数据的集合)时，其实并不需要在原地扩容空间，而是只要重新申请一块内存，并将最后一个位置留给原来的集合即可。
+
+这样只多花费了很少的内存空间，也就是原来二维数组占用的内存空间，但是 `malloc()`的性能优势会更加明显，这其实是一个空间换时间的权衡问题。
+
+需要注意的是，无论执行哪种逻辑，参数列表中的方法都会被添加到二维数组的前面。而我们简单的看一下 runtime 在查找方法时的逻辑:
+```Objective-C
+static method_t *getMethodNoSuper_nolock(Class cls, SEL sel){
+    for (auto mlists = cls->data()->methods.beginLists(), 
+              end = cls->data()->methods.endLists(); 
+         mlists != end;
+         ++mlists) {
+        method_t *m = search_method_list(*mlists, sel);
+        if (m) return m;
+    }
+
+    return nil;
+}
+
+static method_t *search_method_list(const method_list_t *mlist, SEL sel) {
+    for (auto& meth : *mlist) {
+        if (meth.name == sel) return &meth;
+    }
+}
+```
+可见搜索的过程是按照从前向后的顺序进行的，一旦找到了就会停止循环。因此 category 中定义的同名方法不会替换类中原有的方法，但是对原方法的调用实际上会调用 category 中的方法。
