@@ -666,21 +666,28 @@ AI: "/covers/ai.svg"
 
 找到 `commentsConfig`，去 [Giscus](https://giscus.app/) 生成 `repoId` 和 `categoryId`，填好后把：
 
-当前 `repoId` 和 `categoryId` 已经填好，但这个 GitHub 仓库目前是 private。Giscus 官方要求评论仓库是 public，否则访客无法查看 discussion。
+当前已经使用独立公开评论仓库：
 
-如果要正式开启评论，有两种方式：
-
-- 把当前博客仓库改成 public。
-- 新建一个专门放评论的 public 仓库，例如 `tommywu-lab-comments`，然后把 `commentsConfig.giscus.repo`、`repoId`、`categoryId` 改成新仓库的值。
-
-```ts
-enable: false
+```text
+Biscoffee/tommywu-lab-comments
 ```
 
-改成：
+Giscus 官方要求：
+
+- 评论仓库必须是 public。
+- GitHub Discussions 必须开启。
+- Giscus App 必须安装到这个仓库。
+
+当前配置已经开启：
 
 ```ts
 enable: true
+```
+
+如果线上评论区提示 Giscus App 没有安装，去这个地址安装，并选择 `Biscoffee/tommywu-lab-comments`：
+
+```text
+https://github.com/apps/giscus/installations/new
 ```
 
 ### 开启访问统计
