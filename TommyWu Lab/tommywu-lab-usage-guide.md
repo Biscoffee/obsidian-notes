@@ -20,6 +20,50 @@ draft: false
 
 只有放在 `TommyWu Lab` 这个 Obsidian 文件夹里的内容会被同步到网站。其他私人笔记不会被博客读取。
 
+## 推荐发布流程
+
+现在可以用一条命令完成同步、检查、构建、提交和推送：
+
+```bash
+cd /Users/tommywu/tommywu-lab
+pnpm publish "Update blog"
+```
+
+这条命令会依次执行同步文章、类型检查、生产构建、提交和推送。如果没有任何改动，它会提示 `No changes to publish.`，不会创建空提交。
+
+Cloudflare Pages 会在推送到 GitHub 后自动部署。
+
+## 新建文章命令
+
+可以用命令直接在 Obsidian 公开写作目录里创建文章：
+
+```bash
+cd /Users/tommywu/tommywu-lab
+pnpm new-post ios-runtime-message-forwarding "Runtime 消息转发流程"
+```
+
+它会创建：
+
+```text
+/Users/tommywu/Obsidian/TommyWu Lab/ios-runtime-message-forwarding.md
+```
+
+默认会设置 `draft: true`，写完准备发布时改成：
+
+```md
+draft: false
+```
+
+## Obsidian 模板
+
+我也放了一份 Obsidian 模板：
+
+```text
+/Users/tommywu/Obsidian/_Templates/TommyWu Lab 技术博客模板.md
+```
+
+模板不会被同步到网站，因为它不在 `TommyWu Lab` 公开目录里。
+
 ## 日常写作流程
 
 最常用的流程是：
@@ -231,6 +275,20 @@ final class ViewController: UIViewController {
 
 后续如果想把 LeetCode 题解做得更像题库，可以继续扩展成独立数据文件，比如按题号、难度、语言和标签生成列表。
 
+现在已经有独立 LeetCode 题库页：
+
+```text
+/leetcode/
+```
+
+题库数据在：
+
+```text
+/Users/tommywu/tommywu-lab/src/data/leetcode.ts
+```
+
+以后新增题目时，在 `leetcodeProblems` 里追加一项即可。
+
 ## 隐藏文章
 
 如果文章还没写完，但你想保留在公开写作目录里，可以设置：
@@ -388,10 +446,14 @@ http://127.0.0.1:4321/
 - 归档：`http://127.0.0.1:4321/archive/`
 - 系列：`http://127.0.0.1:4321/series/`
 - 项目：`http://127.0.0.1:4321/projects/`
+- LeetCode：`http://127.0.0.1:4321/leetcode/`
 - 时间线：`http://127.0.0.1:4321/timeline/`
 - 标签云：`http://127.0.0.1:4321/tags/`
 - 分类：`http://127.0.0.1:4321/categories/`
 - 友链：`http://127.0.0.1:4321/friends/`
+- Now：`http://127.0.0.1:4321/now/`
+- Uses：`http://127.0.0.1:4321/uses/`
+- Stack：`http://127.0.0.1:4321/stack/`
 - 关于：`http://127.0.0.1:4321/about/`
 - RSS：`http://127.0.0.1:4321/rss.xml`
 
@@ -460,6 +522,10 @@ pnpm preview
 - 网站标题：`siteConfig.title`
 - 网站副标题：`siteConfig.subtitle`
 - 首页 Hero：`src/components/HomeHero.astro`
+- 最近在学/最近在做：`src/data/profile.ts`
+- 项目页数据：`src/data/projects.ts`
+- 友链数据：`src/data/friends.ts`
+- LeetCode 题库数据：`src/data/leetcode.ts`
 - 右侧个人卡片名字：`profileConfig.name`
 - 右侧个人卡片简介：`profileConfig.bio`
 - 头像：`profileConfig.avatar`
@@ -566,6 +632,92 @@ banner: {
 
 ```text
 /Users/tommywu/tommywu-lab/src/assets/images/my-banner.jpg
+```
+
+### 修改默认文章封面
+
+如果文章没有写 `image`，网站会按分类或标签给它一个默认封面。
+
+默认封面在：
+
+```text
+/Users/tommywu/tommywu-lab/public/covers/
+```
+
+映射规则在：
+
+```text
+/Users/tommywu/tommywu-lab/src/utils/cover-utils.ts
+```
+
+比如想让 `AI` 分类默认使用新封面，可以修改：
+
+```ts
+AI: "/covers/ai.svg"
+```
+
+### 开启评论
+
+评论组件已经预留好了，使用 Giscus。配置在：
+
+```text
+/Users/tommywu/tommywu-lab/src/config.ts
+```
+
+找到 `commentsConfig`，去 [Giscus](https://giscus.app/) 生成 `repoId` 和 `categoryId`，填好后把：
+
+当前 `repoId` 和 `categoryId` 已经填好，但这个 GitHub 仓库目前是 private。Giscus 官方要求评论仓库是 public，否则访客无法查看 discussion。
+
+如果要正式开启评论，有两种方式：
+
+- 把当前博客仓库改成 public。
+- 新建一个专门放评论的 public 仓库，例如 `tommywu-lab-comments`，然后把 `commentsConfig.giscus.repo`、`repoId`、`categoryId` 改成新仓库的值。
+
+```ts
+enable: false
+```
+
+改成：
+
+```ts
+enable: true
+```
+
+### 开启访问统计
+
+访问统计也已经预留配置，支持 Cloudflare Web Analytics 和 Umami。
+
+配置在：
+
+```text
+/Users/tommywu/tommywu-lab/src/config.ts
+```
+
+找到 `analyticsConfig`。如果使用 Cloudflare Web Analytics，把 token 填进去并开启：
+
+```ts
+cloudflare: {
+  enable: true,
+  token: "你的 token",
+}
+```
+
+如果使用 Umami，填入 `websiteId` 和 `scriptUrl`。
+
+### 修改 Now / Uses / Stack 页面
+
+这三个页面的数据在：
+
+```text
+/Users/tommywu/tommywu-lab/src/data/profile.ts
+```
+
+对应页面：
+
+```text
+/now/
+/uses/
+/stack/
 ```
 
 ### 修改 favicon
