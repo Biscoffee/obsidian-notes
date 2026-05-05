@@ -4,6 +4,7 @@ published: 2026-05-04
 description: "这篇文章记录 TommyWu's Lab 的日常写作、同步、预览、构建和发布流程。"
 tags: ["Blog", "Astro", "Fuwari", "Obsidian"]
 category: "工程"
+pinned: true
 draft: false
 ---
 
@@ -105,12 +106,130 @@ draft: false
 
 - `title`：文章标题，必填。
 - `published`：发布日期，必填，格式必须是 `YYYY-MM-DD`。
+- `updated`：最后更新时间，选填，格式同样是 `YYYY-MM-DD`。
 - `description`：文章摘要，建议填写。
 - `tags`：标签，可以有多个。
 - `category`：分类，通常放一个大方向，比如 `工程`、`AI`、`iOS`、`读书`。
+- `series`：系列名，选填，例如 `iOS Runtime 系列`。
+- `seriesSlug`：系列地址，选填，例如 `ios-runtime`，会生成 `/series/ios-runtime/`。
+- `seriesOrder`：系列内排序，选填，数字越小越靠前。
+- `pinned`：是否置顶，选填，`true` 表示首页优先展示。
 - `draft`：是否草稿。`false` 表示发布，`true` 表示隐藏。
 
 同步脚本会检查 `title` 和 `published`。如果缺少这两个字段，同步会失败，这样可以避免不完整的文章被发布。
+
+## 系列文章
+
+如果一组文章属于同一个专题，可以加系列字段：
+
+```md
+---
+title: "Category 的加载流程"
+published: 2026-05-05
+updated: 2026-05-05
+description: "整理 Objective-C Category 在 Runtime 中的加载过程。"
+tags: ["iOS", "Objective-C", "Runtime"]
+category: "iOS"
+series: "iOS Runtime 系列"
+seriesSlug: "ios-runtime"
+seriesOrder: 1
+draft: false
+---
+```
+
+这样文章页会显示系列导航，同时网站会生成：
+
+```text
+/series/
+/series/ios-runtime/
+```
+
+建议 `seriesSlug` 使用英文、小写、短横线，不要随意改。改了以后旧链接会变化。
+
+## 文章置顶
+
+想让某篇文章在首页靠前，可以加：
+
+```md
+pinned: true
+```
+
+适合置顶的文章：
+
+- 使用指南
+- 长期维护的索引文章
+- 正在更新的系列第一篇
+- 项目介绍页
+
+不要给太多文章都加置顶，否则置顶就失去意义。
+
+## 相关文章推荐
+
+文章页底部会自动根据 `category` 和 `tags` 推荐相关文章。
+
+想让推荐更准确，可以保持同一主题的标签一致，例如 iOS Runtime 相关文章都使用：
+
+```md
+tags: ["iOS", "Objective-C", "Runtime"]
+category: "iOS"
+```
+
+## 代码块增强
+
+当前代码块已经支持复制按钮、行号、文件名和高亮行。
+
+写文件名：
+
+````md
+```ts title="src/config.ts"
+export const siteConfig = {
+  title: "TommyWu's Lab",
+}
+```
+````
+
+高亮指定行：
+
+````md
+```ts {2,4-6}
+const name = "TommyWu"
+console.log(name)
+```
+````
+
+也可以同时写文件名和高亮：
+
+````md
+```swift title="ViewController.swift" {3}
+final class ViewController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+    }
+}
+```
+````
+
+## GitHub 仓库卡片
+
+文章里可以插入 GitHub 仓库卡片：
+
+```md
+::github{repo="Biscoffee/tommywu-lab"}
+```
+
+页面会自动请求 GitHub API 展示仓库描述、语言、star、fork 和 license。
+
+## LeetCode / 项目卡片
+
+当前已经有 `/projects/` 项目页，适合放项目、专题、LeetCode 练习归档。
+
+如果一篇文章想链接到项目页，可以直接写：
+
+```md
+[查看项目页](/projects/)
+```
+
+后续如果想把 LeetCode 题解做得更像题库，可以继续扩展成独立数据文件，比如按题号、难度、语言和标签生成列表。
 
 ## 隐藏文章
 
@@ -267,6 +386,12 @@ http://127.0.0.1:4321/
 
 - 首页：`http://127.0.0.1:4321/`
 - 归档：`http://127.0.0.1:4321/archive/`
+- 系列：`http://127.0.0.1:4321/series/`
+- 项目：`http://127.0.0.1:4321/projects/`
+- 时间线：`http://127.0.0.1:4321/timeline/`
+- 标签云：`http://127.0.0.1:4321/tags/`
+- 分类：`http://127.0.0.1:4321/categories/`
+- 友链：`http://127.0.0.1:4321/friends/`
 - 关于：`http://127.0.0.1:4321/about/`
 - RSS：`http://127.0.0.1:4321/rss.xml`
 
@@ -334,9 +459,13 @@ pnpm preview
 
 - 网站标题：`siteConfig.title`
 - 网站副标题：`siteConfig.subtitle`
+- 首页 Hero：`src/components/HomeHero.astro`
 - 右侧个人卡片名字：`profileConfig.name`
 - 右侧个人卡片简介：`profileConfig.bio`
 - 头像：`profileConfig.avatar`
+- banner：`siteConfig.banner`
+- favicon：`siteConfig.favicon`
+- 主题色：`siteConfig.themeColor`
 - 导航栏链接：`navBarConfig.links`
 - GitHub 等社交链接：`profileConfig.links`
 
@@ -345,7 +474,7 @@ pnpm preview
 当前头像配置在：
 
 ```ts
-avatar: "assets/images/demo-avatar.png"
+avatar: "assets/images/tommy-avatar.jpg"
 ```
 
 最简单的替换方式：
@@ -387,6 +516,57 @@ pnpm build
 ```
 
 这里适合写站点介绍、个人介绍、联系方式、这个博客会记录什么内容。
+
+### 修改首页 Hero
+
+首页 Hero 在：
+
+```text
+/Users/tommywu/tommywu-lab/src/components/HomeHero.astro
+```
+
+这里可以修改：
+
+- 首页标题下方的标签。
+- 首页按钮。
+- GitHub 卡片文案。
+- 技术栈图标墙。
+- 最近在学。
+- 最近在做。
+
+改完后运行：
+
+```bash
+pnpm build
+```
+
+### 修改 banner
+
+站点 banner 配置在 `/Users/tommywu/tommywu-lab/src/config.ts`：
+
+```ts
+banner: {
+  enable: false,
+  src: "assets/images/demo-banner.png",
+  position: "center",
+}
+```
+
+想启用 banner：
+
+```ts
+banner: {
+  enable: true,
+  src: "assets/images/my-banner.jpg",
+  position: "center",
+}
+```
+
+然后把图片放到：
+
+```text
+/Users/tommywu/tommywu-lab/src/assets/images/my-banner.jpg
+```
 
 ### 修改 favicon
 

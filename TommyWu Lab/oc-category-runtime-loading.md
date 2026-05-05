@@ -4,6 +4,10 @@ published: 2026-05-05
 description: "从 OC 1.0 到 OC 2.0 的类元数据演进出发，梳理 Category 的数据结构、加载流程、方法覆盖现象、+load 调用规则与关联对象原理。"
 tags: ["iOS", "Objective-C", "Runtime", "Category"]
 category: "iOS"
+series: "iOS Runtime 系列"
+seriesSlug: "ios-runtime"
+seriesOrder: 1
+pinned: true
 draft: false
 ---
 
