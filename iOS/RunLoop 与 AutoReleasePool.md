@@ -131,3 +131,18 @@ kCFRunLoopAllActivities = 0x0FFFFFFFU
 
 
 ![[Pasted image 20260506105355.png]]
+## 2026-05-14 23:29 RunLoop事件处理与模式切换机制
+**来源**: 未知　**confidence**: 1.00
+
+- RunLoop本质是do-while循环，处理Source0、Source1、Timer、Observer四类事件。
+- CFRunLoopMode决定当前接收哪些事件源，影响事件处理行为。
+- 主线程默认在NSDefaultRunLoopMode和UITrackingRunLoopMode之间切换。
+- 模式切换导致滚动ScrollView时NSTimer暂停，解释了Runloop模式对任务调度的影响。
+
+<details><summary>原文</summary>
+
+RunLoop 本质是一个 do-while 循环，处理 Source0/Source1/Timer/Observer 四类事件。CFRunLoopMode 决定当前接收哪些 source，主线程默认在 NSDefaultRunLoopMode 和 UITrackingRunLoopMode 之间切换，这就是为什么滚动 ScrollView 时 NSTimer 会停。
+
+</details>
+
+---
