@@ -122,3 +122,75 @@ NSLog(@"asyncMain---end");
 </details>
 
 ---
+
+## 2026-05-15 11:02 GCD同步执行主队列死锁分析
+**来源**: 博客　**confidence**: 0.90
+
+- 在主线程使用dispatch_sync提交任务到主队列会导致死锁，因为主队列是串行队列且当前任务阻塞。
+- dispatch_sync语义是阻塞当前线程直到任务完成，但主队列正忙无法执行新任务，导致循环等待。
+- 死锁的三个关键事实：主队列串行、当前任务占用队列、dispatch_sync阻塞线程。
+- 子线程同步执行主队列任务不死锁，因为阻塞线程与目标队列线程不同。
+- 异步执行主队列任务不死锁，因为dispatch_async不阻塞当前线程，无循环依赖。
+
+<details><summary>原文</summary>
+
+我们假设代码运行在主线程中,大致是这样:
+objc复制- (void)syncMain {    NSLog(@"syncMain---begin");        dispatch_sync(dispatch_get_main_queue(), ^{        NSLog(@"任务 1");    });        NSLog(@"syncMain---end");}
+
+执行后你会看到只打印了 syncMain---begin,然后程序就卡死(Xcode 9 及以上版本会直接抛出 EXC_BAD_INSTRUCTION 崩溃,提示 Thread 1: EXC_BAD_INSTRUCTION,这是因为系统检测到了主队列死锁,主动进行了断言)。
+要理解为什么卡死,需要先记住三个关键事实:
+
+主队列(Main Queue)是一个串行队列,它里面的任务只会在主线程上被取出执行,而且一次只执行一个。
+当前正在执行 syncMain 这段代码的,本身就是主队列上的一个任务——也就是说,主队列正"忙"着跑 syncMain,在 syncMain 没结束之前,主队列不会去取下一个任务。
+​dispatch_sync 的语义是:把 block 提交到目标队列,然后阻塞当前线程,直到这个 block 在目标队列上执行完毕,才返回。
+
+把这三点叠加起来,死锁就一目了然了。
+才返回。
+
+把这三点叠加起来,死锁就一目了然了。三、为什么换成「其他线程 + 同步执行 + 主队列」就不死锁?​
+对照着看就能明白。如果你在子线程中调用 syncMain,情况变成:
+
+阻塞等待的是子线程,不是主线程;
+主线程此时是空闲的,主队列也没有"正在执行的前置任务";
+所以「任务 1」可以立刻被主线程取出执行,执行完后子线程的 dispatch_sync 返回,继续走下去。
+
+关键差异在于:阻塞的线程和目标队列所依赖的线程不是同一条。死锁的充分条件是"阻塞者"和"被阻塞者所等待的执行者"重合,在主线程调用主队列同步,正好踩中这一点。
+四、为什么换成「主线程 + 异步执行 + 主队列」也不死锁?​
+因为 dispatch_async 不阻塞当前线程——它把「任务 1」扔进主队列之后就立即返回。于是 syncMain 可以顺利跑完,主线程结束当前任务后再回头从主队列里取「任务 1」执行。没有等待,就没有循环依赖。
+
+</details>
+
+---
+
+## 2026-05-15 11:06 GCD 死锁原理解析
+**来源**: 未知　**confidence**: 0.80
+
+- dispatch_sync 投递到当前队列会死锁。
+- 死锁原理：dispatch_sync 阻塞当前线程等待 block 执行完，但 block 在队列尾部，当前线程等待自己执行下一个任务，互相等待。
+- dispatch_async 异步执行，不阻塞调用线程，所以不会死锁。
+- 关键 API：dispatch_sync 和 dispatch_async。
+- 解决方案：避免在当前队列使用 dispatch_sync 同步调用。
+
+<details><summary>原文</summary>
+
+GCD 的 dispatch_sync 投递到当前队列会死锁。原理是 dispatch_sync 会阻塞当前线程等待 block 执行完，但 block 又排在当前队列尾部，当前线程在等自己执行下一个任务，互相等待形成死锁。dispatch_async 则不会阻塞调用线程，所以不会死锁。
+
+</details>
+
+---
+
+## 2026-05-15 11:07 GCD 中 dispatch_barrier_async 的读写隔离应用
+**来源**: 自述　**confidence**: 0.90
+
+- dispatch_barrier_async 用于并发队列中的读写隔离
+- 提交后会等待之前的任务完成，自己执行时独占队列
+- 执行完之后队列才继续接受其他 block
+- 常用于实现读写锁模式
+
+<details><summary>原文</summary>
+
+测试 GCD 第二条：dispatch_barrier_async 用于并发队列里的读写隔离，提交后会等待之前的任务完成，自己执行时独占队列，执行完之后队列才继续接受其他 block。常用于实现读写锁模式。
+
+</details>
+
+---
