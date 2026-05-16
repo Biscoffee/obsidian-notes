@@ -271,3 +271,29 @@ struct objc_class {
 </details>
 
 ---
+
+
+## 2026-05-16 16:27:54 Objective-C 运行时核心概念解析 ^35fa04
+topic:: Runtime
+date:: 2026-05-16 16:27:54
+source:: 未知
+confidence:: 0.80
+tags:: Runtime
+**来源**: 未知　**confidence**: 0.80
+
+
+![[sec-507ca7f97db4.png]]
+
+<details><summary>原文</summary>
+
+低
+高
+Obj
+self
+super_class
+_cmd
+self
+
+</details>
+
+---
