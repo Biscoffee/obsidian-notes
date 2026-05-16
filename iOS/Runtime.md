@@ -201,3 +201,73 @@ NSNull Crash
 ---
 
 ![[Pasted image 20260516134041.png]]
+
+## 2026-05-16 14:51:46 Objective-C 1.0 与 2.0 类结构对比 ^dbec74
+topic:: Runtime
+date:: 2026-05-16 14:51:46
+source:: 博客
+confidence:: 0.90
+tags:: Runtime, 博客
+summary:: ObjC 1.0 中的 objc_class 结构体包含 isa、super_class、ivars、methodLists 等字段。；ObjC 2.0 中的 objc_object 包含 isa_t isa，objc_class 继承自 objc_object。；ObjC 2.0 类结构引入了 superclass、cache_t cache 和 class_data_bits_t bits。
+**来源**: 博客　**confidence**: 0.90
+
+- ObjC 1.0 中的 objc_class 结构体包含 isa、super_class、ivars、methodLists 等字段。
+- ObjC 2.0 中的 objc_object 包含 isa_t isa，objc_class 继承自 objc_object。
+- ObjC 2.0 类结构引入了 superclass、cache_t cache 和 class_data_bits_t bits。
+
+### 整理后内容
+
+## OC 1.0 vs 2.0 类结构对比
+
+### Objc 1.0 objc_class 结构体
+
+```objc
+struct objc_class {
+    Class isa;
+    Class super_class;
+    const char *name;
+    long version;
+    long info;
+    long instance_size;
+    objc_ivar_list *ivars;
+    objc_method_list **methodLists;
+    objc_cache *cache;
+    objc_protocol_list *protocols;
+};
+```
+
+### Objc 2.0 演进
+- `objc_object` → 包含 `isa_t isa`
+- `objc_class` → 继承自 `objc_object`，包含 `superclass`、`cache_t cache`、`class_data_bits_t bits`
+
+> 图片原始文件已归档到 iOS-Inbox，这里提取核心知识点做结构化笔记。
+
+<details><summary>原文</summary>
+
+## OC 1.0 vs 2.0 类结构对比
+
+### Objc 1.0 objc_class 结构体
+```
+struct objc_class {
+    Class isa;
+    Class super_class;
+    const char *name;
+    long version;
+    long info;
+    long instance_size;
+    objc_ivar_list *ivars;
+    objc_method_list **methodLists;
+    objc_cache *cache;
+    objc_protocol_list *protocols;
+};
+```
+
+### Objc 2.0 演进
+- `objc_object` → 包含 `isa_t isa`
+- `objc_class` → 继承自 `objc_object`，包含 `superclass`、`cache_t cache`、`class_data_bits_t bits`
+
+> 图片原始文件已归档到 iOS-Inbox，这里提取核心知识点做结构化笔记。
+
+</details>
+
+---
