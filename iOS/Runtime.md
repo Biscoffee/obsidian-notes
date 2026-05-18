@@ -1,3 +1,4 @@
+https://halfrost.com/how_to_use_runtime/
 # 简介
 - runtime是实现“动态性”和“消息转发”的关键，是一套c语言编写的api库，程序在启动时会调用runtime来注册objc类结构，还有将分类整合进类中这些操作。
 - Runtime 又叫运行时，是一套底层的 C 语言 API，是 iOS 系统的核心之一。开发者在编码过程中，可以给任意一个对象发送消息，在编译阶段只是确定了要向接收者发送这条消息，而接受者将要如何响应和处理这条消息，那就要看运行时来决定了。
@@ -201,6 +202,8 @@ NSNull Crash
 ---
 
 ![[Pasted image 20260516134041.png]]
+
+
 
 ## 2026-05-16 14:51:46 Objective-C 1.0 与 2.0 类结构对比 ^dbec74
 topic:: Runtime
