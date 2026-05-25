@@ -151,3 +151,32 @@ RunLoop 本质是一个 do-while 循环，处理 Source0/Source1/Timer/Observer 
 </details>
 
 ---
+
+
+## 2026-05-25 11:22:58 多线程能否共享一个AutoreleasePool ^89bbe2
+topic:: RunLoop
+date:: 2026-05-25 11:22:58
+source:: 未知
+confidence:: 0.80
+tags:: RunLoop
+summary:: AutoreleasePool与线程绑定，每个线程有独立的AutoreleasePool栈；多线程不能共享同一个AutoreleasePool实例；子线程需在RunLoop活跃时或手动创建AutoreleasePool块来管理对象；主线程的AutoreleasePool由RunLoop在休眠和唤醒时自动管理
+**来源**: 未知　**confidence**: 0.80
+
+- AutoreleasePool与线程绑定，每个线程有独立的AutoreleasePool栈
+- 多线程不能共享同一个AutoreleasePool实例
+- 子线程需在RunLoop活跃时或手动创建AutoreleasePool块来管理对象
+- 主线程的AutoreleasePool由RunLoop在休眠和唤醒时自动管理
+
+### 整理后内容
+
+多个线程不能共享一个AutoreleasePool。AutoreleasePool是以线程为单位进行管理的，每个线程都有自己的AutoreleasePool栈。因此，每个线程需要创建和管理自己的AutoreleasePool。
+
+在主线程中，RunLoop会在每次休眠前销毁旧的AutoreleasePool并在唤醒时创建新的AutoreleasePool。对于子线程，如果没有开启RunLoop，则需要手动使用`@autoreleasepool {}`块来管理自动释放的对象。如果子线程开启了RunLoop，那么RunLoop也会像主线程一样自动管理AutoreleasePool。
+
+<details><summary>原文</summary>
+
+多个线程可以共享一个AutoreleasePool吗
+
+</details>
+
+---

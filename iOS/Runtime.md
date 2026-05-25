@@ -300,3 +300,31 @@ self
 </details>
 
 ---
+
+
+## 2026-05-25 11:35:28 Objective-C 成员变量访问控制修饰符 ^8d617d
+topic:: Runtime
+date:: 2026-05-25 11:35:28
+source:: 博客
+confidence:: 0.90
+tags:: Runtime, 博客
+summary:: Objective-C 中用于控制成员变量（ivar）访问权限的四种关键字：@private, @protected, @public, @package；@private：仅当前类可访问，子类及外部不可访问；@protected：当前类及其子类可访问，外部不可访问（Objective-C 默认）；@public：任何位置均可访问；@package：在同一个框架（framework）或可执行文件内可访问，外部不可访问，常用于框架内部
+**来源**: 博客　**confidence**: 0.90
+
+- Objective-C 中用于控制成员变量（ivar）访问权限的四种关键字：@private, @protected, @public, @package
+- @private：仅当前类可访问，子类及外部不可访问
+- @protected：当前类及其子类可访问，外部不可访问（Objective-C 默认）
+- @public：任何位置均可访问
+- @package：在同一个框架（framework）或可执行文件内可访问，外部不可访问，常用于框架内部
+
+### 整理后内容
+
+@private / @protected / @public / @package 是 Objective-C 中用于控制成员变量（ivar）访问权限的四种关键字。
+
+<details><summary>原文</summary>
+
+@private / @protected / @public / @package
+
+</details>
+
+---

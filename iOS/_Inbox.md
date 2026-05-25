@@ -40,3 +40,37 @@ tags:: iOS-Inbox
 </details>
 
 ---
+
+
+## 2026-05-25 11:32:51 const 关键字基础介绍 ^49af5c
+topic:: iOS-Inbox
+date:: 2026-05-25 11:32:51
+source:: 未知
+confidence:: 0.70
+tags:: iOS-Inbox
+summary:: const 用于声明常量，表示变量的值不可被修改。；在 C/Objective-C 中，const 可以修饰变量、指针等。；const 有助于提高代码的安全性和可读性。
+**来源**: 未知　**confidence**: 0.70
+
+- const 用于声明常量，表示变量的值不可被修改。
+- 在 C/Objective-C 中，const 可以修饰变量、指针等。
+- const 有助于提高代码的安全性和可读性。
+
+### 整理后内容
+
+**const（常量）**
+
+`const` 是编程语言中的一个关键字，用于声明一个常量，即其值在初始化后不可被修改。
+
+在 C 和 Objective-C 语言中，`const` 可以修饰基本类型的变量、指针等，例如：
+- `const int MAX = 100;` 声明一个整型常量 `MAX`。
+- `NSString * const kMyConstant = @"value";` 声明一个指向 `NSString` 的常量指针（指针本身不可变）。
+
+使用 `const` 有助于防止意外修改，增强代码的安全性和可读性。
+
+<details><summary>原文</summary>
+
+const（常量）
+
+</details>
+
+---
