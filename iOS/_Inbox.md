@@ -207,3 +207,29 @@ delaysTouchesBegan（默认 NO）
 </details>
 
 ---
+
+
+## 2026-05-25 12:58:24 使用NSUserDefaults存储用户偏好设置 ^cb9b5c
+topic:: iOS-Inbox
+date:: 2026-05-25 12:58:24
+source:: 未知
+confidence:: 0.70
+tags:: iOS-Inbox
+summary:: NSUserDefaults用于存储轻量级的用户偏好设置；可通过键值对形式存储基本数据类型；常用于保存应用配置、用户选项等
+**来源**: 未知　**confidence**: 0.70
+
+- NSUserDefaults用于存储轻量级的用户偏好设置
+- 可通过键值对形式存储基本数据类型
+- 常用于保存应用配置、用户选项等
+
+### 整理后内容
+
+用NSUserDefaults存储用户偏好
+
+<details><summary>原文</summary>
+
+用NSUserDefaults存储用户偏好
+
+</details>
+
+---
