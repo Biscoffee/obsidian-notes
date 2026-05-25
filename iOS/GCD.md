@@ -411,3 +411,30 @@ dispatch_semaphore_signal：发送一个信号，让信号总量加 1
 </details>
 
 ---
+
+
+## 2026-05-25 21:31:24 正确停止GCD dispatch_source定时器 ^61e6b1
+topic:: GCD
+date:: 2026-05-25 21:31:24
+source:: 未知
+confidence:: 0.90
+tags:: GCD
+summary:: 使用 dispatch_source_cancel 函数停止 dispatch_source_t 定时器；在 block 中通过 dispatch_source_testcancel 检查是否被取消；通常在倒计时结束或需要释放时调用取消操作；确保在取消后不再对该定时器进行操作
+**来源**: 未知　**confidence**: 0.90
+
+- 使用 dispatch_source_cancel 函数停止 dispatch_source_t 定时器
+- 在 block 中通过 dispatch_source_testcancel 检查是否被取消
+- 通常在倒计时结束或需要释放时调用取消操作
+- 确保在取消后不再对该定时器进行操作
+
+### 整理后内容
+
+在倒计时结束时，如何正确停止 dispatch_source 定时器？
+
+<details><summary>原文</summary>
+
+在倒计时结束时，如何正确停止dispatch_source定时器？
+
+</details>
+
+---
