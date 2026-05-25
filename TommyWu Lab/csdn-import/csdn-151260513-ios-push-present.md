@@ -2,7 +2,7 @@
 title: "【iOS】push 和 present"
 published: 2025-09-06
 description: "转场动画是下面几个情况： 导航控制器的push和pop动画。 普通控制器的present和Dismiss动画。 pesent和dismiss : dismiss多级 present还有两个方法可以让我们实现一个跨级返回的效果。presentingViewController 和p"
-tags: ["CSDN", "iOS", "Objective-C", "网络"]
+tags: ["iOS", "页面跳转"]
 category: "iOS"
 draft: false
 ---

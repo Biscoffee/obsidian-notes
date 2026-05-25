@@ -2,7 +2,7 @@
 title: "【iOS】MVC架构"
 published: 2025-08-31
 description: "目录 1 前言 2 MVC简单介绍 胖Model 和瘦Model 3 MVC的问题 1. 视图控制器过于臃肿 2. view和controller的边界很模糊 为了解决这些缺点，衍生出了许多改进的架构模式： \"MVC\"，即Model（模型），View（视图），Controller"
-tags: ["CSDN", "iOS", "Objective-C", "设计模式", "网络"]
+tags: ["iOS", "MVC", "架构"]
 category: "iOS"
 draft: false
 ---

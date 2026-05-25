@@ -2,7 +2,7 @@
 title: "【iOS】MVVM"
 published: 2025-12-09
 description: "MVC模式 MVC的前世： 这个架构中，三个实体联系太过紧密，每个实体都知道另外的两个实体。这就导致了复用性能急剧下降。 apple MVC : 苹果官方推荐使用的MVC，结构大致如下：https://developer.apple.com/library/archive/doc"
-tags: ["CSDN", "iOS", "Objective-C", "Swift", "设计模式", "网络"]
+tags: ["iOS", "MVVM", "架构"]
 category: "iOS"
 draft: false
 ---
