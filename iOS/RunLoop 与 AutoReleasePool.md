@@ -180,3 +180,29 @@ summary:: AutoreleasePool与线程绑定，每个线程有独立的AutoreleasePo
 </details>
 
 ---
+
+
+## 2026-05-25 12:40:05 delaysTouchesEnded 属性解析 ^6c05f2
+topic:: RunLoop
+date:: 2026-05-25 12:40:05
+source:: 未知
+confidence:: 0.50
+tags:: RunLoop
+summary:: delaysTouchesEnded 是 UIView 的布尔属性；默认值为 NO；用于控制触摸事件延迟结束的行为
+**来源**: 未知　**confidence**: 0.50
+
+- delaysTouchesEnded 是 UIView 的布尔属性
+- 默认值为 NO
+- 用于控制触摸事件延迟结束的行为
+
+### 整理后内容
+
+delaysTouchesEnded（默认 NO）
+
+<details><summary>原文</summary>
+
+delaysTouchesEnded（默认 NO）
+
+</details>
+
+---
