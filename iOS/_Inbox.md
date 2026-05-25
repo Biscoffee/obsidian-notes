@@ -74,3 +74,29 @@ const（常量）
 </details>
 
 ---
+
+
+## 2026-05-25 11:46:29 NSNotificationCenter与NSNotificationQueue的区别 ^e0a747
+topic:: iOS-Inbox
+date:: 2026-05-25 11:46:29
+source:: 自述
+confidence:: 0.80
+tags:: iOS-Inbox, 自述
+summary:: 主题是 NSNotificationCenter 与 NSNotificationQueue 的区别；被标记为‘重要’，可能是一个学习重点或面试题；内容属于 iOS 开发中的通知机制，但不属于 Runtime 等已有主题
+**来源**: 自述　**confidence**: 0.80
+
+- 主题是 NSNotificationCenter 与 NSNotificationQueue 的区别
+- 被标记为‘重要’，可能是一个学习重点或面试题
+- 内容属于 iOS 开发中的通知机制，但不属于 Runtime 等已有主题
+
+### 整理后内容
+
+NSNotificationCenter 与 NSNotificationQueue 的区别（重要）
+
+<details><summary>原文</summary>
+
+NSNotificationCenter与NSNotificationQueue的区别（重要）
+
+</details>
+
+---
