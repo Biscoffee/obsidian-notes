@@ -100,3 +100,30 @@ NSNotificationCenter与NSNotificationQueue的区别（重要）
 </details>
 
 ---
+
+
+## 2026-05-25 12:22:29 iOS 中的模型树、动画树与渲染树 ^3e8339
+topic:: iOS-Inbox
+date:: 2026-05-25 12:22:29
+source:: 未知
+confidence:: 0.70
+tags:: iOS-Inbox
+summary:: CALayer 作为渲染树的节点；模型树管理属性状态；动画树处理动画过渡；渲染树负责最终像素输出
+**来源**: 未知　**confidence**: 0.70
+
+- CALayer 作为渲染树的节点
+- 模型树管理属性状态
+- 动画树处理动画过渡
+- 渲染树负责最终像素输出
+
+### 整理后内容
+
+模型树、动画树、渲染树（节点是 CALayer）。
+
+<details><summary>原文</summary>
+
+模型树、动画树、渲染树（节点是CALayer）
+
+</details>
+
+---
