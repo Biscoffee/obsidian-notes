@@ -328,3 +328,79 @@ summary:: Objective-C 中用于控制成员变量（ivar）访问权限的四种
 </details>
 
 ---
+
+
+## 2026-05-26 18:26:08 消息转发的快速转发阶段 ^d27e25
+topic:: Runtime
+date:: 2026-05-26 18:26:08
+source:: AI回答
+confidence:: 0.95
+tags:: Runtime, AI回答
+summary:: 消息转发第二阶段，当动态方法解析失败后触发；核心方法是 `-forwardingTargetForSelector:`，允许将消息直接转给另一个对象处理；比完整转发更轻量高效，因为无需创建 NSInvocation；典型用途包括消息代理、多继承模拟和修复系统类 Bug；是 ObjC Runtime 消息发送机制三阶段中的第二阶段
+**来源**: AI回答　**confidence**: 0.95
+
+- 消息转发第二阶段，当动态方法解析失败后触发
+- 核心方法是 `-forwardingTargetForSelector:`，允许将消息直接转给另一个对象处理
+- 比完整转发更轻量高效，因为无需创建 NSInvocation
+- 典型用途包括消息代理、多继承模拟和修复系统类 Bug
+- 是 ObjC Runtime 消息发送机制三阶段中的第二阶段
+
+### 整理后内容
+
+## 快速转发阶段（Fast Forwarding）
+
+消息转发的**第二阶段**，当动态方法解析（`+resolveInstanceMethod:`）未能处理消息时触发。
+
+### 作用
+实现方法 `-forwardingTargetForSelector:`，允许对象将未处理的消息**直接转给另一个对象**处理，无需创建 `NSInvocation`，因此比完整转发更轻量高效。
+
+### 流程
+1. Runtime 调用 `-forwardingTargetForSelector:`
+2. 若返回一个有效的 target 对象 → Runtime 将消息**原样**发给该 target（回到消息发送的最初阶段）
+3. 若返回 `nil` 或 `self` → 进入第三阶段**完整转发**（`-methodSignatureForSelector:` + `-forwardInvocation:`）
+
+### 为什么叫“快速”
+- 只需返回一个对象引用，不创建 NSInvocation
+- 跳过了完整转发中 methodSignature 获取、NSInvocation 构造等开销
+
+### 典型用途
+- **消息代理/转发**：将消息委托给内部持有的其他对象
+- **多继承模拟**：组合模式下转发给辅助对象
+- **系统类的 Bug 修复**：拦截发送给系统对象的消息并转发
+
+### 三阶段总览
+1️⃣ 动态方法解析 `+resolveInstanceMethod:` → 能否自己补方法
+2️⃣ **快速转发** `-forwardingTargetForSelector:` → 能否转给别的对象
+3️⃣ 完整转发 `-methodSignatureForSelector:` + `-forwardInvocation:` → 最后的兜底
+
+<details><summary>原文</summary>
+
+## 快速转发阶段（Fast Forwarding）
+
+消息转发的**第二阶段**，当动态方法解析（+resolveInstanceMethod:）未能处理消息时触发。
+
+### 作用
+实现方法 `-forwardingTargetForSelector:`，允许对象将未处理的消息**直接转给另一个对象**处理，无需创建 `NSInvocation`，因此比完整转发更轻量高效。
+
+### 流程
+1. Runtime 调用 `-forwardingTargetForSelector:`
+2. 若返回一个有效的 target 对象 → Runtime 将消息**原样**发给该 target（回到消息发送的最初阶段）
+3. 若返回 `nil` 或 `self` → 进入第三阶段**完整转发**（`-methodSignatureForSelector:` + `-forwardInvocation:`）
+
+### 为什么叫"快速"
+- 只需返回一个对象引用，不创建 NSInvocation
+- 跳过了完整转发中 methodSignature 获取、NSInvocation 构造等开销
+
+### 典型用途
+- **消息代理/转发**：将消息委托给内部持有的其他对象
+- **多继承模拟**：组合模式下转发给辅助对象
+- **系统类的 Bug 修复**：拦截发送给系统对象的消息并转发
+
+### 三阶段总览
+1️⃣ 动态方法解析 `+resolveInstanceMethod:` → 能否自己补方法
+2️⃣ **快速转发** `-forwardingTargetForSelector:` → 能否转给别的对象
+3️⃣ 完整转发 `-methodSignatureForSelector:` + `-forwardInvocation:` → 最后的兜底
+
+</details>
+
+---
