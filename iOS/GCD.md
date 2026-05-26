@@ -438,3 +438,67 @@ summary:: 使用 dispatch_source_cancel 函数停止 dispatch_source_t 定时器
 </details>
 
 ---
+
+
+## 2026-05-26 12:14:40 GCD调度组与信号量基础用法 ^fcdb0f
+topic:: GCD
+date:: 2026-05-26 12:14:40
+source:: 博客
+confidence:: 0.90
+tags:: GCD, 博客
+summary:: 使用 dispatch_group_async() 将任务加入调度组；通过 dispatch_group_notify() 在组内所有任务完成后执行回调；信号量通过 dispatch_semaphore_create(0) 创建，初始值为0；任务完成后调用 dispatch_semaphore_signal() 发送信号；后续任务使用 dispatch_semaphore_wait() 等待信号
+**来源**: 博客　**confidence**: 0.90
+
+- 使用 dispatch_group_async() 将任务加入调度组
+- 通过 dispatch_group_notify() 在组内所有任务完成后执行回调
+- 信号量通过 dispatch_semaphore_create(0) 创建，初始值为0
+- 任务完成后调用 dispatch_semaphore_signal() 发送信号
+- 后续任务使用 dispatch_semaphore_wait() 等待信号
+
+### 整理后内容
+
+**调度组：** 用 `dispatch_group_async()` 把要先做的任务塞进这个组里，让它们自己跑，最后用 `dispatch_group_notify()` 告诉系统：“等组里所有任务都跑完了，就执行后面这个新任务”。
+
+**信号量：** 先调 `dispatch_semaphore_create(0)` 弄个信号量（初始状态是没钥匙），让前一个任务先运行，运行完的时候调用 `dispatch_semaphore_signal()`，后一个任务开始前，先调 `dispatch_semaphore_wait()`。
+
+<details><summary>原文</summary>
+
+调度组：用 dispatch_group_async () 把要先做的任务塞进这个组里，让它们自己跑，最后用 dispatch_group_notify () 告诉系统：&quot;等组里所有任务都跑完了，就执行后面这个新任务&quot;。2. 信号量：先调 create (0) 弄个信号量（初始状态是没钥匙），让前一个任务先运行，运行完的时候调用signal ()，后一个任务开始前，先调 wait ()。
+
+</details>
+
+---
+
+
+## 2026-05-26 12:15:55 GCD 服务质量等级详解 ^a6dd79
+topic:: GCD
+date:: 2026-05-26 12:15:55
+source:: 博客
+confidence:: 0.90
+tags:: GCD, 博客
+summary:: QOS_CLASS_USER_INTERACTIVE：最高优先级，用于动画、列表滑动等，要求毫秒级完成。；QOS_CLASS_USER_INITIATED：用户主动触发，如点击后网络请求，需秒级内完成。；QOS_CLASS_DEFAULT：默认值，系统根据上下文调整，建议显式指定。；QOS_CLASS_UTILITY：耗时任务，如下载、解析，可显示进度，系统可能限制CPU占用。；QOS_CLASS_BACKGROUND：后台任务，如备份、同步，优先级最低，系统空闲时执行。
+**来源**: 博客　**confidence**: 0.90
+
+- QOS_CLASS_USER_INTERACTIVE：最高优先级，用于动画、列表滑动等，要求毫秒级完成。
+- QOS_CLASS_USER_INITIATED：用户主动触发，如点击后网络请求，需秒级内完成。
+- QOS_CLASS_DEFAULT：默认值，系统根据上下文调整，建议显式指定。
+- QOS_CLASS_UTILITY：耗时任务，如下载、解析，可显示进度，系统可能限制CPU占用。
+- QOS_CLASS_BACKGROUND：后台任务，如备份、同步，优先级最低，系统空闲时执行。
+
+### 整理后内容
+
+GCD（Grand Central Dispatch）的 QoS（Quality of Service）等级定义了任务的优先级：
+
+1. **QOS_CLASS_USER_INTERACTIVE**（用户交互级）：最高优先级，直接影响用户界面响应（比如滑动列表、动画渲染），必须快速完成（通常毫秒级）。
+2. **QOS_CLASS_USER_INITIATED**（用户发起级）：用户主动触发的任务（比如点击按钮后的网络请求），需要尽快完成（通常秒级内），用户会等待结果。
+3. **QOS_CLASS_DEFAULT**（默认级）：没指定时的默认值，系统会根据上下文自动调整（建议显式指定其他等级，避免依赖默认值）。
+4. **QOS_CLASS_UTILITY**（工具级）：耗时较长但用户不急需结果的任务（比如下载文件、数据解析），可以显示进度条，系统可能限制其 CPU 占用以节省电量。
+5. **QOS_CLASS_BACKGROUND**（后台级）：完全不影响用户的任务（比如备份数据、同步日志），系统会在空闲时执行，优先级最低。
+
+<details><summary>原文</summary>
+
+QOS_CLASS_USER_INTERACTIVE（用户交互级）最高优先级，直接影响用户界面响应（比如滑动列表、动画渲染），必须快速完成（通常毫秒级）。2. QOS_CLASS_USER_INITIATED（用户发起级）用户主动触发的任务（比如点击按钮后的网络请求），需要尽快完成（通常秒级内），用户会等待结果。3. QOS_CLASS_DEFAULT（默认级）没指定时的默认值，系统会根据上下文自动调整（建议显式指定其他等级，避免依赖默认值）。4. QOS_CLASS_UTILITY（工具级）耗时较长但用户不急需结果的任务（比如下载文件、数据解析），可以显示进度条，系统可能限制其 CPU 占用以节省电量。5. QOS_CLASS_BACKGROUND（后台级）完全不影响用户的任务（比如备份数据、同步日志），系统会在空闲时执行，优先级最低。
+
+</details>
+
+---
