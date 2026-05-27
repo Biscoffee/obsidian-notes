@@ -1,0 +1,34 @@
+{
+  "uploadByClipSwitch": true,
+  "uploader": "PicGo",
+  "uploadServer": "http://127.0.0.1:36677/upload",
+  "deleteServer": "http://127.0.0.1:36677/delete",
+  "imageSizeSuffix": "",
+  "picgoCorePath": "",
+  "workOnNetWork": true,
+  "fixPath": false,
+  "applyImage": true,
+  "newWorkBlackDomains": "",
+  "deleteSource": false,
+  "imageDesc": "origin",
+  "remoteServerMode": false,
+  "uploadedImages": [
+    {
+      "isEncrypted": 1,
+      "EncryptedData": "cb6d4b2c5645a394782dc0f3bd1884da:808813c3ff0d3cbc376db2982f289a54d9cf5a509a886a41bfb5eb5089848f41df2250ea491441f2f7e82b0c2d897c1e7643967aa51eb4da3d03702efb81130dd59da9d378f3840c471218aa3b619b3ec02234a4de835233a80d4ac7ad9c6cbc886b74395a2b476726ce05dcc0b014807a5bc0116dbbc7e059481ddc3ab28258d44457cb4fbc64ab82b318497f81698febfba34af0f8be942c4a6dc3d887e7fb25e2346cda936e9a7112e6a256ab5ab79f554938c61bda4227bc2354e5813ade2299a08f3b8401f8f79f2d8837e5d33ceda8710e10e66e33df01514202dbe1f8371605f690319026f8ac7c24a1c54d1d28c47442da50f6ccafcd676479c47fecf6ed19491d026bb780b8c976e07a9ca4387a226507bc3b93507c6edaf5d140e749f400989d262fb8e1d87728854346c606450ec581c54be16ad6940656057ac3739c14c10de25912bb8d190219198fc710a342c9b320f5212a8778a981eaf8195957aa731b1eafe73bddb7251782ac487bb429a8afdc3c19ff54b33f17ef5d73a0c8cdcfe5b7ea76f16b8a47e71aa229556efc0b9926489b0356ef80ed0136b5ca4ec9448d540f6ef1e15de5ed282d91ee19c8ea446f121d915845b17bea58880247714efe9f698f1a6363c91a810abfb8392dac6d1e6ca5242b4521f076406efc09afdf63a20b08ff2f36f96296c02c06d2dd1118c14829e73d5db7f837c4ff41f111ad317facdcce76a3df4b5cf98905aa83dab4917f061e359f7560cec0c6bb402e623e4240b3ac039cbd3867215b3456b96452954c5f89fd551174ae0cc15529cbf112b51e0b1218cd92d718a0335a38856b74289535ae7c8cd34ac8f4853331637feda61780d85972145cb9098a33646c9424695d4381dcfb0a9cc5259b2f9a49e26cb5cca891ead5116e08440f555ee4e92cb3091e64f5bb57eeaf5a280151bd78c119e2144fa438f5f7b8ff4a19296d7d318031cd37f1131063cb766f32d6f28dc9ca149fd0ff1a65c95d5be3f2559adf846da543dccf793925d1dddcec7b3b73195b5ccae1edd3b9ba7baa30967aa26bfde833b1f8754ddbed48ddca9959f9cefcec3d7a471e740ae6fcf6228dedb7191405aed6673d32225dba1642",
+      "fileName": "20260527225245636.png",
+      "width": 1240,
+      "height": 930,
+      "filePath": "/Users/tommywu/Library/Application Support/piclist/piclist-clipboard-images/20260527225245636.png",
+      "extname": ".png",
+      "mimeType": "image/png",
+      "imgUrl": "https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260527225245636.png",
+      "hash": "07fae033c0817dfa4f1e0f9c158f283ab9ed491f",
+      "type": "github",
+      "shortUrl": "",
+      "id": "4bde8b77-6bf8-4467-bfa5-f1ba81c47eae",
+      "createdAt": 1779893571964,
+      "updatedAt": 1779893571964
+    }
+  ]
+}
