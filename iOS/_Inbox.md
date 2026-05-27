@@ -350,3 +350,29 @@ static（静态）
 </details>
 
 ---
+
+
+## 2026-05-28 06:56:37 在run回调中通过标识名获取AST节点 ^2c67f3
+topic:: iOS-Inbox
+date:: 2026-05-28 06:56:37
+source:: 未知
+confidence:: 0.80
+tags:: iOS-Inbox
+summary:: 用户询问在run回调中如何根据标识名从MatchResult获取特定AST节点（如ObjCPropertyDecl）；问题涉及静态分析工具或AST匹配框架的使用；核心关注点是MatchResult对象的API或方法调用
+**来源**: 未知　**confidence**: 0.80
+
+- 用户询问在run回调中如何根据标识名从MatchResult获取特定AST节点（如ObjCPropertyDecl）
+- 问题涉及静态分析工具或AST匹配框架的使用
+- 核心关注点是MatchResult对象的API或方法调用
+
+### 整理后内容
+
+在run回调中，如何根据标识名从MatchResult中获取具体的AST节点（如ObjCPropertyDecl）？
+
+<details><summary>原文</summary>
+
+在run回调中，如何根据标识名从MatchResult中获取具体的AST节点（如ObjCPropertyDecl）？
+
+</details>
+
+---
