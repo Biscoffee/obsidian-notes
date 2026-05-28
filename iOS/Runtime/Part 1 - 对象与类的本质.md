@@ -1,5 +1,11 @@
 # 【iOS】Runtime - Part 1 && 对象与类的本质
 
+## 目录
+
+- [Runtime 简介](#runtime-简介)
+- [对象的本质：objc_object](#对象的本质objc_object)
+- [At Last](#at-last)
+
 # Runtime 简介
 
 写 Objective-C 的人,每天都在敲这样的代码:
@@ -23,6 +29,10 @@ objc_msgSend(person, @selector(sayHello));
 > **Objective-C ≈ C 语言 + 一个运行时库。**
 
 那些在别的语言里编译期就拍板的事,在 OC 里都被交给了这个运行时。这个系列要讲的,正是它究竟是如何工作的。
+
+但在追问「运行时如何工作」之前,有一个更靠前的问题绕不开。回头看那行 `objc_msgSend(person, @selector(sayHello))`:它要发消息,第一步得先弄清楚——传进来的 `person` 到底是个什么东西?它属于哪个类,runtime 又凭什么能在运行时认出来?
+
+这个问题的答案不在别处,就藏在 `person` 这个对象自己身上。所以在拆解消息发送的全过程之前,我们得先回到最根上的一问:**一个 Objective-C 对象,本质上到底是什么?**
 
 # 对象的本质：objc_object
 
