@@ -14,29 +14,20 @@
 objc_msgSend(person, @selector(sayHello));
 ```
 
-到这里,一个平时被我们彻底忽略的问题就浮现了:**到底是在哪个时刻、由谁来决定 person 真正去执行哪一段代码?**
+到这里,一个平时被我们彻底忽略的问题就浮现了 : **到底是在哪个时刻、由谁来决定 person 真正去执行哪一段代码?**
 
 如果是 C++,这个问题的答案大多在编译期就尘埃落定了——一次普通的成员函数调用,编译完地址就基本刻死在了二进制里。但 Objective-C 偏偏选了另一条路:它把「这个对象到底是什么类」「这条消息对应哪一份方法实现」这些决定,统统推迟到程序跑起来的那一刻,交给 `objc_msgSend` 现场查找、现场拍板。这种「推迟到运行时再决定」的能力,正是我们口中「动态」二字的真正含义。
 
-而支撑起这套动态机制的,是一个始终活在你程序里的库——运行时(runtime)。可以用一个粗糙但好记的等式来概括它:
+而支撑起这套动态机制的,是一个始终活在你程序里的库——运行时(Runtime)。可以用一个粗糙但好记的等式来概括它:
 
 > **Objective-C ≈ C 语言 + 一个运行时库。**
 
 那些在别的语言里编译期就拍板的事,在 OC 里都被交给了这个运行时。这个系列要讲的,正是它究竟是如何工作的。
 
-现在把视角拉回到那次消息发送。既然「执行哪段代码」要等到运行时、靠对象现场去查,那运行时首先就得能回答一个最基础的问题:**「你这个对象,到底属于哪个类?」**——因为只有先确定了类,才谈得上去类里翻找方法。
-
-这个问题的答案不能靠猜,信息必须就长在对象自己身上。于是我们一下子就触到了 Objective-C 对象在 C 语言层面的本质:
-
-> 每一个 Objective-C 对象,内存里的第一个成员,都是一个记录着「我属于哪个类」的指针——它的名字叫 `isa`。
-
-而这,恰好就是头文件里那个朴素得有点出人意料的结构体:
-
 # 对象的本质：objc_object
+
 我们首先打开源码工程，全局搜索 (`command + shift + F`)
  你会搜到两个结果，这正是本章的核心对比：
-
-
 
 这里是入口：他说明OC对象底层至少有一个isa，isa用来找到对象对应的类
 ```objective-C
@@ -45,3 +36,55 @@ struct objc_object {
     Class _Nonnull isa  OBJC_ISA_AVAILABILITY;
 };
 ```
+
+
+
+# At Last
+
+## 参考与感谢
+
+本文在学习和整理 Objective-C Runtime 相关内容时，参考了以下优秀资料，在此表示感谢：
+
+1. [Apple Developer Documentation - Objective-C Runtime](https://developer.apple.com/documentation/objectivec/objective-c-runtime)
+
+2. [Apple Open Source - objc4 Runtime Source Code](https://opensource.apple.com/source/objc4/)
+
+3. [WWDC 2020 - Advancements in the Objective-C runtime](https://developer.apple.com/videos/play/wwdc2020/10163/)
+
+4. [Mike Ash - Friday Q&A 2009-03-20: Objective-C Messaging](https://www.mikeash.com/pyblog/friday-qa-2009-03-20-objective-c-messaging.html)
+
+5. [Mike Ash - Friday Q&A 2017-06-30: Dissecting objc_msgSend on ARM64](https://www.mikeash.com/pyblog/friday-qa-2017-06-30-dissecting-objc_msgsend-on-arm64.html)
+
+6. [Cocoa Samurai - Understanding the Objective-C Runtime](https://cocoasamurai.blogspot.com/2010/01/understanding-objective-c-runtime.html)
+
+7. [Always Processing - Objective-C Internals](https://alwaysprocessing.blog/series/objc-internals)
+
+8. [sunnyxx - 重识 Objective-C Runtime](https://blog.sunnyxx.com/2016/08/13/reunderstanding-runtime-0/)
+
+9. [sunnyxx - 神经病院 Objective-C Runtime 入院第一天](https://blog.sunnyxx.com/2014/11/06/runtime-nuts/)
+
+10. [sunnyxx - objc category 的秘密](https://blog.sunnyxx.com/2014/03/05/objc_category_secret/)
+
+11. [Draveness - 深入解析 ObjC 中方法的结构](https://draveness.me/method-struct/)
+
+12. [Draveness - 你真的了解 load 方法么？](https://draveness.me/load/)
+
+13. [Draveness - 关联对象 AssociatedObject 完全解析](https://draveness.me/ao/)
+
+14. [BOB's Blog - Objective-C Runtime 相关优化与底层分析](https://blog.devtang.com/)
+
+15. [bestswifter - 深入理解 Objective-C Runtime](https://github.com/bestswifter/blog/blob/master/articles/objc-runtime.md)
+
+16. [Garan no dou - Objective-C 中的类和对象](https://blog.ibireme.com/)
+
+17. [Tenloy's Blog - ObjC Runtime 总结](https://tenloy.github.io/)
+
+---
+
+感谢以上作者和资料对 Objective-C Runtime、消息发送、isa、类与元类、方法缓存、Category、关联对象、`+load` 等内容的深入分析。
+
+感谢 `Opus 4.7  GPT 5.5  Mimo 2.5 pro`模型在搭建环境、调试、解析方面不可忽视的贡献。
+
+本文仅作为个人学习整理，若有理解不当之处，仍以 Apple 官方文档和 objc4 源码为准。
+
+始于 2026.5.27
