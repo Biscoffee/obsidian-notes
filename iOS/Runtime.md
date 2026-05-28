@@ -1,0 +1,43 @@
+
+
+## 2026-05-28 13:44:30 Objective-C Protocol 的 Runtime 本质与面试要点 ^a2e37a
+topic:: Runtime
+date:: 2026-05-28 13:44:30
+source:: 博客
+confidence:: 0.90
+tags:: Runtime, 博客
+summary:: Protocol 在 Runtime 中是单例对象，通过名称唯一标识；`NSProtocolFromString` 对编译期字符串字面量有优化，动态字符串则需完整运行时查找；组件化校验需结合 `conformsToProtocol:` 方法确保类型安全；Protocol 对象可作为方法参数或返回值传递，用于动态代理或依赖注入
+**来源**: 博客　**confidence**: 0.90
+
+- Protocol 在 Runtime 中是单例对象，通过名称唯一标识
+- `NSProtocolFromString` 对编译期字符串字面量有优化，动态字符串则需完整运行时查找
+- 组件化校验需结合 `conformsToProtocol:` 方法确保类型安全
+- Protocol 对象可作为方法参数或返回值传递，用于动态代理或依赖注入
+
+### 整理后内容
+
+### Protocol 的 Runtime 本质与面试亮点
+1. **Protocol 的本质**：在 Objective-C 中，Protocol 也是一种对象（`Protocol *`），它在 Runtime 中作为单例存在，通过名称唯一标识。
+2. **`NSProtocolFromString` 的行为**：
+   - 如果传入的是编译期已知的字符串字面量（如 `@"MyProtocol"`），编译器会进行优化（类似 Constant String），查找速度极快。
+   - 如果传入的是动态生成的字符串（例如由方法返回），则无法享受编译期优化，必须走完整的运行时查找流程。
+3. **组件化中的校验**：
+   - 仅仅使用 `NSProtocolFromString` 获取 Protocol 只是第一步。
+   - 为了保证类型安全，通常还需要结合 `conformsToProtocol:` 方法来验证获取到的服务实例是否真的遵循了该协议，防止返回空实现或错误类型。
+4. **方法返回的 Protocol**：完全允许。Protocol 对象可以作为方法参数或返回值传递，这在某些动态代理或依赖注入框架中很常见。
+
+<details><summary>原文</summary>
+
+### Protocol 的 Runtime 本质与面试亮点
+1. **Protocol 的本质**：在 Objective-C 中，Protocol 也是一种对象（`Protocol *`），它在 Runtime 中作为单例存在，通过名称唯一标识。
+2. **`NSProtocolFromString` 的行为**：
+   - 如果传入的是编译期已知的字符串字面量（如 `@"MyProtocol"`），编译器会进行优化（类似 Constant String），查找速度极快。
+   - 如果传入的是动态生成的字符串（例如由方法返回），则无法享受编译期优化，必须走完整的运行时查找流程。
+3. **组件化中的校验**：
+   - 仅仅使用 `NSProtocolFromString` 获取 Protocol 只是第一步。
+   - 为了保证类型安全，通常还需要结合 `conformsToProtocol:` 方法来验证获取到的服务实例是否真的遵循了该协议，防止返回空实现或错误类型。
+4. **方法返回的 Protocol**：完全允许。Protocol 对象可以作为方法参数或返回值传递，这在某些动态代理或依赖注入框架中很常见。
+
+</details>
+
+---
