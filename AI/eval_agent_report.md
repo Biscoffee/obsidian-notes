@@ -1,48 +1,63 @@
 # 实验1 · Agent 评测体系（全库）
 
-生成时间：2026-05-28 11:13　裁判模型：MiMo　评分尺度：Opus 设计
+生成时间：2026-05-28 21:42　裁判模型：MiMo　评分尺度：Opus 设计
 
 - 总题数：1574
-- 有效评分：933
-- agent 报错：638
+- 有效评分：1570
+- agent 报错：1
 - 裁判无效（空返回/解析失败）：3
-- 裁判累计 token：1,728,624
+- 裁判累计 token：2,877,986
 
 ## 总分
 
-**综合平均 overall：4.26 / 5**
+**综合平均 overall：4.01 / 5**
 
 | 维度 | 平均分 |
 |---|---|
-| 准确性 | 4.25 |
-| 完整性 | 3.93 |
-| 相关性 | 4.34 |
-| 清晰度 | 4.50 |
+| 准确性 | 4.01 |
+| 完整性 | 3.67 |
+| 相关性 | 4.10 |
+| 清晰度 | 4.26 |
 
 ## 按来源分布
 
 | source | 题数 | 平均分 |
 |---|---|---|
-| iosqa | 154 | 3.83 |
-| jianshu:cc9d286a1a27 | 53 | 3.97 |
+| iosqa | 204 | 3.91 |
+| merged | 193 | 3.98 |
+| obsidian:1122.md | 134 | 2.73 |
+| jianshu:cc9d286a1a27 | 55 | 3.99 |
 | jianshu:693ec962b3d3 | 51 | 4.33 |
 | jianshu:90f9348b2ed6 | 48 | 4.51 |
-| merged | 41 | 4.18 |
+| obsidian:111.md | 40 | 3.39 |
 | jianshu:4f18226705ec | 38 | 4.53 |
 | agentqa | 31 | 4.30 |
 | jianshu:2953e86db051 | 31 | 4.73 |
+| jianshu:1f10795c9468 | 30 | 3.87 |
 | jianshu:25bcb6540045 | 26 | 4.45 |
+| jianshu:5447a66d955f | 26 | 4.50 |
 | jianshu:873e530a0995 | 25 | 4.05 |
 | jianshu:89ab04a91cbc | 25 | 4.20 |
 | jianshu:2b660ec22fe0 | 24 | 4.40 |
+| jianshu:cb137ba5a0e7 | 24 | 3.80 |
 | jianshu:496af9592d27 | 23 | 4.70 |
 | jianshu:5ddd62fdaea9 | 21 | 4.70 |
 | jianshu:494629e92692 | 20 | 4.10 |
+| jianshu:7ca16c92ca37 | 20 | 3.88 |
+| jianshu:a6af821a2806 | 20 | 4.44 |
+| jianshu:d488b0bf3aaf | 19 | 4.13 |
+| memory:user_learning_path_llm_to_agent.md | 19 | 2.03 |
 | jianshu:2f7a1fb420d3 | 18 | 4.69 |
+| jianshu:b72018e88a97 | 17 | 3.91 |
+| jianshu:5c83da126b48 | 17 | 4.56 |
 | jianshu:f306adf3480d | 16 | 4.50 |
 | jianshu:358ea0945978 | 16 | 4.12 |
-| jianshu:b72018e88a97 | 15 | 3.82 |
+| jianshu:cb2b9e2b68d1 | 16 | 4.77 |
+| memory:user_knowledge_tier_awareness.md | 16 | 4.41 |
+| memory:user_learning_resources_llm_agent.md | 16 | 3.56 |
 | jianshu:7fd6241a7124 | 15 | 4.38 |
+| jianshu:d4baff644ce5 | 15 | 3.28 |
+| jianshu:92a581bd9fdb | 15 | 3.53 |
 | jianshu:2fae148f015f | 14 | 3.68 |
 | jianshu:f7d9f6d86145 | 14 | 4.38 |
 | jianshu:b838f04a9249 | 14 | 4.43 |
@@ -50,35 +65,34 @@
 | jianshu:fe30ef8bd411 | 14 | 4.79 |
 | jianshu:188b089d2617 | 14 | 4.52 |
 | jianshu:a63fb211f7ac | 14 | 4.91 |
+| memory:user_knowledge_tier_practice.md | 14 | 3.20 |
 | jianshu:8bfd70a9d1ac | 13 | 4.27 |
 | jianshu:5d35a384574d | 13 | 4.27 |
-| jianshu:d4baff644ce5 | 13 | 3.33 |
 | jianshu:94b6998c6038 | 12 | 4.50 |
+| memory:user_knowledge_tier_understanding.md | 12 | 3.62 |
 | jianshu:e5a54813b93d | 11 | 4.95 |
+| jianshu:db765ff4e36a | 10 | 4.33 |
 | jianshu:bc16a644784d | 9 | 3.83 |
-| jianshu:db765ff4e36a | 9 | 4.25 |
 | jianshu:3a3e75af36a7 | 9 | 4.53 |
-| jianshu:6b5ef101cf66 | 8 | 4.88 |
+| jianshu:6b5ef101cf66 | 9 | 4.86 |
 | jianshu:e0ececa61e8e | 7 | 4.68 |
 | jianshu:3ad9166c02e5 | 7 | 4.64 |
 | jianshu:ab8c754761bf | 7 | 3.68 |
 | jianshu:4f90ffb873ab | 6 | 4.79 |
-| jianshu:5c83da126b48 | 6 | 4.62 |
-| jianshu:7ca16c92ca37 | 6 | 4.12 |
+| jianshu:11b7d19b02b6 | 5 | 4.85 |
 | jianshu:ee6a8ebc5bec | 4 | 3.00 |
-| jianshu:1f10795c9468 | 4 | 4.88 |
 
 ## 分数档分布
 
 | 档位 | 题数 |
 |---|---|
-| 5 分档 | 633 |
-| 4 分档 | 150 |
-| 3 分档 | 16 |
-| 2 分档 | 19 |
-| 1 分档 | 115 |
+| 5 分档 | 961 |
+| 4 分档 | 259 |
+| 3 分档 | 28 |
+| 2 分档 | 34 |
+| 1 分档 | 288 |
 
-## 失败清单（overall < 3，共 139 条，列前 60）
+## 失败清单（overall < 3，共 328 条，列前 60）
 
 - [iosqa] **启动优化**（1.00）　待评回答未回答问题，而是询问用户需求，未覆盖任何参考要点。
 - [iosqa] **Mach-O加载动态库方法的流程**（1.00）　回答为工具调用失败消息，未提供任何相关信息，属拒答。
@@ -141,38 +155,9 @@
 - [jianshu:873e530a0995] **class_rw_t 的 properties 方法**（1.00）　待评回答未回答问题，仅表示需查阅资料，类似拒答。
 - [jianshu:873e530a0995] **class_ro_t 结构体中 ivars 的偏移**（1.00）　待评回答为拒答，未提供任何相关信息。
 
-## agent 报错（638 条）
+## agent 报错（1 条）
 
-- [iosqa] 讲一讲Block是什么，Block的本质？：__AGENT_ERROR__ APITimeoutError: Request timed out.
-- [iosqa] 如何解决Block的循环引用：__AGENT_ERROR__ APITimeoutError: Request timed out.
-- [iosqa] 链表在iOS中的应用：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 十大排序：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 栈在iOS中的应用：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 解决哈希冲突的两种方法：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 开散列和闭散列的不同？何时使用开散列？：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 设计一个百万级用户信息的哈希表，选择合适的冲突解决策略？：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] NSDictionary查值流程和key需要遵循那些协议？：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] NSDictionary实现原理：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 对比NSMutableDictionary和NSHashTable：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 对比NSMutableDictionary和NSMapTable：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 如果我现在有一个百万级别的数据，使用开散列，现在需要扩展，但是又不能一次性处理，怎么办？：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 哈希表的扩容：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 哈希因子为什么采用0.75,哈希为什么偶数幂扩容：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 讲讲MVC和MVVM：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] MVVM的优势和缺点：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] MVC和MVVM的buuton的点击事件写在哪里：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 讲讲你知道的设计模式（八股）：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 六大设计原则：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 设计模式的三大类型：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 建造者模式：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 工厂模式：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 代理模式：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 责任链模式：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 组合模式：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 什么是依赖倒置：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 数据库三大范式：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 数据库索引的底层实现：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [iosqa] 对于WCDB的认识：__AGENT_ERROR__ APIConnectionError: Connection error.
+- [jianshu:853ca8318a15] 8字节对齐算法：__AGENT_ERROR__ RuntimeError: Could not determine home directory.
 
 ## 怎么读这份报告
 
