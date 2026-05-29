@@ -41,3 +41,30 @@ summary:: Protocol 在 Runtime 中是单例对象，通过名称唯一标识；`
 </details>
 
 ---
+
+
+## 2026-05-29 13:51:01 isa_t中的has_sidetable_rc标志位解析 ^61d1e1
+topic:: Runtime
+date:: 2026-05-29 13:51:01
+source:: 自述
+confidence:: 0.90
+tags:: Runtime, 自述
+summary:: has_sidetable_rc是isa_t结构体中的一个位域标志；该标志用于指示对象的引用计数是否存储在sidetable中；当对象的引用计数超过isa中可用的位数时，会启用此标志；这是Objective-C Runtime中对象内存管理的一部分
+**来源**: 自述　**confidence**: 0.90
+
+- has_sidetable_rc是isa_t结构体中的一个位域标志
+- 该标志用于指示对象的引用计数是否存储在sidetable中
+- 当对象的引用计数超过isa中可用的位数时，会启用此标志
+- 这是Objective-C Runtime中对象内存管理的一部分
+
+### 整理后内容
+
+has_sidetable_rc在isa_t中表示什么？
+
+<details><summary>原文</summary>
+
+has_sidetable_rc在isa_t中表示什么？
+
+</details>
+
+---
