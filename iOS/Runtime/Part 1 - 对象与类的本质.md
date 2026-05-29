@@ -4,6 +4,27 @@
 
 - [Runtime 简介](#runtime-简介)
 - [对象的本质：objc_object](#对象的本质objc_object)
+  - 1.1 最小对象：只有一个 isa
+  - 1.2 isa 不是裸指针：union isa_t（nonpointer isa）
+  - 1.3 ISA_BITFIELD 逐位拆解（arm64 vs arm64e；951.1 的 PAC 变化 shiftcls_and_sig）
+  - 1.4 实战(LLDB)：用 ISA_MASK 从 isa 还原 Class
+- [对象的内存布局](#对象的内存布局)
+  - 2.1 实例对象里装了什么：isa + 成员变量(ivar)
+  - 2.2 对象多大：class_getInstanceSize（8 字节对齐）vs malloc_size（16 字节最小）
+  - 2.3 实战：NSObject 实例为什么是 8 需求 / 16 实分
+- [类的本质：objc_class](#类的本质objc_class)
+  - 3.1 类本身也是对象（objc_class : objc_object）
+  - 3.2 objc_class 四大件：isa / superclass / cache / bits
+  - 3.3 bits 里的乾坤：class_data_bits_t → class_rw_t →（class_ro_t）
+  - 3.4 ro 与 rw 的分离：编译期只读 vs 运行期可写（WWDC2020 dirty memory 优化）
+- [元类 metaclass](#元类-metaclass)
+  - 4.1 类方法存哪？→ 引出元类
+  - 4.2 isa 的去向：对象 → 类 → 元类 → 根元类
+  - 4.3 闭环：根元类的 isa 指向自己
+- [isa 走位与继承链](#isa-走位与继承链)
+  - 5.1 isa 走位图（Mermaid）
+  - 5.2 superclass 继承链：类链与元类链平行
+  - 5.3 实战：object_getClass / 打印元类地址，逐格验证整张图
 - [At Last](#at-last)
 
 # Runtime 简介
