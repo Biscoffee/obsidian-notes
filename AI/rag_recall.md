@@ -1,15 +1,15 @@
 # 实验4 · RAG 召回率诊断（纯检索，零 token）
 
-生成时间：2026-05-25 16:18　检索器：retrieval.retrieve_knowledge（关键词加权，无向量）
+生成时间：2026-05-29 09:44　检索器：retrieval.retrieve_knowledge（关键词加权，无向量）
 
-对全库 1574 题：用每题 qa_q 当 query 检索 knowledge 表，看自身卡排第几名。
+对全库 1580 题：用每题 qa_q 当 query 检索 knowledge 表，看自身卡排第几名。
 
 ## 自身卡 rank 分布
 
 | 档位 | 题数 | 占比 |
 |---|---|---|
-| rank1 | 1523 | 96.8% |
-| rank2-3 | 37 | 2.4% |
+| rank1 | 1529 | 96.8% |
+| rank2-3 | 37 | 2.3% |
 | rank4-5 | 5 | 0.3% |
 | rank6-10 | 3 | 0.2% |
 | rank10+ | 6 | 0.4% |
@@ -86,11 +86,13 @@
 | jianshu:4f90ffb873ab | 6 | 100% | 0 |
 | jianshu:11b7d19b02b6 | 5 | 100% | 0 |
 | jianshu:ee6a8ebc5bec | 4 | 100% | 0 |
+| mikeash/2009-03-20-objective-c-messaging | 3 | 100% | 0 |
+| mikeash/2009-03-13-intro-to-the-objective-c-runtime | 3 | 100% | 0 |
 
 ## 与实验1交叉（检索质量 ↔ 答题质量）
 
-- 实验1**低分题(overall<3)**的检索：155 题；rank1 占 96%；未召回 0（0%）
-- 实验1**高分题(overall>=4)**的检索：154 题；rank1 占 99%；未召回 0（0%）
+- 实验1**低分题(overall<3)**的检索：328 题；rank1 占 96%；未召回 0（0%）
+- 实验1**高分题(overall>=4)**的检索：1242 题；rank1 占 97%；未召回 0（0%）
 
 解读：若低分题的「未召回/非 rank1」明显高于高分题，说明 agent 答差**主要是检索没排对**（改检索）；若两者差不多，说明检索没问题、**症结在生成端**（改 system prompt / 模型）。
 
