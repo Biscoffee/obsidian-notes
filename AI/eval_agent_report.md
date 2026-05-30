@@ -1,54 +1,63 @@
 # 实验1 · Agent 评测体系（全库）
 
-生成时间：2026-05-29 23:04　裁判模型：MiMo　评分尺度：Opus 设计
+生成时间：2026-05-30 18:08　裁判模型：MiMo　评分尺度：Opus 设计
 
 - 总题数：1792
-- 有效评分：1367
-- agent 报错：411
-- 裁判无效（空返回/解析失败）：14
-- 裁判累计 token：6,342,812
+- 有效评分：1791
+- agent 报错：1
+- 裁判无效（空返回/解析失败）：0
+- 裁判累计 token：7,140,082
 
 ## 总分
 
-**综合平均 overall：4.56 / 5**
+**综合平均 overall：4.46 / 5**
 
 | 维度 | 平均分 |
 |---|---|
-| 准确性 | 4.55 |
-| 完整性 | 4.26 |
-| 相关性 | 4.68 |
-| 清晰度 | 4.75 |
+| 准确性 | 4.44 |
+| 完整性 | 4.16 |
+| 相关性 | 4.58 |
+| 清晰度 | 4.65 |
 
 ## 按来源分布
 
 | source | 题数 | 平均分 |
 |---|---|---|
-| iosqa | 203 | 4.64 |
-| merged | 97 | 4.58 |
-| jianshu:693ec962b3d3 | 50 | 4.75 |
+| iosqa | 204 | 4.64 |
+| merged | 196 | 4.51 |
+| obsidian:1122.md | 134 | 3.16 |
+| jianshu:cc9d286a1a27 | 55 | 4.50 |
+| jianshu:693ec962b3d3 | 51 | 4.75 |
 | jianshu:90f9348b2ed6 | 48 | 4.56 |
-| jianshu:cc9d286a1a27 | 48 | 4.44 |
-| obsidian:1122.md | 44 | 3.25 |
+| obsidian:111.md | 40 | 3.86 |
 | jianshu:4f18226705ec | 38 | 4.71 |
 | agentqa | 31 | 4.98 |
 | jianshu:2953e86db051 | 31 | 4.73 |
+| jianshu:1f10795c9468 | 30 | 4.67 |
 | jianshu:25bcb6540045 | 26 | 4.58 |
+| jianshu:5447a66d955f | 26 | 4.87 |
+| jianshu:873e530a0995 | 25 | 4.58 |
 | jianshu:89ab04a91cbc | 25 | 4.77 |
 | jianshu:2b660ec22fe0 | 24 | 4.65 |
-| jianshu:873e530a0995 | 24 | 4.56 |
-| jianshu:496af9592d27 | 22 | 4.82 |
+| jianshu:cb137ba5a0e7 | 24 | 4.47 |
+| jianshu:496af9592d27 | 23 | 4.83 |
 | jianshu:5ddd62fdaea9 | 21 | 4.64 |
 | jianshu:494629e92692 | 20 | 4.11 |
+| jianshu:7ca16c92ca37 | 20 | 4.59 |
 | jianshu:a6af821a2806 | 20 | 4.75 |
-| jianshu:5447a66d955f | 19 | 4.83 |
+| jianshu:d488b0bf3aaf | 19 | 4.83 |
+| memory:user_learning_path_llm_to_agent.md | 19 | 2.12 |
 | jianshu:2f7a1fb420d3 | 18 | 4.99 |
 | jianshu:b72018e88a97 | 17 | 3.85 |
 | jianshu:5c83da126b48 | 17 | 4.87 |
 | jianshu:f306adf3480d | 16 | 4.81 |
 | jianshu:358ea0945978 | 16 | 4.89 |
-| jianshu:1f10795c9468 | 16 | 4.62 |
+| jianshu:cb2b9e2b68d1 | 16 | 4.72 |
+| memory:user_knowledge_tier_awareness.md | 16 | 4.66 |
+| memory:user_learning_resources_llm_agent.md | 16 | 3.72 |
 | jianshu:7fd6241a7124 | 15 | 4.37 |
 | jianshu:d4baff644ce5 | 15 | 4.45 |
+| jianshu:92a581bd9fdb | 15 | 4.12 |
 | jianshu:2fae148f015f | 14 | 4.23 |
 | jianshu:f7d9f6d86145 | 14 | 4.39 |
 | jianshu:b838f04a9249 | 14 | 4.98 |
@@ -56,100 +65,106 @@
 | jianshu:fe30ef8bd411 | 14 | 4.57 |
 | jianshu:188b089d2617 | 14 | 5.00 |
 | jianshu:a63fb211f7ac | 14 | 4.98 |
-| jianshu:cb2b9e2b68d1 | 14 | 4.75 |
-| memory:user_learning_resources_llm_agent.md | 14 | 3.57 |
+| memory:user_knowledge_tier_practice.md | 14 | 4.16 |
 | jianshu:8bfd70a9d1ac | 13 | 4.65 |
 | jianshu:5d35a384574d | 13 | 4.52 |
-| jianshu:92a581bd9fdb | 13 | 4.12 |
-| obsidian:111.md | 13 | 4.31 |
 | jianshu:94b6998c6038 | 12 | 4.88 |
-| jianshu:7ca16c92ca37 | 12 | 4.40 |
+| memory:user_knowledge_tier_understanding.md | 12 | 4.46 |
 | jianshu:e5a54813b93d | 11 | 4.95 |
-| jianshu:d488b0bf3aaf | 11 | 4.70 |
-| memory:user_knowledge_tier_practice.md | 11 | 4.00 |
 | jianshu:db765ff4e36a | 10 | 4.78 |
-| memory:user_knowledge_tier_awareness.md | 10 | 4.47 |
-| memory:user_learning_path_llm_to_agent.md | 10 | 2.88 |
 | jianshu:bc16a644784d | 9 | 4.11 |
 | jianshu:3a3e75af36a7 | 9 | 4.81 |
 | jianshu:6b5ef101cf66 | 9 | 4.92 |
 | jianshu:e0ececa61e8e | 7 | 4.86 |
 | jianshu:3ad9166c02e5 | 7 | 4.82 |
 | jianshu:ab8c754761bf | 7 | 4.43 |
-| jianshu:cb137ba5a0e7 | 7 | 4.21 |
 | jianshu:4f90ffb873ab | 6 | 5.00 |
+| mikeash/2009-03-13-intro-to-the-objective-c-runtime | 6 | 4.96 |
 | jianshu:11b7d19b02b6 | 5 | 4.15 |
-| memory:user_knowledge_tier_understanding.md | 5 | 4.50 |
 | jianshu:ee6a8ebc5bec | 4 | 4.00 |
-| mikeash/2009-03-13-intro-to-the-objective-c-runtime | 4 | 4.94 |
+| mikeash/2009-03-20-objective-c-messaging | 3 | 4.92 |
+| mikeash/2009-03-27-objective-c-message-forwarding | 3 | 5.00 |
+| mikeash/2009-05-22-objective-c-class-loading-and-initialization | 3 | 5.00 |
+| mikeash/2010-04-09-comparison-of-objective-c-enumeration-techniques | 3 | 4.75 |
+| mikeash/2012-07-06-lets-build-nsnumber | 3 | 4.50 |
+| mikeash/2012-11-16-lets-build-objc_msgsend | 3 | 4.92 |
+| mikeash/2013-01-25-lets-build-nsobject | 3 | 4.50 |
+| mikeash/2013-03-08-lets-build-nsinvocation-part-i | 3 | 4.92 |
+| mikeash/2013-02-08-lets-build-key-value-coding | 3 | 5.00 |
 | mikeash/2017-06-30-dissecting-objc_msgsend-on-arm64 | 3 | 4.92 |
+| mikeash/2013-10-25-nsobject-the-class-and-the-protocol | 3 | 5.00 |
+| mikeash/2010-04-30-dealing-with-retain-cycles | 3 | 4.92 |
+| mikeash/2015-07-31-tagged-pointer-strings | 3 | 4.42 |
+| mikeash/2010-07-16-zeroing-weak-references-in-objective-c | 3 | 4.75 |
+| mikeash/2012-06-01-a-tour-of-plweakcompatibility-part-ii | 3 | 3.67 |
 | mikeash/2014-05-23-a-heartbleed-inspired-paranoid-memory-allocator | 3 | 5.00 |
+| mikeash/2009-08-28-intro-to-grand-central-dispatch-part-i-basics-and-dispatch-queues | 3 | 5.00 |
+| mikeash/2009-09-18-intro-to-grand-central-dispatch-part-iv-odds-and-ends | 3 | 3.67 |
+| mikeash/2015-05-29-concurrent-memory-deallocation-in-the-objective-c-runtime | 3 | 2.83 |
+| mikeash/2009-09-11-intro-to-grand-central-dispatch-part-iii-dispatch-sources | 3 | 4.92 |
+| mikeash/2011-03-04-a-tour-of-osatomic | 3 | 5.00 |
 | mikeash/2012-01-20-fork-safety | 3 | 4.42 |
+| mikeash/2015-02-06-locks-thread-safety-and-swift | 3 | 4.92 |
+| mikeash/2014-06-06-secrets-of-dispatch_once | 3 | 5.00 |
+| mikeash/2015-02-20-lets-build-synchronized | 3 | 4.75 |
+| mikeash/2015-09-04-lets-build-dispatch_queue | 3 | 5.00 |
+| mikeash/2017-10-27-locks-thread-safety-and-swift-2017-edition | 3 | 4.92 |
+| mikeash/2011-10-28-generic-block-proxying | 3 | 3.83 |
 | mikeash/2011-01-04-practical-floating-point | 3 | 4.67 |
+| mikeash/2011-04-01-signal-handling | 3 | 4.92 |
+| mikeash/2011-12-16-disassembling-the-assembly-part-1 | 3 | 5.00 |
 | mikeash/2011-02-18-compound-literals | 3 | 5.00 |
 | mikeash/2011-12-23-disassembling-the-assembly-part-2 | 3 | 5.00 |
+| mikeash/2012-02-03-ring-buffers-and-mirrored-memory-part-i | 3 | 4.58 |
 | mikeash/2011-12-30-disassembling-the-assembly-part-3-arm-edition | 3 | 3.50 |
 | mikeash/2012-08-24-things-you-never-wanted-to-know-about-c | 3 | 4.83 |
+| mikeash/2012-02-17-ring-buffers-and-mirrored-memory-part-ii | 3 | 4.50 |
+| mikeash/2012-11-30-lets-build-a-mach-o-executable | 3 | 4.58 |
+| mikeash/2012-11-09-dyld-dynamic-linking-on-os-x | 3 | 2.33 |
+| mikeash/2013-01-11-mach-exception-handlers | 3 | 3.67 |
 | mikeash/2012-12-28-what-happens-when-you-load-a-byte-of-memory | 3 | 4.92 |
 | mikeash/2013-05-31-c-quiz | 3 | 4.92 |
+| mikeash/2013-09-27-arm64-and-you | 3 | 4.58 |
 | mikeash/2013-10-11-why-registers-are-fast-and-ram-is-slow | 3 | 5.00 |
-| mikeash/2009-03-20-objective-c-messaging | 2 | 4.88 |
-| mikeash/2009-03-27-objective-c-message-forwarding | 2 | 5.00 |
-| mikeash/2009-05-22-objective-c-class-loading-and-initialization | 2 | 5.00 |
-| mikeash/2010-04-09-comparison-of-objective-c-enumeration-techniques | 2 | 4.75 |
-| mikeash/2012-07-06-lets-build-nsnumber | 2 | 4.25 |
-| mikeash/2012-11-16-lets-build-objc_msgsend | 2 | 4.88 |
-| mikeash/2013-03-08-lets-build-nsinvocation-part-i | 2 | 4.88 |
-| mikeash/2013-10-25-nsobject-the-class-and-the-protocol | 2 | 5.00 |
-| mikeash/2009-08-28-intro-to-grand-central-dispatch-part-i-basics-and-dispatch-queues | 2 | 5.00 |
-| mikeash/2011-03-04-a-tour-of-osatomic | 2 | 5.00 |
-| mikeash/2015-02-06-locks-thread-safety-and-swift | 2 | 4.88 |
-| mikeash/2014-06-06-secrets-of-dispatch_once | 2 | 5.00 |
-| mikeash/2015-02-20-lets-build-synchronized | 2 | 4.62 |
-| mikeash/2015-09-04-lets-build-dispatch_queue | 2 | 5.00 |
-| mikeash/2017-10-27-locks-thread-safety-and-swift-2017-edition | 2 | 5.00 |
-| mikeash/2011-10-28-generic-block-proxying | 2 | 3.75 |
-| mikeash/2011-12-16-disassembling-the-assembly-part-1 | 2 | 5.00 |
-| mikeash/2012-02-03-ring-buffers-and-mirrored-memory-part-i | 2 | 4.38 |
-| mikeash/2012-02-17-ring-buffers-and-mirrored-memory-part-ii | 2 | 4.25 |
-| mikeash/2012-11-30-lets-build-a-mach-o-executable | 2 | 4.50 |
-| mikeash/2012-11-09-dyld-dynamic-linking-on-os-x | 2 | 3.00 |
-| mikeash/2013-09-27-arm64-and-you | 2 | 4.62 |
-| mikeash/2010-12-17-custom-object-allocators-in-objective-c | 2 | 5.00 |
-| mikeash/2012-03-02-key-value-observing-done-right-take-2 | 2 | 4.88 |
-| mikeash/2013-01-25-lets-build-nsobject | 1 | 3.50 |
-| mikeash/2013-02-08-lets-build-key-value-coding | 1 | 5.00 |
-| mikeash/2010-04-30-dealing-with-retain-cycles | 1 | 5.00 |
-| mikeash/2015-07-31-tagged-pointer-strings | 1 | 3.75 |
-| mikeash/2010-07-16-zeroing-weak-references-in-objective-c | 1 | 5.00 |
-| mikeash/2012-06-01-a-tour-of-plweakcompatibility-part-ii | 1 | 5.00 |
-| mikeash/2009-09-18-intro-to-grand-central-dispatch-part-iv-odds-and-ends | 1 | 5.00 |
-| mikeash/2015-05-29-concurrent-memory-deallocation-in-the-objective-c-runtime | 1 | 1.00 |
-| mikeash/2009-09-11-intro-to-grand-central-dispatch-part-iii-dispatch-sources | 1 | 4.75 |
-| mikeash/2011-04-01-signal-handling | 1 | 5.00 |
-| mikeash/2013-01-11-mach-exception-handlers | 1 | 5.00 |
-| mikeash/2010-01-29-method-replacement-for-fun-and-profit | 1 | 5.00 |
-| mikeash/2012-07-27-lets-build-tagged-pointers | 1 | 4.75 |
-| mikeash/2011-05-20-the-inner-life-of-zombies | 1 | 5.00 |
-| mikeash/2010-07-30-zeroing-weak-references-to-corefoundation-objects | 1 | 5.00 |
-| mikeash/2011-09-30-automatic-reference-counting | 1 | 5.00 |
-| mikeash/2014-11-07-lets-build-nszombie | 1 | 5.00 |
-| mikeash/2009-09-04-intro-to-grand-central-dispatch-part-ii-multi-core-performance | 1 | 5.00 |
-| mikeash/2009-09-25-gcd-practicum | 1 | 5.00 |
-| mikeash/2011-10-14-whats-new-in-gcd | 1 | 5.00 |
-| mikeash/2011-06-03-objective-c-blocks-vs-c0x-lambdas-fight | 1 | 5.00 |
+| mikeash/2010-01-29-method-replacement-for-fun-and-profit | 3 | 5.00 |
+| mikeash/2010-12-17-custom-object-allocators-in-objective-c | 3 | 3.67 |
+| mikeash/2012-03-02-key-value-observing-done-right-take-2 | 3 | 4.67 |
+| mikeash/2012-07-27-lets-build-tagged-pointers | 3 | 4.33 |
+| mikeash/2011-05-20-the-inner-life-of-zombies | 3 | 4.75 |
+| mikeash/2010-07-30-zeroing-weak-references-to-corefoundation-objects | 3 | 4.33 |
+| mikeash/2011-09-30-automatic-reference-counting | 3 | 4.75 |
+| mikeash/2014-11-07-lets-build-nszombie | 3 | 5.00 |
+| mikeash/2009-09-04-intro-to-grand-central-dispatch-part-ii-multi-core-performance | 3 | 4.92 |
+| mikeash/2009-09-25-gcd-practicum | 3 | 5.00 |
+| mikeash/2011-10-14-whats-new-in-gcd | 3 | 5.00 |
+| mikeash/2011-06-03-objective-c-blocks-vs-c0x-lambdas-fight | 3 | 5.00 |
+| mikeash/2010-04-16-implementing-fast-enumeration | 3 | 3.67 |
+| mikeash/2010-06-18-implementing-equality-and-hashing | 3 | 4.92 |
+| mikeash/2011-08-05-method-signature-mismatches | 3 | 5.00 |
+| mikeash/2013-03-22-lets-build-nsinvocation-part-ii | 3 | 3.67 |
+| mikeash/2010-01-15-stack-and-heap-objects-in-objective-c | 3 | 5.00 |
+| mikeash/2010-12-03-accessors-memory-management-and-thread-safety | 3 | 4.83 |
+| mikeash/2011-09-02-lets-build-nsautoreleasepool | 3 | 3.50 |
+| mikeash/2011-09-16-lets-build-reference-counting | 3 | 5.00 |
+| mikeash/2012-04-13-nib-memory-management | 3 | 4.83 |
+| mikeash/2012-05-18-a-tour-of-plweakcompatibility-part-i | 3 | 4.83 |
+| mikeash/2013-08-16-lets-build-dispatch-groups | 3 | 3.50 |
+| mikeash/2009-08-14-practical-blocks | 3 | 5.00 |
+| mikeash/2011-05-06-a-tour-of-mablockclosure | 3 | 5.00 |
+| mikeash/2011-11-11-building-a-memoizing-block-proxy | 3 | 5.00 |
+| mikeash/2010-11-6-creating-classes-at-runtime-in-objective-c | 2 | 5.00 |
 
 ## 分数档分布
 
 | 档位 | 题数 |
 |---|---|
-| 5 分档 | 1070 |
-| 4 分档 | 178 |
-| 3 分档 | 20 |
-| 2 分档 | 16 |
-| 1 分档 | 83 |
+| 5 分档 | 1355 |
+| 4 分档 | 233 |
+| 3 分档 | 29 |
+| 2 分档 | 21 |
+| 1 分档 | 153 |
 
-## 失败清单（overall < 3，共 103 条，列前 60）
+## 失败清单（overall < 3，共 179 条，列前 60）
 
 - [iosqa] **const（常量）**（1.00）　待评回答是错误消息，未提供任何相关内容。
 - [iosqa] **调度组：用 dispatch_group_async () 把要先做的任务塞进这个组里，让它们自己跑，最后用 dispatch_group_notify () 告诉系统：&quot;等组里所有任务都跑完了，就执行后面这个新任务&quot;。2. 信号量：先调 create (0) 弄个信号量（初始状态是没钥匙），让前一个任务先运行，运行完的时候调用signal ()，后一个任务开始前，先调 wait ()。**（1.00）　待评回答未回答问题，仅表示内容已存储。
@@ -212,38 +227,9 @@
 - [memory:user_learning_path_llm_to_agent.md] **W8检查清单**（1.00）　回答拒答，未提供任何第8周学习检查清单的实质内容。
 - [memory:user_learning_resources_llm_agent.md] **Transformer原始论文的定位**（1.00）　回答拒答，未提供论文定位信息。
 
-## agent 报错（411 条）
+## agent 报错（1 条）
 
 - [jianshu:853ca8318a15] 8字节对齐算法：__AGENT_ERROR__ RuntimeError: Could not determine home directory.
-- [jianshu:cc9d286a1a27] 添加 Timer 到 RunLoop 的逻辑：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cc9d286a1a27] Timer 的执行总结：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cc9d286a1a27] RunLoop 底层原理调用栈：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cc9d286a1a27] CFRunLoopRunSpecific 主流程：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cc9d286a1a27] RunLoop Observer 通知时机：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cc9d286a1a27] RunLoop 终止条件：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cc9d286a1a27] RunLoop Mode 的作用：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:7ca16c92ca37] 组件化的定义：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:7ca16c92ca37] 组件化原则中的分层：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:7ca16c92ca37] 必须考虑组件化的项目特征：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:1f10795c9468] CTMediator safePerformAction实现：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:1f10795c9468] target-action方案的优缺点：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:1f10795c9468] BeeHive从Plist加载模块：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:1f10795c9468] createService方法调用链：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:1f10795c9468] 通过load方法注册Protocol：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:1f10795c9468] serviceImplClass方法：Protocol到类的映射：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:1f10795c9468] BHTimeProfiler类的用途：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:1f10795c9468] BHContext类的作用与属性：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cb137ba5a0e7] 异常处理的两大类型：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cb137ba5a0e7] Mach异常EXC_BAD_INSTRUCTION的说明：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cb137ba5a0e7] 硬件异常的流转流程：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cb137ba5a0e7] 监控策略的分类：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cb137ba5a0e7] 自定义 dealloc 中的延迟释放：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cb137ba5a0e7] __sync_fetch_and_add 原子操作：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cb137ba5a0e7] init_safe_free 函数的作用：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cb137ba5a0e7] 白名单的实现：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cb137ba5a0e7] hook dealloc 的核心流程：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cb137ba5a0e7] 测试用例中的属性声明：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:5447a66d955f] dSYMs文件夹的作用：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
 
 ## 怎么读这份报告
 
