@@ -350,6 +350,37 @@ struct objc_object {
 ![CleanShot 2026-05-30 at 13.17.22@2x.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/CleanShot%202026-05-30%20at%2013.17.22%402x.png)
 
 
+在看新版怎么收口之前，先把旧版长什么样摆出来对比。这个结构其实经历了三个时代：
+
+```cpp
+// ① 古早版（objc4-750 及更早，sunnyxx / draveness 那批老博客里的样子）
+struct objc_object {
+    isa_t isa;        // public：外部能直接 obj->isa 摸到
+};
+```
+
+```cpp
+// ② objc4-818
+struct objc_object {
+private:
+    isa_t isa;        // 已经 private，但仍是一个「有类型的 isa_t 成员」
+public:
+    Class ISA(bool authenticated = false);   // 强制走方法
+    ...
+};
+```
+
+```cpp
+// ③ objc4-951.1（本文这版）
+struct objc_object {
+private:
+    char  isa_storage[sizeof(isa_t)];        // 退化成「一坨裸字节」
+    isa_t &isa() { return *reinterpret_cast<isa_t *>(isa_storage); }  // 只能借方法戴上 isa_t 这副眼镜
+public:
+    Class ISA(bool authenticated = false) const;
+};
+```
+
 我们可以看到， isa_storage是真正存isa的地方。旧版本的写法是直接暴露 `isa_t isa` 作为 public 成员，任何人都能直接读写。新版本改成：`**char** isa_storage[**sizeof**(isa_t)];`  使用一个char 数组来占位。arm64e上，isa里面那根指针是被签名过的，如果有一个公开有类型的 isa_t  isa，外部代码就能直接obj->isa.cls直接摸到那根带签名的指针
 ——读出来是“看着像乱码”的值，甚至可能绕过验证。修改后，想要接触这8个字节都要经过isa()访问器，isa_t里面的 cls又被设置为private，因此你必须`getClass()/setClass()`
 
