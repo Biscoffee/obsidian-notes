@@ -1,25 +1,25 @@
 # 实验1 失败题 · 根因归类（Harness 反馈循环输入）
 
-生成时间：2026-05-27 10:09　分类器：MiMo　分类尺度：Opus 设计　token：503,552
+生成时间：2026-05-30 18:51　分类器：MiMo　分类尺度：Opus 设计　token：575,228
 
-对实验1 中 overall<3 的 507 道失败题做根因归类（agent 直接报错的 11 题另计，不在此分类）。
+对实验1 中 overall<3 的 575 道失败题做根因归类（agent 直接报错的 1 题另计，不在此分类）。
 
 ## 失败类型分布
 
 | 类型 | 题数 | 占比 |
 |---|---|---|
-| 拒答 | 460 | 90.7% |
-| 跑题 | 29 | 5.7% |
-| 事实错误 | 3 | 0.6% |
-| 漏要点 | 12 | 2.4% |
-| 其他 | 3 | 0.6% |
+| 拒答 | 513 | 89.2% |
+| 跑题 | 34 | 5.9% |
+| 事实错误 | 4 | 0.7% |
+| 漏要点 | 21 | 3.7% |
+| 其他 | 3 | 0.5% |
 
 ## 各类型的来源分布（哪类知识最容易栽在这）
 
-- **拒答**（460）：obsidian:1122.md×70, iosqa×59, merged×48, jianshu:cc9d286a1a27×19, obsidian:111.md×18
-- **跑题**（29）：iosqa×10, jianshu:d488b0bf3aaf×2, obsidian:1122.md×2, memory:user_learning_path_llm_to_agent.md×2, agentqa×1
-- **事实错误**（3）：jianshu:4f18226705ec×1, obsidian:1122.md×1, memory:user_learning_resources_llm_agent.md×1
-- **漏要点**（12）：iosqa×3, jianshu:e0ececa61e8e×2, obsidian:1122.md×2, jianshu:693ec962b3d3×1, jianshu:cb137ba5a0e7×1
+- **拒答**（513）：obsidian:1122.md×76, iosqa×61, merged×56, obsidian:111.md×21, jianshu:cc9d286a1a27×19
+- **跑题**（34）：iosqa×10, obsidian:1122.md×3, merged×2, jianshu:7ca16c92ca37×2, jianshu:d488b0bf3aaf×2
+- **事实错误**（4）：jianshu:4f18226705ec×1, obsidian:1122.md×1, memory:user_learning_resources_llm_agent.md×1, jianshu:2b660ec22fe0×1
+- **漏要点**（21）：obsidian:1122.md×6, iosqa×3, jianshu:e0ececa61e8e×2, merged×2, jianshu:693ec962b3d3×1
 - **其他**（3）：obsidian:1122.md×2, obsidian:111.md×1
 
 ## 各类型样例（每类最多 8 条）
@@ -48,6 +48,7 @@
 - [jianshu:4f18226705ec] 检查节点有效性与用户源代码（2.5）：提供的两项检查与参考要点不一致，如类型检查而非指针有效性。
 - [obsidian:1122.md] 上下文管理失败的真实驱动因素（2.5）：驱动因素应为长工具结果塞栈，而非机制错位。
 - [memory:user_learning_resources_llm_agent.md] Transformer原始论文的定位（2.0）：agent错误地将论文定位为'基础必读'，与参考要点'了解层可跳过'矛盾。
+- [jianshu:2b660ec22fe0] size小于阈值时的处理（2.5）：agent说size被向上取整，与参考要点设置为NANO_REGIME_QUANTA_SIZE矛盾。
 
 ### 漏要点
 - [iosqa] QOS_CLASS_USER_INTERACTIVE（用户交互级）最高优先级，直接影响用户界面响应（比如滑动列表、动画渲染），必须快速完成（通常毫秒级）。2. QOS_CLASS_USER_INITIATED（用户发起级）用户主动触发的任务（比如点击按钮后的网络请求），需要尽快完成（通常秒级内），用户会等待结果。3. QOS_CLASS_DEFAULT（默认级）没指定时的默认值，系统会根据上下文自动调整（建议显式指定其他等级，避免依赖默认值）。4. QOS_CLASS_UTILITY（工具级）耗时较长但用户不急需结果的任务（比如下载文件、数据解析），可以显示进度条，系统可能限制其 CPU 占用以节省电量。5. QOS_CLASS_BACKGROUND（后台级）完全不影响用户的任务（比如备份数据、同步日志），系统会在空闲时执行，优先级最低。（2.2）：未提供通过dispatch_set_target_queue绑定QoS等级的具体步骤
@@ -66,6 +67,6 @@
 
 ## 行动建议（喂回 Harness）
 
-- 占比最高的是 **拒答**（460/507）：agent 在有知识时仍说「没有」——查检索阈值/话术约束，或 prompt 太保守，放开「基于检索内容作答」。
+- 占比最高的是 **拒答**（513/575）：agent 在有知识时仍说「没有」——查检索阈值/话术约束，或 prompt 太保守，放开「基于检索内容作答」。
 - 结合实验4：检索 rank1 占 96%，所以失败基本**不是检索没召回**，而是上面这些**生成端**问题——改 system prompt / 换作答模型比改检索更值。
 - 这就是 Demo 11 反馈循环的闭环：评测→归因→定位到具体组件→改→再评。
