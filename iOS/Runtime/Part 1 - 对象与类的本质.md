@@ -476,6 +476,8 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 };
 ```
 
+
+
 如上代码为 isa_t 联合体本体，我们接下来看看`ISA_BITFIELD`：
 ```objc
 # if __arm64__
