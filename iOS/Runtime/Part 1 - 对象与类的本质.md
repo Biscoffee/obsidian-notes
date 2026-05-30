@@ -78,41 +78,41 @@ struct objc_object {
 ```
 
 ```objc
-**struct** objc_object {
+struct objc_object {
 
-**private**:
+private:
 
-    **char** isa_storage[**sizeof**(isa_t)];
-
-  
-
-    isa_t &isa() { **return** ***reinterpret_cast**<isa_t *>(isa_storage); }
-
-    **const** isa_t &isa() **const** { **return** ***reinterpret_cast**<**const** isa_t *>(isa_storage); }
+    char isa_storage[sizeof(isa_t)];
 
   
 
-**public**:
+    isa_t &isa() { return *reinterpret_cast<isa_t *>(isa_storage); }
+
+    const isa_t &isa() const { return *reinterpret_cast<const isa_t *>(isa_storage); }
+
+  
+
+public:
 
   
 
     // ISA() assumes this is NOT a tagged pointer object
 
-    Class ISA(**bool** authenticated = **false**) **const**;
+    Class ISA(bool authenticated = false) const;
 
   
 
     // rawISA() assumes this is NOT a tagged pointer object or a non pointer ISA
 
-    Class rawISA() **const**;
+    Class rawISA() const;
 
   
 
     // getIsa() allows this to be a tagged pointer object
 
-    Class getIsa() **const**;
+    Class getIsa() const;
 
-    uintptr_t isaBits() **const**;
+    uintptr_t isaBits() const;
 
   
 
@@ -128,13 +128,13 @@ struct objc_object {
 
     // initIsa(): other objects
 
-    **void** initIsa(Class cls /*nonpointer=false*/);
+    void initIsa(Class cls /*nonpointer=false*/);
 
-    **void** initClassIsa(Class cls /*nonpointer=maybe*/);
+    void initClassIsa(Class cls /*nonpointer=maybe*/);
 
-    **void** initProtocolIsa(Class cls /*nonpointer=maybe*/);
+    void initProtocolIsa(Class cls /*nonpointer=maybe*/);
 
-    **void** initInstanceIsa(Class cls, **bool** hasCxxDtor);
+    void initInstanceIsa(Class cls, bool hasCxxDtor);
 
   
 
@@ -146,91 +146,91 @@ struct objc_object {
 
   
 
-    **bool** hasNonpointerIsa() **const**;
+    bool hasNonpointerIsa() const;
 
-    **bool** isTaggedPointer() **const**;
+    bool isTaggedPointer() const;
 
-    **bool** isBasicTaggedPointer() **const**;
+    bool isBasicTaggedPointer() const;
 
-    **bool** isExtTaggedPointer() **const**;
+    bool isExtTaggedPointer() const;
 
-    **bool** isClass() **const**;
+    bool isClass() const;
 
   
 
     // object may have associated objects?
 
-    **bool** hasAssociatedObjects() **const**;
+    bool hasAssociatedObjects() const;
 
-    **void** setHasAssociatedObjects();
+    void setHasAssociatedObjects();
 
   
 
     // object may be weakly referenced?
 
-    **bool** isWeaklyReferenced() **const**;
+    bool isWeaklyReferenced() const;
 
-    **void** setWeaklyReferenced_nolock();
+    void setWeaklyReferenced_nolock();
 
   
 
     // object may be uniquely referenced?
 
-    **bool** isUniquelyReferenced() **const**;
+    bool isUniquelyReferenced() const;
 
   
 
     // object may have -.cxx_destruct implementation?
 
-    **bool** hasCxxDtor() **const**;
+    bool hasCxxDtor() const;
 
   
 
     // Optimized calls to retain/release methods
 
-    **id** retain();
+    id retain();
 
-    **void** release();
+    void release();
 
-    **id** autorelease();
+    id autorelease();
 
   
 
     // Implementations of retain/release methods
 
-    **id** rootRetain();
+    id rootRetain();
 
-    **bool** rootRelease();
+    bool rootRelease();
 
-    **id** rootAutorelease();
+    id rootAutorelease();
 
-    **bool** rootTryRetain();
+    bool rootTryRetain();
 
-    **bool** rootReleaseShouldDealloc();
+    bool rootReleaseShouldDealloc();
 
-    uintptr_t rootRetainCount() **const**;
+    uintptr_t rootRetainCount() const;
 
   
 
     // Implementation of dealloc methods
 
-    **bool** rootIsDeallocating() **const**;
+    bool rootIsDeallocating() const;
 
-    **void** clearDeallocating();
+    void clearDeallocating();
 
-    **void** rootDealloc();
+    void rootDealloc();
 
   
 
-**private**:
+private:
 
-    **void** initIsa(Class newCls, **bool** nonpointer, **bool** hasCxxDtor);
+    void initIsa(Class newCls, bool nonpointer, bool hasCxxDtor);
 
   
 
     // Slow paths for inline control
 
-    **id** rootAutorelease2();
+    id rootAutorelease2();
 
   
 
@@ -246,7 +246,7 @@ struct objc_object {
 
     //   -retain/-release or Swift, for the usage of objc_{retain,release}
 
-    **enum** **class** RRVariant {
+    enum class RRVariant {
 
         Full,
 
@@ -260,41 +260,41 @@ struct objc_object {
 
     // Unified retain count manipulation for nonpointer isa
 
-    **inline** **id** rootRetain(**bool** tryRetain, RRVariant variant);
+    inline id rootRetain(bool tryRetain, RRVariant variant);
 
-    **inline** **bool** rootRelease(**bool** performDealloc, RRVariant variant);
+    inline bool rootRelease(bool performDealloc, RRVariant variant);
 
-    **id** rootRetain_overflow(**bool** tryRetain);
+    id rootRetain_overflow(bool tryRetain);
 
-    uintptr_t rootRelease_underflow(**bool** performDealloc);
+    uintptr_t rootRelease_underflow(bool performDealloc);
 
   
 
-    **void** clearDeallocating_slow();
+    void clearDeallocating_slow();
 
   
 
     // Side table retain count overflow for nonpointer isa
 
-    **struct** SidetableBorrow { size_t borrowed, remaining; };
+    struct SidetableBorrow { size_t borrowed, remaining; };
 
   
 
-    **void** sidetable_lock() **const**;
+    void sidetable_lock() const;
 
-    **void** sidetable_unlock() **const**;
+    void sidetable_unlock() const;
 
   
 
-    **void** sidetable_moveExtraRC_nolock(size_t extra_rc, **bool** isDeallocating, **bool** weaklyReferenced);
+    void sidetable_moveExtraRC_nolock(size_t extra_rc, bool isDeallocating, bool weaklyReferenced);
 
-    **bool** sidetable_addExtraRC_nolock(size_t delta_rc);
+    bool sidetable_addExtraRC_nolock(size_t delta_rc);
 
     SidetableBorrow sidetable_subExtraRC_nolock(size_t delta_rc);
 
-    size_t sidetable_getExtraRC_nolock() **const**;
+    size_t sidetable_getExtraRC_nolock() const;
 
-    **void** sidetable_clearExtraRC_nolock();
+    void sidetable_clearExtraRC_nolock();
 
 #endif  SUPPORT_NONPOINTER_ISA 
 
@@ -302,45 +302,45 @@ struct objc_object {
 
     // Side-table-only retain count
 
-    **bool** sidetable_isDeallocating() **const**;
+    bool sidetable_isDeallocating() const;
 
-    **void** sidetable_clearDeallocating();
-
-  
-
-    **bool** sidetable_isWeaklyReferenced() **const**;
-
-    **void** sidetable_setWeaklyReferenced_nolock();
+    void sidetable_clearDeallocating();
 
   
 
-    **id** sidetable_retain(**bool** locked = **false**);
+    bool sidetable_isWeaklyReferenced() const;
 
-    **id** sidetable_retain_slow(SideTable& table);
-
-  
-
-    uintptr_t sidetable_release(**bool** locked = **false**, **bool** performDealloc = **true**);
-
-    uintptr_t sidetable_release_slow(SideTable& table, **bool** performDealloc = **true**);
+    void sidetable_setWeaklyReferenced_nolock();
 
   
 
-    **bool** sidetable_tryRetain();
+    id sidetable_retain(bool locked = false);
+
+    id sidetable_retain_slow(SideTable& table);
 
   
 
-    uintptr_t sidetable_retainCount() **const**;
+    uintptr_t sidetable_release(bool locked = false, bool performDealloc = true);
+
+    uintptr_t sidetable_release_slow(SideTable& table, bool performDealloc = true);
+
+  
+
+    bool sidetable_tryRetain();
+
+  
+
+    uintptr_t sidetable_retainCount() const;
 
 #if DEBUG
 
-    **bool** sidetable_present() **const**;
+    bool sidetable_present() const;
 
 #endif
 
   
 
-    **void** performDealloc();
+    void performDealloc();
 
 };
 ```
@@ -401,7 +401,7 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 
 不管是内部用的 `isa()`，还是对外的 `ISA()`，它们去读那 8 个裸字节时，都是指的同一个——`isa_t`。换句话说，`objc_object` 这个壳本身没几两肉，它把「对象到底属于哪个类、引用计数是多少、有没有关联对象、是否被弱引用」这些信息，**全都打包压进了 `isa_t` 这 8 个字节里**。
 
-所以「对象的本质是什么」这个问题，到这里就收敛成了一个更具体、也更要命的问题：`isa_t`
+所以「对象的本质是什么」这个问题，到这里就收敛成了：`isa_t` 里到底装了什么？下面我们就钻进去看。
 
 
 ![[isa_storage_to_isa_t_steps.html]]
@@ -409,7 +409,7 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 ## isa_t
 
 ```objc
-**union** isa_t {
+union isa_t {
 
     isa_t() { }
 
@@ -419,7 +419,7 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 
   
 
-**private**:
+private:
 
     // Accessing the class requires custom ptrauth operations, so
 
@@ -431,11 +431,11 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 
   
 
-**public**:
+public:
 
 #if defined(ISA_BITFIELD)
 
-    **struct** {
+    struct {
 
         ISA_BITFIELD;  // defined in isa.h
 
@@ -445,13 +445,13 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 
 #if ISA_HAS_INLINE_RC
 
-    **bool** isDeallocating() **const** {
+    bool isDeallocating() const {
 
-        **return** extra_rc == 0 && has_sidetable_rc == 0;
+        return extra_rc == 0 && has_sidetable_rc == 0;
 
     }
 
-    **void** setDeallocating() {
+    void setDeallocating() {
 
         extra_rc = 0;
 
@@ -467,11 +467,11 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 
   
 
-    **void** setClass(Class cls, objc_object *obj);
+    void setClass(Class cls, objc_object *obj);
 
-    Class getClass(**bool** authenticated) **const**;
+    Class getClass(bool authenticated) const;
 
-    Class getDecodedClass(**bool** authenticated) **const**;
+    Class getDecodedClass(bool authenticated) const;
 
 };
 ```
@@ -727,11 +727,11 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 
 刚才我们了解了，isa_t 长什么样、位怎么分布，接下来我们看看 Runtime是怎么从isa_t 里拿到 Class 的？
 ```objc
-isa_t::getClass(MAYBE_UNUSED_AUTHENTICATED_PARAM **bool** authenticated) **const** {
+isa_t::getClass(MAYBE_UNUSED_AUTHENTICATED_PARAM bool authenticated) const {
 
 #if SUPPORT_INDEXED_ISA
 
-    **return** cls;
+    return cls;
 
 #else
 
@@ -751,19 +751,19 @@ isa_t::getClass(MAYBE_UNUSED_AUTHENTICATED_PARAM **bool** authenticated) **const
 
     // cache filling are protected by the auth code in msgSend.
 
-    **if** (authenticated) {
+    if (authenticated) {
 
         // Mask off all bits besides the class pointer and signature.
 
         clsbits &= ISA_MASK;
 
-        **if** (clsbits == 0)
+        if (clsbits == 0)
 
-            **return** **Nil**;
+            return Nil;
 
-        clsbits = (uintptr_t)ptrauth_auth_data((**void** *)clsbits, ISA_SIGNING_KEY, ptrauth_blend_discriminator(**this**, ISA_SIGNING_DISCRIMINATOR));
+        clsbits = (uintptr_t)ptrauth_auth_data((void *)clsbits, ISA_SIGNING_KEY, ptrauth_blend_discriminator(this, ISA_SIGNING_DISCRIMINATOR));
 
-    } **else** {
+    } else {
 
         // If not authenticating, strip using the precomputed class mask.
 
@@ -789,7 +789,7 @@ isa_t::getClass(MAYBE_UNUSED_AUTHENTICATED_PARAM **bool** authenticated) **const
 
   
 
-    **return** (Class)clsbits;
+    return (Class)clsbits;
 
 #endif
 
