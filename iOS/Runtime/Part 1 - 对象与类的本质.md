@@ -77,13 +77,306 @@ struct objc_object {
 };
 ```
 
+```objc
+**struct** objc_object {
+
+**private**:
+
+    **char** isa_storage[**sizeof**(isa_t)];
+
+  
+
+    isa_t &isa() { **return** ***reinterpret_cast**<isa_t *>(isa_storage); }
+
+    **const** isa_t &isa() **const** { **return** ***reinterpret_cast**<**const** isa_t *>(isa_storage); }
+
+  
+
+**public**:
+
+  
+
+    // ISA() assumes this is NOT a tagged pointer object
+
+    Class ISA(**bool** authenticated = **false**) **const**;
+
+  
+
+    // rawISA() assumes this is NOT a tagged pointer object or a non pointer ISA
+
+    Class rawISA() **const**;
+
+  
+
+    // getIsa() allows this to be a tagged pointer object
+
+    Class getIsa() **const**;
+
+    uintptr_t isaBits() **const**;
+
+  
+
+    // initIsa() should be used to init the isa of new objects only.
+
+    // If this object already has an isa, use changeIsa() for correctness.
+
+    // initInstanceIsa(): objects with no custom RR/AWZ
+
+    // initClassIsa(): class objects
+
+    // initProtocolIsa(): protocol objects
+
+    // initIsa(): other objects
+
+    **void** initIsa(Class cls /*nonpointer=false*/);
+
+    **void** initClassIsa(Class cls /*nonpointer=maybe*/);
+
+    **void** initProtocolIsa(Class cls /*nonpointer=maybe*/);
+
+    **void** initInstanceIsa(Class cls, **bool** hasCxxDtor);
+
+  
+
+    // changeIsa() should be used to change the isa of existing objects.
+
+    // If this is a new object, use initIsa() for performance.
+
+    Class changeIsa(Class newCls);
+
+  
+
+    **bool** hasNonpointerIsa() **const**;
+
+    **bool** isTaggedPointer() **const**;
+
+    **bool** isBasicTaggedPointer() **const**;
+
+    **bool** isExtTaggedPointer() **const**;
+
+    **bool** isClass() **const**;
+
+  
+
+    // object may have associated objects?
+
+    **bool** hasAssociatedObjects() **const**;
+
+    **void** setHasAssociatedObjects();
+
+  
+
+    // object may be weakly referenced?
+
+    **bool** isWeaklyReferenced() **const**;
+
+    **void** setWeaklyReferenced_nolock();
+
+  
+
+    // object may be uniquely referenced?
+
+    **bool** isUniquelyReferenced() **const**;
+
+  
+
+    // object may have -.cxx_destruct implementation?
+
+    **bool** hasCxxDtor() **const**;
+
+  
+
+    // Optimized calls to retain/release methods
+
+    **id** retain();
+
+    **void** release();
+
+    **id** autorelease();
+
+  
+
+    // Implementations of retain/release methods
+
+    **id** rootRetain();
+
+    **bool** rootRelease();
+
+    **id** rootAutorelease();
+
+    **bool** rootTryRetain();
+
+    **bool** rootReleaseShouldDealloc();
+
+    uintptr_t rootRetainCount() **const**;
+
+  
+
+    // Implementation of dealloc methods
+
+    **bool** rootIsDeallocating() **const**;
+
+    **void** clearDeallocating();
+
+    **void** rootDealloc();
+
+  
+
+**private**:
+
+    **void** initIsa(Class newCls, **bool** nonpointer, **bool** hasCxxDtor);
+
+  
+
+    // Slow paths for inline control
+
+    **id** rootAutorelease2();
+
+  
+
+#if SUPPORT_NONPOINTER_ISA
+
+    // Controls what parts of root{Retain,Release} to emit/inline
+
+    // - Full means the full (slow) implementation
+
+    // - Fast means the fastpaths only
+
+    // - FastOrMsgSend means the fastpaths but checking whether we should call
+
+    //   -retain/-release or Swift, for the usage of objc_{retain,release}
+
+    **enum** **class** RRVariant {
+
+        Full,
+
+        Fast,
+
+        FastOrMsgSend,
+
+    };
+
+  
+
+    // Unified retain count manipulation for nonpointer isa
+
+    **inline** **id** rootRetain(**bool** tryRetain, RRVariant variant);
+
+    **inline** **bool** rootRelease(**bool** performDealloc, RRVariant variant);
+
+    **id** rootRetain_overflow(**bool** tryRetain);
+
+    uintptr_t rootRelease_underflow(**bool** performDealloc);
+
+  
+
+    **void** clearDeallocating_slow();
+
+  
+
+    // Side table retain count overflow for nonpointer isa
+
+    **struct** SidetableBorrow { size_t borrowed, remaining; };
+
+  
+
+    **void** sidetable_lock() **const**;
+
+    **void** sidetable_unlock() **const**;
+
+  
+
+    **void** sidetable_moveExtraRC_nolock(size_t extra_rc, **bool** isDeallocating, **bool** weaklyReferenced);
+
+    **bool** sidetable_addExtraRC_nolock(size_t delta_rc);
+
+    SidetableBorrow sidetable_subExtraRC_nolock(size_t delta_rc);
+
+    size_t sidetable_getExtraRC_nolock() **const**;
+
+    **void** sidetable_clearExtraRC_nolock();
+
+#endif  SUPPORT_NONPOINTER_ISA 
+
+  
+
+    // Side-table-only retain count
+
+    **bool** sidetable_isDeallocating() **const**;
+
+    **void** sidetable_clearDeallocating();
+
+  
+
+    **bool** sidetable_isWeaklyReferenced() **const**;
+
+    **void** sidetable_setWeaklyReferenced_nolock();
+
+  
+
+    **id** sidetable_retain(**bool** locked = **false**);
+
+    **id** sidetable_retain_slow(SideTable& table);
+
+  
+
+    uintptr_t sidetable_release(**bool** locked = **false**, **bool** performDealloc = **true**);
+
+    uintptr_t sidetable_release_slow(SideTable& table, **bool** performDealloc = **true**);
+
+  
+
+    **bool** sidetable_tryRetain();
+
+  
+
+    uintptr_t sidetable_retainCount() **const**;
+
+#if DEBUG
+
+    **bool** sidetable_present() **const**;
+
+#endif
+
+  
+
+    **void** performDealloc();
+
+};
+```
+
+![isa_storage_memory_layout.svg](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/isa_storage_memory_layout.svg)
+
+![CleanShot 2026-05-30 at 13.17.22@2x.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/CleanShot%202026-05-30%20at%2013.17.22%402x.png)
 
 
+我们可以看到， isa_storage是真正存isa的地方。旧版本的写法是直接暴露 `isa_t isa` 作为 public 成员，任何人都能直接读写。新版本改成：`**char** isa_storage[**sizeof**(isa_t)];`  使用一个char 数组来占位。
+
+第一，`char` 在 C++ 标准里是"字节类型"，用它做原始存储是合法的 type-punning，不触发 UB（Undefined Behavior）。直接在 union 成员之间互相访问在 C++ 里有严格限制，但通过 `char[]` 中转是标准允许的。
+
+第二，`char[]` 不会触发任何构造函数或析构函数。`isa_t` 是一个 union，如果直接作为成员，某些编译器版本可能对 union 成员的初始化有额外的限制，而 `char[]` 完全透明、惰性，什么都不做。
+
+给对象内部开一块内存，大小刚好等于isa_t，所以实际的内存布局也没有变化
+
+总的来说，这是一次**封装重构**，内存布局和 isa_t 的位域语义完全没变，只是把裸字段换成了私有字节数组 + 私有访问器，防止外部绕过 Runtime 直接操作 isa，同时避免 C++ union 直接访问的潜在 UB 问题。
+
+两个重载的分工
+
+```objc
+// 1. 普通对象调用 —— 可读可写
+isa_t &isa();
+
+// 2. const 对象调用 —— 只读
+const isa_t &isa() const;
 
 
+objc_object *obj = ...;          // 普通指针
+obj->isa();                      // → 调用版本 1，返回 isa_t&（可读写）
 
-
-
+const objc_object *cobj = ...;   // const 指针
+cobj->isa();                     // → 调用版本 2，返回 const isa_t&（只读）
+```
+C++ 编译器根据调用者的 const 性自动选择。对 `const objc_object*` 调用 `isa()` 只能拿到 `const isa_t &`，不能修改。这在 `getIsa()`、`isKindOfClass()` 这类只读路径里保证了类型安全。末尾的 `const` 是成员函数签名的一部分，两个 `isa()` 通过 `this` 的 const 性区分彼此，是标准的 C++ const 重载。
 
 
 
