@@ -404,6 +404,7 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 所以「对象的本质是什么」这个问题，到这里就收敛成了一个更具体、也更要命的问题：`isa_t`
 
 
+![[isa_storage_to_isa_t_steps.html]]
 
 
 
