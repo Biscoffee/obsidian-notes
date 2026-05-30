@@ -361,23 +361,7 @@ struct objc_object {
 
 总的来说，这是一次**封装重构**，内存布局和 isa_t 的位域语义完全没变，只是把裸字段换成了私有字节数组 + 私有访问器，防止外部绕过 Runtime 直接操作 isa，同时避免 C++ union 直接访问的潜在 UB 问题。
 
-两个重载的分工
 
-```objc
-// 1. 普通对象调用 —— 可读可写
-isa_t &isa();
-
-// 2. const 对象调用 —— 只读
-const isa_t &isa() const;
-
-
-objc_object *obj = ...;          // 普通指针
-obj->isa();                      // → 调用版本 1，返回 isa_t&（可读写）
-
-const objc_object *cobj = ...;   // const 指针
-cobj->isa();                     // → 调用版本 2，返回 const isa_t&（只读）
-```
-C++ 编译器根据调用者的 const 性自动选择。对 `const objc_object*` 调用 `isa()` 只能拿到 `const isa_t &`，不能修改。这在 `getIsa()`、`isKindOfClass()` 这类只读路径里保证了类型安全。末尾的 `const` 是成员函数签名的一部分，两个 `isa()` 通过 `this` 的 const 性区分彼此，是标准的 C++ const 重载。
 
 
 
