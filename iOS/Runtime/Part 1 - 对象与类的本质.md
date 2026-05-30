@@ -406,10 +406,393 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 
 ![[isa_storage_to_isa_t_steps.html]]
 
+## isa_t
+
+```objc
+**union** isa_t {
+
+    isa_t() { }
+
+    isa_t(uintptr_t value) : bits(value) { }
+
+    uintptr_t bits;
+
+  
+
+**private**:
+
+    // Accessing the class requires custom ptrauth operations, so
+
+    // force clients to go through setClass/getClass by making this
+
+    // private.
+
+    Class cls;
+
+  
+
+**public**:
+
+#if defined(ISA_BITFIELD)
+
+    **struct** {
+
+        ISA_BITFIELD;  // defined in isa.h
+
+    };
+
+  
+
+#if ISA_HAS_INLINE_RC
+
+    **bool** isDeallocating() **const** {
+
+        **return** extra_rc == 0 && has_sidetable_rc == 0;
+
+    }
+
+    **void** setDeallocating() {
+
+        extra_rc = 0;
+
+        has_sidetable_rc = 0;
+
+    }
+
+#endif // ISA_HAS_INLINE_RC
+
+  
+
+#endif  defined(ISA_BITFIELD) 
+
+  
+
+    **void** setClass(Class cls, objc_object *obj);
+
+    Class getClass(**bool** authenticated) **const**;
+
+    Class getDecodedClass(**bool** authenticated) **const**;
+
+};
+```
+
+如上代码为 isa_t 联合体本体，我们接下来看看`ISA_BITFIELD`：
+```objc
+# if __arm64__
+
+// ARM64 simulators have a larger address space, so use the ARM64e
+
+// scheme even when simulators build for ARM64-not-e.
+
+#   if   __has_feature(ptrauth_calls) || TARGET_OS_SIMULATOR
+
+#     define ISA_MASK        0x007ffffffffffff8ULL
+
+#     define ISA_MAGIC_MASK  0x0000000000000001ULL
+
+#     define ISA_MAGIC_VALUE 0x0000000000000001ULL
+
+#     define ISA_HAS_CXX_DTOR_BIT 0
+
+#     define ISA_BITFIELD                                                      \
+
+        uintptr_t nonpointer        : 1;                                       \
+
+        uintptr_t has_assoc         : 1;                                       \
+
+        uintptr_t weakly_referenced : 1;                                       \
+
+        uintptr_t shiftcls_and_sig  : 52;                                      \
+
+        uintptr_t has_sidetable_rc  : 1;                                       \
+
+        uintptr_t extra_rc          : 8
+
+#     define ISA_HAS_INLINE_RC    1
+
+#     define RC_HAS_SIDETABLE_BIT 55
+
+#     define RC_ONE_BIT           (RC_HAS_SIDETABLE_BIT+1)
+
+#     define RC_ONE               (1ULL<<RC_ONE_BIT)
+
+#     define RC_HALF              (1ULL<<7)
+
+#   else
+
+#     define ISA_MASK        0x0000000ffffffff8ULL
+
+#     define ISA_MAGIC_MASK  0x000003f000000001ULL
+
+#     define ISA_MAGIC_VALUE 0x000001a000000001ULL
+
+#     define ISA_HAS_CXX_DTOR_BIT 1
+
+#     define ISA_BITFIELD                                                      \
+
+        uintptr_t nonpointer        : 1;                                       \
+
+        uintptr_t has_assoc         : 1;                                       \
+
+        uintptr_t has_cxx_dtor      : 1;                                       \
+
+        uintptr_t shiftcls          : 33; /*MACH_VM_MAX_ADDRESS 0x1000000000*/ \
+
+        uintptr_t magic             : 6;                                       \
+
+        uintptr_t weakly_referenced : 1;                                       \
+
+        uintptr_t unused            : 1;                                       \
+
+        uintptr_t has_sidetable_rc  : 1;                                       \
+
+        uintptr_t extra_rc          : 19
+
+#     define ISA_HAS_INLINE_RC    1
+
+#     define RC_HAS_SIDETABLE_BIT 44
+
+#     define RC_ONE_BIT           (RC_HAS_SIDETABLE_BIT+1)
+
+#     define RC_ONE               (1ULL<<RC_ONE_BIT)
+
+#     define RC_HALF              (1ULL<<18)
+
+#   endif
+
+  
+
+#   if TARGET_OS_SIMULATOR
+
+#     define ISA_MASK_NOSIG ISA_MASK
+
+#   elif TARGET_OS_OSX
+
+#     define ISA_MASK_NOSIG 0x00007ffffffffff8ULL
+
+#   else
+
+#     define ISA_MASK_NOSIG 0x0000000ffffffff8ULL
+
+#   endif
+
+  
+
+# elif __x86_64__
+
+#   define ISA_MASK        0x00007ffffffffff8ULL
+
+#   define ISA_MAGIC_MASK  0x001f800000000001ULL
+
+#   define ISA_MAGIC_VALUE 0x001d800000000001ULL
+
+#   define ISA_HAS_CXX_DTOR_BIT 1
+
+#   define ISA_BITFIELD                                                        \
+
+      uintptr_t nonpointer        : 1;                                         \
+
+      uintptr_t has_assoc         : 1;                                         \
+
+      uintptr_t has_cxx_dtor      : 1;                                         \
+
+      uintptr_t shiftcls          : 44; /*MACH_VM_MAX_ADDRESS 0x7fffffe00000*/ \
+
+      uintptr_t magic             : 6;                                         \
+
+      uintptr_t weakly_referenced : 1;                                         \
+
+      uintptr_t unused            : 1;                                         \
+
+      uintptr_t has_sidetable_rc  : 1;                                         \
+
+      uintptr_t extra_rc          : 8
+
+#   define ISA_HAS_INLINE_RC    1
+
+#   define RC_HAS_SIDETABLE_BIT 55
+
+#   define RC_ONE_BIT           (RC_HAS_SIDETABLE_BIT+1)
+
+#   define RC_ONE               (1ULL<<RC_ONE_BIT)
+
+#   define RC_HALF              (1ULL<<7)
+
+  
+
+# else
+
+#   error unknown architecture for packed isa
+
+# endif
+
+  
+
+// SUPPORT_PACKED_ISA
+
+#endif  SUPPORT_PACKED_ISA 
+
+  
+
+  
+
+#if SUPPORT_INDEXED_ISA
+
+  
+
+# if  __ARM_ARCH_7K__ >= 2  ||  (__arm64__ && !__LP64__)
+
+    // armv7k or arm64_32
+
+  
+
+#   define ISA_INDEX_IS_NPI_BIT  0
+
+#   define ISA_INDEX_IS_NPI_MASK 0x00000001
+
+#   define ISA_INDEX_MASK        0x0001FFFC
+
+#   define ISA_INDEX_SHIFT       2
+
+#   define ISA_INDEX_BITS        15
+
+#   define ISA_INDEX_COUNT       (1 << ISA_INDEX_BITS)
+
+#   define ISA_INDEX_MAGIC_MASK  0x001E0001
+
+#   define ISA_INDEX_MAGIC_VALUE 0x001C0001
+
+#   define ISA_HAS_CXX_DTOR_BIT  1
+
+#   define ISA_BITFIELD                         \
+
+      uintptr_t nonpointer        : 1;          \
+
+      uintptr_t has_assoc         : 1;          \
+
+      uintptr_t indexcls          : 15;         \
+
+      uintptr_t magic             : 4;          \
+
+      uintptr_t has_cxx_dtor      : 1;          \
+
+      uintptr_t weakly_referenced : 1;          \
+
+      uintptr_t unused            : 1;          \
+
+      uintptr_t has_sidetable_rc  : 1;          \
+
+      uintptr_t extra_rc          : 7
+
+#   define ISA_HAS_INLINE_RC    1
+
+#   define RC_HAS_SIDETABLE_BIT 24
+
+#   define RC_ONE_BIT           (RC_HAS_SIDETABLE_BIT+1)
+
+#   define RC_ONE               (1ULL<<RC_ONE_BIT)
+
+#   define RC_HALF              (1ULL<<6)
+
+  
+
+# else
+
+#   error unknown architecture for indexed isa
+
+# endif
+
+  
+
+// SUPPORT_INDEXED_ISA
+
+#endif  SUPPORT_INDEXED_ISA 
+
+  
+
+  
+
+// _OBJC_ISA_H_
+
+#endif  (!SUPPORT_NONPOINTER_ISA && !SUPPORT_PACKED_ISA && !SUPPORT_INDEXED_ISA) ||\
+
+    ( SUPPORT_NONPOINTER_ISA &&  SUPPORT_PACKED_ISA && !SUPPORT_INDEXED_ISA) ||\
+
+    ( SUPPORT_NONPOINTER_ISA && !SUPPORT_PACKED_ISA &&  SUPPORT_INDEXED_ISA)
+```
 
 
 
+刚才我们了解了，isa_t 长什么样、位怎么分布，接下来我们看看 Runtime是怎么从isa_t 里拿到 Class 的？
+```objc
+isa_t::getClass(MAYBE_UNUSED_AUTHENTICATED_PARAM **bool** authenticated) **const** {
 
+#if SUPPORT_INDEXED_ISA
+
+    **return** cls;
+
+#else
+
+  
+
+    uintptr_t clsbits = bits;
+
+  
+
+#   if __has_feature(ptrauth_calls)
+
+#       if ISA_SIGNING_AUTH_MODE == ISA_SIGNING_AUTH
+
+    // Most callers aren't security critical, so skip the
+
+    // authentication unless they ask for it. Message sending and
+
+    // cache filling are protected by the auth code in msgSend.
+
+    **if** (authenticated) {
+
+        // Mask off all bits besides the class pointer and signature.
+
+        clsbits &= ISA_MASK;
+
+        **if** (clsbits == 0)
+
+            **return** **Nil**;
+
+        clsbits = (uintptr_t)ptrauth_auth_data((**void** *)clsbits, ISA_SIGNING_KEY, ptrauth_blend_discriminator(**this**, ISA_SIGNING_DISCRIMINATOR));
+
+    } **else** {
+
+        // If not authenticating, strip using the precomputed class mask.
+
+        clsbits &= objc_debug_isa_class_mask;
+
+    }
+
+#       else
+
+    // If not authenticating, strip using the precomputed class mask.
+
+    clsbits &= objc_debug_isa_class_mask;
+
+#       endif
+
+  
+
+#   else
+
+    clsbits &= ISA_MASK;
+
+#   endif
+
+  
+
+    **return** (Class)clsbits;
+
+#endif
+
+}
+```
 
 
 
