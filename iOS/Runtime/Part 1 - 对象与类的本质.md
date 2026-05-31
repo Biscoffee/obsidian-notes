@@ -349,7 +349,7 @@ private:
 
 ![CleanShot 2026-05-30 at 13.17.22@2x.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/CleanShot%202026-05-30%20at%2013.17.22%402x.png)
 
-在看新版怎么收口之前，先把旧版长什么样摆出来对比。这个结构其实经历了三个时代：
+在看新版之前，先把旧版长什么样摆出来对比。这个结构其实经历了三个时代：
 
 ```cpp
 // ① 古早版（objc4-750 及更早，sunnyxx / draveness 那批老博客里的样子）
@@ -403,6 +403,9 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 ![[isa_storage_to_isa_t_steps.html]]
 
 所以「对象的本质是什么」这个问题，到这里就收敛成了：`isa_t` 里到底装了什么？
+
+![objc_isa_t_latest_layout.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/objc_isa_t_latest_layout.png)
+
 
 ## isa_t
 
@@ -476,252 +479,64 @@ public:
 };
 ```
 
-如上代码为 isa_t 联合体本体
+如上代码为 isa_t 联合体本体，**union 里所有成员，起始地址相同，共享同一块内存。bits、cls、ISA_BITFIELD struct 都是这块内存的**成员
+
+![[isa_t_three_views.html]]
+
+
 我们接下来看看`ISA_BITFIELD`：
 ```objc
-# if __arm64__
-
-// ARM64 simulators have a larger address space, so use the ARM64e
-
-// scheme even when simulators build for ARM64-not-e.
-
-#   if   __has_feature(ptrauth_calls) || TARGET_OS_SIMULATOR
-
-#     define ISA_MASK        0x007ffffffffffff8ULL
-
-#     define ISA_MAGIC_MASK  0x0000000000000001ULL
-
-#     define ISA_MAGIC_VALUE 0x0000000000000001ULL
-
-#     define ISA_HAS_CXX_DTOR_BIT 0
-
-#     define ISA_BITFIELD                                                      \
-
-        uintptr_t nonpointer        : 1;                                       \
-
-        uintptr_t has_assoc         : 1;                                       \
-
-        uintptr_t weakly_referenced : 1;                                       \
-
-        uintptr_t shiftcls_and_sig  : 52;                                      \
-
-        uintptr_t has_sidetable_rc  : 1;                                       \
-
-        uintptr_t extra_rc          : 8
-
-#     define ISA_HAS_INLINE_RC    1
-
-#     define RC_HAS_SIDETABLE_BIT 55
-
-#     define RC_ONE_BIT           (RC_HAS_SIDETABLE_BIT+1)
-
-#     define RC_ONE               (1ULL<<RC_ONE_BIT)
-
-#     define RC_HALF              (1ULL<<7)
-
-#   else
-
-#     define ISA_MASK        0x0000000ffffffff8ULL
-
-#     define ISA_MAGIC_MASK  0x000003f000000001ULL
-
-#     define ISA_MAGIC_VALUE 0x000001a000000001ULL
-
-#     define ISA_HAS_CXX_DTOR_BIT 1
-
-#     define ISA_BITFIELD                                                      \
-
-        uintptr_t nonpointer        : 1;                                       \
-
-        uintptr_t has_assoc         : 1;                                       \
-
-        uintptr_t has_cxx_dtor      : 1;                                       \
-
-        uintptr_t shiftcls          : 33; /*MACH_VM_MAX_ADDRESS 0x1000000000*/ \
-
-        uintptr_t magic             : 6;                                       \
-
-        uintptr_t weakly_referenced : 1;                                       \
-
-        uintptr_t unused            : 1;                                       \
-
-        uintptr_t has_sidetable_rc  : 1;                                       \
-
-        uintptr_t extra_rc          : 19
-
-#     define ISA_HAS_INLINE_RC    1
-
-#     define RC_HAS_SIDETABLE_BIT 44
-
-#     define RC_ONE_BIT           (RC_HAS_SIDETABLE_BIT+1)
-
-#     define RC_ONE               (1ULL<<RC_ONE_BIT)
-
-#     define RC_HALF              (1ULL<<18)
-
-#   endif
-
-  
-
-#   if TARGET_OS_SIMULATOR
-
-#     define ISA_MASK_NOSIG ISA_MASK
-
-#   elif TARGET_OS_OSX
-
-#     define ISA_MASK_NOSIG 0x00007ffffffffff8ULL
-
-#   else
-
-#     define ISA_MASK_NOSIG 0x0000000ffffffff8ULL
-
-#   endif
-
-  
-
-# elif __x86_64__
-
-#   define ISA_MASK        0x00007ffffffffff8ULL
-
-#   define ISA_MAGIC_MASK  0x001f800000000001ULL
-
-#   define ISA_MAGIC_VALUE 0x001d800000000001ULL
-
-#   define ISA_HAS_CXX_DTOR_BIT 1
-
-#   define ISA_BITFIELD                                                        \
-
-      uintptr_t nonpointer        : 1;                                         \
-
-      uintptr_t has_assoc         : 1;                                         \
-
-      uintptr_t has_cxx_dtor      : 1;                                         \
-
-      uintptr_t shiftcls          : 44; /*MACH_VM_MAX_ADDRESS 0x7fffffe00000*/ \
-
-      uintptr_t magic             : 6;                                         \
-
-      uintptr_t weakly_referenced : 1;                                         \
-
-      uintptr_t unused            : 1;                                         \
-
-      uintptr_t has_sidetable_rc  : 1;                                         \
-
-      uintptr_t extra_rc          : 8
-
-#   define ISA_HAS_INLINE_RC    1
-
-#   define RC_HAS_SIDETABLE_BIT 55
-
-#   define RC_ONE_BIT           (RC_HAS_SIDETABLE_BIT+1)
-
-#   define RC_ONE               (1ULL<<RC_ONE_BIT)
-
-#   define RC_HALF              (1ULL<<7)
-
-  
-
-# else
-
-#   error unknown architecture for packed isa
-
-# endif
-
-  
-
-// SUPPORT_PACKED_ISA
-
-#endif  SUPPORT_PACKED_ISA 
-
-  
-
-  
-
-#if SUPPORT_INDEXED_ISA
-
-  
-
-# if  __ARM_ARCH_7K__ >= 2  ||  (__arm64__ && !__LP64__)
-
-    // armv7k or arm64_32
-
-  
-
-#   define ISA_INDEX_IS_NPI_BIT  0
-
-#   define ISA_INDEX_IS_NPI_MASK 0x00000001
-
-#   define ISA_INDEX_MASK        0x0001FFFC
-
-#   define ISA_INDEX_SHIFT       2
-
-#   define ISA_INDEX_BITS        15
-
-#   define ISA_INDEX_COUNT       (1 << ISA_INDEX_BITS)
-
-#   define ISA_INDEX_MAGIC_MASK  0x001E0001
-
-#   define ISA_INDEX_MAGIC_VALUE 0x001C0001
-
-#   define ISA_HAS_CXX_DTOR_BIT  1
-
-#   define ISA_BITFIELD                         \
-
-      uintptr_t nonpointer        : 1;          \
-
-      uintptr_t has_assoc         : 1;          \
-
-      uintptr_t indexcls          : 15;         \
-
-      uintptr_t magic             : 4;          \
-
-      uintptr_t has_cxx_dtor      : 1;          \
-
-      uintptr_t weakly_referenced : 1;          \
-
-      uintptr_t unused            : 1;          \
-
-      uintptr_t has_sidetable_rc  : 1;          \
-
-      uintptr_t extra_rc          : 7
-
-#   define ISA_HAS_INLINE_RC    1
-
-#   define RC_HAS_SIDETABLE_BIT 24
-
-#   define RC_ONE_BIT           (RC_HAS_SIDETABLE_BIT+1)
-
-#   define RC_ONE               (1ULL<<RC_ONE_BIT)
-
-#   define RC_HALF              (1ULL<<6)
-
-  
-
-# else
-
-#   error unknown architecture for indexed isa
-
-# endif
-
-  
-
-// SUPPORT_INDEXED_ISA
-
-#endif  SUPPORT_INDEXED_ISA 
-
-  
-
-  
-
-// _OBJC_ISA_H_
-
-#endif  (!SUPPORT_NONPOINTER_ISA && !SUPPORT_PACKED_ISA && !SUPPORT_INDEXED_ISA) ||\
-
-    ( SUPPORT_NONPOINTER_ISA &&  SUPPORT_PACKED_ISA && !SUPPORT_INDEXED_ISA) ||\
-
-    ( SUPPORT_NONPOINTER_ISA && !SUPPORT_PACKED_ISA &&  SUPPORT_INDEXED_ISA)
+/*
+ * isa 的位布局随架构而不同，共 4 套。下面把每个架构的 ISA_BITFIELD
+ * 直接展开成位域列表（省去 #define 和续行符 \，方便阅读），并标注每段
+ * 的 bit 范围。挑你的目标架构看即可：真机 A12+ 与模拟器看 ①。
+ */
+
+// ===== ① arm64e（真机 A12+ / 模拟器，__has_feature(ptrauth_calls)）=====
+//   ISA_MASK = 0x007ffffffffffff8ULL    ·    无独立 has_cxx_dtor 位（移到 cache flags）
+uintptr_t nonpointer        : 1;    // bit0     nonpointer isa 开关（0=纯类指针）
+uintptr_t has_assoc         : 1;    // bit1     有无关联对象
+uintptr_t weakly_referenced : 1;    // bit2     有无被 __weak 弱引用
+uintptr_t shiftcls_and_sig  : 52;   // bit3-54  类指针 + PAC 签名（合并）
+uintptr_t has_sidetable_rc  : 1;    // bit55    RC 是否溢出到 SideTable
+uintptr_t extra_rc          : 8;    // bit56-63 内联引用计数（retainCount-1）
+
+// ===== ② arm64（非 e，不开 PAC）=====
+//   ISA_MASK = 0x0000000ffffffff8ULL    ·    保留 has_cxx_dtor / magic 位
+uintptr_t nonpointer        : 1;    // bit0
+uintptr_t has_assoc         : 1;    // bit1     有无关联对象
+uintptr_t has_cxx_dtor      : 1;    // bit2     类/父类有无 C++ 析构（arm64e 已移除）
+uintptr_t shiftcls          : 33;   // bit3-35  类指针（无签名，故名 shiftcls）
+uintptr_t magic             : 6;    // bit36-41 调试期识别 isa 的魔数（arm64e 已移除）
+uintptr_t weakly_referenced : 1;    // bit42    有无被 __weak 弱引用
+uintptr_t unused            : 1;    // bit43    保留位
+uintptr_t has_sidetable_rc  : 1;    // bit44    RC 是否溢出到 SideTable
+uintptr_t extra_rc          : 19;   // bit45-63 内联引用计数（位数比 arm64e 多）
+
+// ===== ③ x86_64（Intel Mac / 旧模拟器）=====
+//   ISA_MASK = 0x00007ffffffffff8ULL
+uintptr_t nonpointer        : 1;    // bit0
+uintptr_t has_assoc         : 1;    // bit1
+uintptr_t has_cxx_dtor      : 1;    // bit2
+uintptr_t shiftcls          : 44;   // bit3-46  类指针
+uintptr_t magic             : 6;    // bit47-52 魔数
+uintptr_t weakly_referenced : 1;    // bit53
+uintptr_t unused            : 1;    // bit54
+uintptr_t has_sidetable_rc  : 1;    // bit55
+uintptr_t extra_rc          : 8;    // bit56-63 内联引用计数
+
+// ===== ④ armv7k / arm64_32（Apple Watch 等 32 位，索引式 isa）=====
+//   存「类表索引 indexcls」而非类指针；32 位地址空间小，用索引更省位
+uintptr_t nonpointer        : 1;    // bit0
+uintptr_t has_assoc         : 1;    // bit1
+uintptr_t indexcls          : 15;   // bit2-16  类表索引（不是指针！）
+uintptr_t magic             : 4;    // bit17-20
+uintptr_t has_cxx_dtor      : 1;    // bit21
+uintptr_t weakly_referenced : 1;    // bit22
+uintptr_t unused            : 1;    // bit23
+uintptr_t has_sidetable_rc  : 1;    // bit24
+uintptr_t extra_rc          : 7;    // bit25-31 内联引用计数
 ```
-
 
 
 刚才我们了解了，isa_t 长什么样、位怎么分布，接下来我们看看 Runtime是怎么从isa_t 里拿到 Class 的？

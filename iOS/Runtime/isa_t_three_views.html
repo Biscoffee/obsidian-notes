@@ -1,0 +1,233 @@
+
+<style>
+.tab-bar{display:flex;gap:0;border-bottom:1px solid var(--color-border-tertiary);margin-bottom:16px}
+.tab{padding:8px 20px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;color:var(--color-text-secondary);user-select:none}
+.tab.on{color:var(--color-text-primary);border-bottom-color:#1D9E75;font-weight:500}
+.view{display:none}.view.on{display:block}
+.bits-row{display:flex;flex-wrap:nowrap;gap:0;margin:10px 0}
+.bit{width:19px;height:28px;border:1px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:center;font-size:10px;font-family:var(--font-mono);cursor:default;transition:background .15s;flex-shrink:0}
+.bit:hover{filter:brightness(.9)}
+.bit.b-teal{background:#9FE1CB;color:#04342C;border-color:#1D9E75}
+.bit.b-purple{background:#CECBF6;color:#26215C;border-color:#534AB7}
+.bit.b-amber{background:#FAC775;color:#412402;border-color:#BA7517}
+.bit.b-coral{background:#F5C4B3;color:#4A1B0C;border-color:#993C1D}
+.bit.b-gray{background:var(--color-background-secondary);color:var(--color-text-tertiary)}
+.bit-idx{font-size:9px;color:var(--color-text-tertiary);font-family:var(--font-mono)}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.leg{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--color-text-secondary)}
+.leg-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+.section{background:var(--color-background-secondary);border-radius:8px;padding:12px 14px;margin:10px 0;font-size:13px;line-height:1.8;color:var(--color-text-primary)}
+.mono{font-family:var(--font-mono);font-size:12px;background:var(--color-background-secondary);padding:1px 5px;border-radius:3px}
+.field-row{display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid var(--color-border-tertiary);font-size:13px}
+.field-row:last-child{border-bottom:none}
+.field-name{font-family:var(--font-mono);font-size:12px;min-width:160px;color:var(--color-text-primary)}
+.field-bits{min-width:50px;color:var(--color-text-tertiary);font-size:12px}
+.field-desc{color:var(--color-text-secondary);font-size:12px;line-height:1.6}
+.badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:11px;font-family:var(--font-mono);margin-right:4px}
+.bd-teal{background:#9FE1CB;color:#04342C}
+.bd-purple{background:#CECBF6;color:#26215C}
+.bd-amber{background:#FAC775;color:#412402}
+.bd-coral{background:#F5C4B3;color:#4A1B0C}
+.bd-gray{background:var(--color-background-secondary);color:var(--color-text-secondary);border:1px solid var(--color-border-tertiary)}
+</style>
+
+<div style="padding:14px 0">
+
+<div class="tab-bar">
+  <div class="tab on" onclick="sw(0)">① bits（整数）</div>
+  <div class="tab" onclick="sw(1)">② cls（类指针）</div>
+  <div class="tab" onclick="sw(2)">③ ISA_BITFIELD（位域）</div>
+  <div class="tab" onclick="sw(3)">union 全貌</div>
+</div>
+
+<!-- ① bits -->
+<div class="view on" id="v0">
+  <div class="section">
+    <b>声明：</b><span class="mono">uintptr_t bits;</span><br>
+    把这 8 字节当作一个普通的 64 位无符号整数来读写。<br>
+    整体操作，不关心内部哪个 bit 代表什么。
+  </div>
+  <div style="font-size:12px;color:var(--color-text-tertiary);margin:8px 0">64 bit，全部是一个数字</div>
+  <div class="bits-row" id="bits-all"></div>
+  <div style="font-size:12px;color:var(--color-text-tertiary);margin-top:4px">bit 63 ←────────────────────────────────────────────────────────────────── bit 0</div>
+  <div class="section" style="margin-top:14px">
+    <b>典型用法：提取 Class 指针</b><br>
+    <span class="mono">Class cls = (Class)(bits &amp; ISA_MASK);</span><br><br>
+    <span class="mono">ISA_MASK = 0x0000000ffffffff8ULL</span>（arm64）<br><br>
+    用位运算一次性拿到 Class 地址，比逐位域读快。<br>
+    Runtime 里 <span class="mono">getIsa()</span>、<span class="mono">ISA()</span> 都走这条路。
+  </div>
+</div>
+
+<!-- ② cls -->
+<div class="view" id="v1">
+  <div class="section">
+    <b>声明：</b><span class="mono">private: Class cls;</span><br>
+    把这 8 字节当作一个 <b>ObjC Class 指针</b>来解读。<br>
+    但它是 <b>private</b>，你不能直接访问，必须走 <span class="mono">setClass</span> / <span class="mono">getClass</span>。
+  </div>
+  <div style="font-size:12px;color:var(--color-text-tertiary);margin:8px 0">同样是这 8 字节，但解读成指针值</div>
+  <div class="bits-row" id="bits-cls"></div>
+  <div style="font-size:12px;color:var(--color-text-tertiary);margin-top:4px">bit 63 ←────────────────────────────────────────────────────────────────── bit 0</div>
+
+  <div class="section" style="margin-top:14px">
+    <b>为什么要 private + PAC？</b><br><br>
+    在 arm64e（A12+）上，Class 指针是被 <b>PAC（Pointer Authentication Code）签名</b>的。<br>
+    高位会被写入一段签名 hash，直接读裸值会拿到一个"脏"指针，无法使用。<br><br>
+    必须走：<br>
+    <span class="mono">setClass(cls, obj)</span> → 签名后写入<br>
+    <span class="mono">getClass(true)</span>　　 → 验签后返回干净指针<br>
+    <span class="mono">getClass(false)</span>　　→ 不验签（某些内部快速路径）
+  </div>
+</div>
+
+<!-- ③ ISA_BITFIELD -->
+<div class="view" id="v2">
+  <div class="section">
+    <b>声明：</b><span class="mono">struct { ISA_BITFIELD; };</span><br>
+    把这 8 字节按 bit 切成若干段，每段有各自的名字和含义。<br>
+    这是 nonpointer isa 的核心设计：用一个指针的空间，存了 N 种信息。
+  </div>
+
+  <div style="font-size:12px;color:var(--color-text-tertiary);margin:8px 0">64 bit 按字段着色</div>
+  <div class="bits-row" id="bits-field"></div>
+  <div style="font-size:12px;color:var(--color-text-tertiary);margin-top:4px">bit 63 ←────────────────────────────────────────────────────────────────── bit 0</div>
+
+  <div class="legend">
+    <div class="leg"><div class="leg-dot" style="background:#9FE1CB;border:1px solid #1D9E75"></div>标志位 (1 bit)</div>
+    <div class="leg"><div class="leg-dot" style="background:#CECBF6;border:1px solid #534AB7"></div>shiftcls (33 bits)</div>
+    <div class="leg"><div class="leg-dot" style="background:#FAC775;border:1px solid #BA7517"></div>magic (6 bits)</div>
+    <div class="leg"><div class="leg-dot" style="background:#F5C4B3;border:1px solid #993C1D"></div>引用计数 (20 bits)</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--color-background-secondary);border:1px solid var(--color-border-tertiary)"></div>unused (1 bit)</div>
+  </div>
+
+  <div style="margin-top:6px">
+    <div class="field-row">
+      <span class="field-name"><span class="badge bd-teal">bit 0</span>nonpointer</span>
+      <span class="field-bits">1 bit</span>
+      <span class="field-desc">1 = 这是 nonpointer isa（塞了额外信息）；0 = 纯裸指针（旧格式）</span>
+    </div>
+    <div class="field-row">
+      <span class="field-name"><span class="badge bd-teal">bit 1</span>has_assoc</span>
+      <span class="field-bits">1 bit</span>
+      <span class="field-desc">对象是否有关联对象（objc_setAssociatedObject），释放时要清理</span>
+    </div>
+    <div class="field-row">
+      <span class="field-name"><span class="badge bd-teal">bit 2</span>has_cxx_dtor</span>
+      <span class="field-bits">1 bit</span>
+      <span class="field-desc">类是否有 C++ 析构函数或 ObjC .cxx_destruct，决定释放路径</span>
+    </div>
+    <div class="field-row">
+      <span class="field-name"><span class="badge bd-purple">bit 3~35</span>shiftcls</span>
+      <span class="field-bits">33 bits</span>
+      <span class="field-desc">Class 指针右移 3 位后存在这里（低 3 位对齐保证为 0，存其他信息）</span>
+    </div>
+    <div class="field-row">
+      <span class="field-name"><span class="badge bd-amber">bit 36~41</span>magic</span>
+      <span class="field-bits">6 bits</span>
+      <span class="field-desc">固定值 0x3b，调试时用于校验 isa 是否合法，防止误读野指针</span>
+    </div>
+    <div class="field-row">
+      <span class="field-name"><span class="badge bd-teal">bit 42</span>weakly_referenced</span>
+      <span class="field-bits">1 bit</span>
+      <span class="field-desc">对象是否被弱引用指向，释放时要去 weak table 置 nil</span>
+    </div>
+    <div class="field-row">
+      <span class="field-name"><span class="badge bd-gray">bit 43</span>unused</span>
+      <span class="field-bits">1 bit</span>
+      <span class="field-desc">预留位，当前未使用</span>
+    </div>
+    <div class="field-row">
+      <span class="field-name"><span class="badge bd-coral">bit 44</span>has_sidetable_rc</span>
+      <span class="field-bits">1 bit</span>
+      <span class="field-desc">引用计数是否溢出到 SideTable（extra_rc 装不下时置 1）</span>
+    </div>
+    <div class="field-row">
+      <span class="field-name"><span class="badge bd-coral">bit 45~63</span>extra_rc</span>
+      <span class="field-bits">19 bits</span>
+      <span class="field-desc">内联引用计数，存的是「真实引用计数 - 1」，最大能存 524287</span>
+    </div>
+  </div>
+</div>
+
+<!-- ④ union 全貌 -->
+<div class="view" id="v3">
+  <div class="section">
+    <b>union 的规则只有一条：</b>所有成员共享同一块内存，大小取最大成员。<br><br>
+    这里三个成员都是 8 字节，所以 union 就是 8 字节。<br>
+    改了其中任何一个成员，另外两个读出来的值也跟着变——<b>因为本来就是同一块。</b>
+  </div>
+
+  <div style="font-size:12px;color:var(--color-text-tertiary);margin:8px 0">三种视角，同一块内存</div>
+
+  <div style="position:relative;margin:10px 0">
+    <div class="bits-row" id="bits-union" style="margin-bottom:0"></div>
+    <div style="display:flex;margin-top:2px">
+      <div style="width:19px;font-size:9px;color:#993C1D;text-align:center">63</div>
+      <div style="flex:1"></div>
+      <div style="width:19px;font-size:9px;color:#993C1D;text-align:center">0</div>
+    </div>
+  </div>
+
+  <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+    <div class="section" style="margin:0;border-left:3px solid #1D9E75;padding-left:12px">
+      <span class="mono" style="color:#085041">uintptr_t bits</span>　→　把这 64 bit 读作一个整数，做位运算最快
+    </div>
+    <div class="section" style="margin:0;border-left:3px solid #993C1D;padding-left:12px">
+      <span class="mono" style="color:#4A1B0C">Class cls</span>　　→　把这 64 bit 读作类指针，必须 PAC 验签，所以 private
+    </div>
+    <div class="section" style="margin:0;border-left:3px solid #534AB7;padding-left:12px">
+      <span class="mono" style="color:#26215C">ISA_BITFIELD</span>　→　把这 64 bit 按字段拆分，每个 bit 有独立含义
+    </div>
+  </div>
+
+  <div class="section" style="margin-top:14px;background:var(--color-background-secondary)">
+    <b>验证：写 bits，读位域</b><br><br>
+    <span class="mono">isa.bits = 0x001d800100000001ULL;</span><br><br>
+    此时直接读位域：<br>
+    <span class="mono">isa.nonpointer == 1</span>　✓ bit 0 = 1<br>
+    <span class="mono">isa.magic == 0x3b</span>　　✓ bit 36~41<br>
+    <span class="mono">isa.extra_rc == 0</span>　　✓ bit 45~63 全 0<br><br>
+    同一块内存，只是换了解读方式。
+  </div>
+</div>
+
+</div>
+
+<script>
+var cur = 0;
+function sw(i) {
+  document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('on',i===j));
+  document.querySelectorAll('.view').forEach((v,j)=>v.classList.toggle('on',i===j));
+  cur = i;
+}
+
+// 渲染 bit 格子
+function makeBits(id, colorFn) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = '';
+  for (var i = 63; i >= 0; i--) {
+    var d = document.createElement('div');
+    d.className = 'bit ' + colorFn(i);
+    d.textContent = '';
+    el.appendChild(d);
+  }
+}
+
+function colorBits(bit) { return 'b-gray'; }
+
+function colorField(bit) {
+  if (bit === 0 || bit === 1 || bit === 2 || bit === 42 || bit === 44) return 'b-teal';
+  if (bit >= 3 && bit <= 35) return 'b-purple';
+  if (bit >= 36 && bit <= 41) return 'b-amber';
+  if (bit === 43) return 'b-gray';
+  if (bit >= 44 && bit <= 63) return 'b-coral';
+  return 'b-gray';
+}
+
+makeBits('bits-all', colorBits);
+makeBits('bits-cls', function(b){ return b >= 3 && b <= 35 ? 'b-coral' : 'b-gray'; });
+makeBits('bits-field', colorField);
+makeBits('bits-union', colorField);
+</script>
