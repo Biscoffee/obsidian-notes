@@ -872,18 +872,21 @@ void setSuperclass(Class newSuperclass) {
 // objc-runtime-new.h:337
 struct cache_t {
 private:
+	// 缓存的真实存储，可以理解为：_bucketsAndMaybeMask -> bucket_t数组 —> 每个 bucket 存一组 SEL -> IMP
     explicit_atomic<uintptr_t> _bucketsAndMaybeMask;   // 桶数组指针（可能拼着 mask）
     union {
+    //  普通情况下，当成struct看
         struct {
 #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && !__LP64__
-            explicit_atomic<mask_t>    _mask;
-            uint16_t                   _occupied;
+            explicit_atomic<mask_t>    _mask; // 缓存容量掩码，用来算 bucket 下标
+            uint16_t                   _occupied;  //  当前用了多少个 bucket
+            
 #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && __LP64__
             explicit_atomic<mask_t>    _mask;
             uint16_t                   _occupied;
             uint16_t                   _flags;
-#elif __LP64__   // 内联 mask，64 位
-            uint32_t                   _disguisedPreoptCacheSignature;
+#elif __LP64__   // 内联 mask，64 位，这里没有_mask，因为mask 被内联编码进 _bucketsAndMaybeMask 里面了。也就是说前面的_bucketsAndMaybeMask，不只是保存 buckets 指针，还顺便藏了 mask。所以第二个 word 就空出来一部分，可以放：
+            uint32_t                   _disguisedPreoptCacheSignature;// 主要是区分是普通cache 还是伪装过的 preopt cache，这里放了一个用于 preopt cache 识别的 signature
             uint16_t                   _occupied;
             uint16_t                   _flags;
 #else            // 内联 mask，32 位

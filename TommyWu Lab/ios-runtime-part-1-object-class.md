@@ -882,18 +882,21 @@ void setSuperclass(Class newSuperclass) {
 // objc-runtime-new.h:337
 struct cache_t {
 private:
+	// 缓存的真实存储，可以理解为：_bucketsAndMaybeMask -> bucket_t数组 —> 每个 bucket 存一组 SEL -> IMP
     explicit_atomic<uintptr_t> _bucketsAndMaybeMask;   // 桶数组指针（可能拼着 mask）
     union {
+    //  普通情况下，当成struct看
         struct {
 #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && !__LP64__
-            explicit_atomic<mask_t>    _mask;
-            uint16_t                   _occupied;
+            explicit_atomic<mask_t>    _mask; // 缓存容量掩码，用来算 bucket 下标
+            uint16_t                   _occupied;  //  当前用了多少个 bucket
+
 #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && __LP64__
             explicit_atomic<mask_t>    _mask;
             uint16_t                   _occupied;
             uint16_t                   _flags;
-#elif __LP64__   // 内联 mask，64 位
-            uint32_t                   _disguisedPreoptCacheSignature;
+#elif __LP64__   // 内联 mask，64 位，这里没有_mask，因为mask 被内联编码进 _bucketsAndMaybeMask 里面了。也就是说前面的_bucketsAndMaybeMask，不只是保存 buckets 指针，还顺便藏了 mask。所以第二个 word 就空出来一部分，可以放：
+            uint32_t                   _disguisedPreoptCacheSignature;// 主要是qu
             uint16_t                   _occupied;
             uint16_t                   _flags;
 #else            // 内联 mask，32 位
@@ -1138,18 +1141,43 @@ struct class_ro_t {
 `§2` 里反复提到的 `instanceSize`、`instanceStart`，源头就在这里。再看上面那层 `class_rw_t`——它是运行期可写的部分：
 
 ```objc
-// objc-runtime-new.h:2212 —— class_rw_t（运行期可写，节选）
+// objc-runtime-new.h:2212 —— class_rw_t（运行期可写）
 struct class_rw_t {
     uint32_t flags;
     uint16_t witness;
-
-    explicit_atomic<uintptr_t> ro_or_rw_ext;   // ← 「二选一」联合指针：ro 或 rw_ext
-
-    Class firstSubclass;        // 运行期维护的子类链
+#if SUPPORT_INDEXED_ISA
+    uint16_t index;
+#endif
+    explicit_atomic<uintptr_t> ro_or_rw_ext;   // 二选一：const class_ro_t* 或 class_rw_ext_t*
+    Class firstSubclass;
     Class nextSiblingClass;
 
-    const class_ro_t *ro() const;               // 取出底层只读的 ro
-    const method_array_t   methods() const;     // 方法（可能含 Category 合并进来的）
+private:
+    using ro_or_rw_ext_t = objc::PointerUnion<const class_ro_t, class_rw_ext_t,
+                            PTRAUTH_STR("class_ro_t"), PTRAUTH_STR("class_rw_ext_t")>;
+    const ro_or_rw_ext_t get_ro_or_rwe() const { return ro_or_rw_ext_t{ro_or_rw_ext}; }
+    void set_ro_or_rwe(const class_ro_t *ro);
+    void set_ro_or_rwe(class_rw_ext_t *rwe, const class_ro_t *ro);
+    class_rw_ext_t *extAlloc(const class_ro_t *ro, bool deep = false);   // 真要改时才分配 rwe
+
+public:
+    void setFlags(uint32_t set);
+    void clearFlags(uint32_t clear);
+    void changeFlags(uint32_t set, uint32_t clear);
+
+    class_rw_ext_t *ext() const;
+    class_rw_ext_t *extAllocIfNeeded();
+    class_rw_ext_t *deepCopy(const class_ro_t *ro);
+
+    const class_ro_t *ro() const {           // rwe 在就从 rwe 取 ro，否则 ro_or_rw_ext 本身就是 ro
+        auto v = get_ro_or_rwe();
+        if (slowpath(v.is<class_rw_ext_t *>()))
+            return v.get<class_rw_ext_t *>(&ro_or_rw_ext)->ro;
+        return v.get<const class_ro_t *>(&ro_or_rw_ext);
+    }
+    void set_ro(const class_ro_t *ro);
+
+    const method_array_t   methods() const;     // rwe 在取 rwe->methods；否则取 ro->baseMethods
     const property_array_t properties() const;
     const protocol_array_t protocols() const;
 };
@@ -1167,7 +1195,7 @@ struct class_rw_t {
 ```objc
 // objc-runtime-new.h:2202 —— 真要动态改时才分配的扩展
 struct class_rw_ext_t {
-    class_ro_t *ro;
+    class_ro_t_authed_ptr<const class_ro_t> ro;   // 指回只读 ro（带 ptrauth）
     method_array_t   methods;      // 可写方法数组（base + category + 动态添加）
     property_array_t properties;
     protocol_array_t protocols;
