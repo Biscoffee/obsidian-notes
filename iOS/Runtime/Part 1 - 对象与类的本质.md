@@ -603,7 +603,7 @@ _objc_isTaggedPointer(const void * _Nullable ptr)
 ```objc
 #if OBJC_SPLIT_TAGGED_POINTERS        // arm64（iOS 真机 / Apple Silicon）
 #   define _OBJC_TAG_MASK (1UL<<63)   // 看最高位 bit63
-#elif OBJC_MSB_TAGGED_POINTERS        // 其它（如旧 iOS）
+#elif OBJC_MSB_TAGGED_POINTERS        // 非 arm64、非 x86 Mac 的其它配置
 #   define _OBJC_TAG_MASK (1UL<<63)
 #else                                 // x86_64 Mac
 #   define _OBJC_TAG_MASK 1UL         // 看最低位 bit0
@@ -691,15 +691,99 @@ uintptr_t value = (obfuscator ^ ptr);   // 编码/解码都要异或这个值
 > 3. 布局随架构 / 系统版本会变（arm64 看 bit63、x86 Mac 看 bit0），别把某个具体 bit 位当成「永远如此」写死。
 
 
-
-
-
-
-
-
-
-
 ![[isa_t_layout 1.html]]
+
+
+# 对象的内存布局
+
+除了 isa，一个实例在内存里到底还装了什么、整个占多大？这一章就把这块内存量清楚。
+
+## 实例里装了什么：isa + 成员变量
+
+一个普通实例对象在堆上的内存，结构非常朴素：
+
+```
+偏移 +0     isa（8 字节）
+偏移 +8     第 1 个成员变量(ivar)
+偏移 ...     第 2 个成员变量
+            ...（按声明顺序、各自对齐规则排布）
+```
+
+`isa` 永远在 `+0`，紧接着是这个类（含父类）的所有成员变量，按声明顺序、各自的对齐要求依次排下去。换句话说——
+
+> **实例对象 = 一根 isa + 一串成员变量。** 它身上没有方法，方法都存在「类」里（下一章讲）。
+
+这也正是为什么 `NSObject` 的实例「最小」：它一个自定义成员都没有，身上就只有那 8 字节的 isa。
+
+## 对象多大：从「需求」到「实分」的三个数
+
+「一个对象多大」这个问题，其实有**三个互不相同**的答案。一个对象从「源码声明」走到「躺在堆上」，大小要过三道关：
+
+```
+① 编译期需求    class_ro_t.instanceSize  = isa(8) + 各 ivar 字节数
+       │
+       ▼ word_align —— 向上取整到 8 的倍数（64 位下字长 = 8）
+② 理论大小      class_getInstanceSize()  = alignedInstanceSize()   ← 注意：不含 16 下限
+       │
+       ▼ alloc 时 instanceSize()：if (size < 16) size = 16   （CF 要求最小 16 字节）
+③ 实际申请      malloc_instance(size) → malloc 还有自己的 16 字节分桶粒度
+       ▼
+     malloc_size()  = 堆真正给出的块大小（16 的倍数）
+```
+
+第①步的 `instanceSize` 是编译器在编译期就算好、存进类的只读数据 `class_ro_t` 里的（`isa` 加上所有成员变量的字节数）。第②步把它按字长（64 位下是 8 字节）向上对齐，这就是 `class_getInstanceSize` 返回的值：
+
+```objc
+// objc-class.mm:817 —— class_getInstanceSize 只到「对齐后的 ivar 需求」，没有 16 下限
+size_t class_getInstanceSize(Class cls) {
+    if (!cls) return 0;
+    cls->realizeIfNeeded();
+    return cls->alignedInstanceSize();   // = word_align(ro->instanceSize)，按 8 字节对齐
+}
+```
+
+但**真正 alloc 时用的不是它**，而是 `instanceSize()`——这里才加上了「最小 16 字节」的下限：
+
+```objc
+// objc-runtime-new.h:3144 —— runtime 真正分配时用的大小
+inline size_t instanceSize(size_t extraBytes) const {
+    if (fastpath(cache.hasFastInstanceSize(extraBytes)))   // 缓存里有算好的就走快路
+        return cache.fastInstanceSize(extraBytes);
+
+    size_t size = alignedInstanceSize() + extraBytes;
+    if (size < 16) size = 16;   // CF requires all objects be at least 16 bytes.
+    return size;
+}
+```
+
+最后在创建实例的核心函数里，把这个 `size` 交给 `malloc` 去要内存：
+
+```objc
+// objc-runtime-new.mm:9309 —— _class_createInstance_realized 节选
+size = cls->instanceSize(extraBytes);     // 拿到「抬到 ≥16」之后的大小
+id obj = objc::malloc_instance(size, cls); // 向堆申请
+// ...
+obj->initInstanceIsa(cls, hasCxxDtor);     // 把 isa 写进对象开头那 8 字节
+```
+
+而 `malloc` 自己还有**分桶粒度**（在 64 位上以 16 字节为单位），所以最终 `malloc_size()` 拿到的实际块，往往会再被向上取整到 16 的倍数。
+
+## 实战：NSObject 为什么是「8 需求 / 16 实分」
+
+把上面三个数套到具体的类上，就一目了然了：
+
+| 类 | ① isa + ivar | ② `class_getInstanceSize`（对齐后） | ③ `malloc_size`（堆实分） |
+|---|---|---|---|
+| `NSObject`（只有 isa） | 8 | **8** | **16** |
+| `Person { int age }` | 8 + 4 = 12 | 16（对齐到 8 的倍数） | 16 |
+| `Person { NSString *name; int age }` | 8 + 8 + 4 = 20 | **24** | **32** |
+
+- **`NSObject` 的「8 需求 / 16 实分」**：`class_getInstanceSize` 只返回 8（刚够装一根 isa），但真分配时 `instanceSize()` 把它抬到 16，`malloc` 也按 16 给——所以 `malloc_size` 是 16。这就是那句经典面试题「NSObject 对象占多少内存」的完整答案：**理论需求 8，实际占用 16。**
+- **第三个例子最能说明「三个数互不相等」**：成员变量需求 20，对齐成 24，`malloc` 按 16 分桶再抬到 32。
+
+到这里，「对象的本质」就讲完整了：**一根 isa + 一串成员变量，在堆上占着一块向上对齐到 16 倍数的内存。** 那 isa 指向的、成员变量大小所记录在的那个「类」，本身又是什么？下一章揭晓——**类，其实也是一个对象。**
+
+
 
 
 # At Last
