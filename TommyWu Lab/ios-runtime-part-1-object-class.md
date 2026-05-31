@@ -896,7 +896,7 @@ private:
             uint16_t                   _occupied;
             uint16_t                   _flags;
 #elif __LP64__   // 内联 mask，64 位，这里没有_mask，因为mask 被内联编码进 _bucketsAndMaybeMask 里面了。也就是说前面的_bucketsAndMaybeMask，不只是保存 buckets 指针，还顺便藏了 mask。所以第二个 word 就空出来一部分，可以放：
-            uint32_t                   _disguisedPreoptCacheSignature;// 主要是qu
+            uint32_t                   _disguisedPreoptCacheSignature;// 主要是区分是普通cache 还是伪装过的 preopt cache，这里放了一个用于 preopt cache 识别的 signature
             uint16_t                   _occupied;
             uint16_t                   _flags;
 #else            // 内联 mask，32 位
@@ -904,13 +904,14 @@ private:
             uint16_t                   _flags;
 #endif
         };
-        explicit_atomic<preopt_cache_t *> _originalPreoptCache;   // 共享缓存里的预优化缓存
+        // 这是union的另一个成员
+        explicit_atomic<preopt_cache_t *> _originalPreoptCache;   // dyld shared cache 里的预优化方法缓存，这个主要给系统类用，一些方法缓存可以在系统共享缓存里提前计算好，App运行不一定从空缓存开始
     };
 
     cache_t() : _bucketsAndMaybeMask(0) {}
 
     // —— 各 CACHE_MASK_STORAGE 方案下的 bucketsMask/maskShift 等 constexpr（337–453，存储方案内部常量，从略）——
-
+	//是有工具函数
     bool isConstantEmptyCache() const;
     bool canBeFreed() const;
     mask_t mask() const;
@@ -918,6 +919,8 @@ private:
     void setBucketsAndMask(struct bucket_t *newBuckets, mask_t newMask);
     void reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld);
     void collect_free(bucket_t *oldBuckets, mask_t oldCapacity);
+
+    // 创建各种buckets
     static bucket_t *emptyBuckets();
     static bucket_t *mallocBuckets(mask_t newCapacity);
     static bucket_t *allocateBuckets(mask_t newCapacity);
@@ -931,7 +934,7 @@ public:
     Class cls() const;
     mask_t occupied() const;
     void initializeToEmpty();
-
+	// 预优化缓存相关函数
     bool isConstantOptimizedCache(bool strict = false, uintptr_t empty_addr = 0) const;
     bool shouldFlush(SEL sel, IMP imp) const;
     bool isConstantOptimizedCacheWithInlinedSels() const;
@@ -946,7 +949,7 @@ public:
     static size_t bytesForCapacity(uint32_t cap);
 
     // ===== FAST_CACHE_* 标志（存在 _flags 里）=====
-#if CACHE_T_HAS_FLAGS
+#if CACHE_T_HAS_FLAGS  如果当前平台的 `cache_t` 支持 `_flags` 字段，就启用这些快速标志
 #   if __arm64__
 #       define FAST_CACHE_HAS_CXX_DTOR       (1<<0)   // 第 0 位，便于 bfi 进 isa_t::has_cxx_dtor
 #       define FAST_CACHE_HAS_CXX_CTOR       (1<<1)
