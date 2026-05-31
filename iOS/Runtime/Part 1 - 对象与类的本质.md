@@ -349,7 +349,6 @@ private:
 
 ![CleanShot 2026-05-30 at 13.17.22@2x.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/CleanShot%202026-05-30%20at%2013.17.22%402x.png)
 
-
 在看新版怎么收口之前，先把旧版长什么样摆出来对比。这个结构其实经历了三个时代：
 
 ```cpp
@@ -401,21 +400,20 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 
 不管是内部用的 `isa()`，还是对外的 `ISA()`，它们去读那 8 个裸字节时，都是指的同一个——`isa_t`。换句话说，`objc_object` 这个壳本身没几两肉，它把「对象到底属于哪个类、引用计数是多少、有没有关联对象、是否被弱引用」这些信息，**全都打包压进了 `isa_t` 这 8 个字节里**。
 
-所以「对象的本质是什么」这个问题，到这里就收敛成了：`isa_t` 里到底装了什么？下面我们就钻进去看。
-
-
 ![[isa_storage_to_isa_t_steps.html]]
+
+所以「对象的本质是什么」这个问题，到这里就收敛成了：`isa_t` 里到底装了什么？
 
 ## isa_t
 
 ```objc
 union isa_t {
 
-    isa_t() { }
+    isa_t() { } //默认构造函数
 
-    isa_t(uintptr_t value) : bits(value) { }
+    isa_t(uintptr_t value) : bits(value) { }  // 带参数的构造函数
 
-    uintptr_t bits;
+    uintptr_t bits;   //isa_t 里面真正存的是一个和指针一样大的无符号整数(64)。
 
   
 
@@ -476,9 +474,11 @@ public:
 };
 ```
 
+如上代码为 isa_t 联合体本体
 
 
-如上代码为 isa_t 联合体本体，我们接下来看看`ISA_BITFIELD`：
+
+我们接下来看看`ISA_BITFIELD`：
 ```objc
 # if __arm64__
 
