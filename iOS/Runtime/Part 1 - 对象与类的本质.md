@@ -538,6 +538,7 @@ uintptr_t extra_rc          : 7;    // bit25-31 内联引用计数
 
 
 刚才我们了解了，isa_t 长什么样、位怎么分布，接下来我们看看 Runtime是怎么从isa_t 里拿到 Class 的？
+
 ```objc
 isa_t::getClass(MAYBE_UNUSED_AUTHENTICATED_PARAM bool authenticated) const {
 
@@ -610,6 +611,8 @@ isa_t::getClass(MAYBE_UNUSED_AUTHENTICATED_PARAM bool authenticated) const {
 
 
 
+
+![[isa_t_layout 1.html]]
 
 
 # At Last

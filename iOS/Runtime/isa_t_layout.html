@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>isa_t Layout — ObjC Runtime</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0b0f;
+  --card:#13131a;
+  --card2:#1a1a24;
+  --border:rgba(255,255,255,0.06);
+  --border2:rgba(255,255,255,0.11);
+  --text:#dddae8;
+  --text2:#8e8ba3;
+  --text3:#4e4c63;
+  --teal:#2dd4bf;
+  --teal-dim:rgba(45,212,191,0.12);
+  --purple:#a78bfa;
+  --purple-dim:rgba(167,139,250,0.12);
+  --amber:#fbbf24;
+  --amber-dim:rgba(251,191,36,0.12);
+  --coral:#fb7185;
+  --coral-dim:rgba(251,113,133,0.12);
+  --blue:#60a5fa;
+  --gray:#6b7280;
+  --mono:'JetBrains Mono',monospace;
+  --sans:'DM Sans',sans-serif;
+}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  padding:32px 28px 48px;
+  min-width:960px;
+}
+
+/* ── Header ── */
+.page-header{text-align:center;margin-bottom:36px}
+.page-title{
+  font-family:var(--mono);
+  font-size:15px;font-weight:700;
+  letter-spacing:.04em;
+  color:var(--text);
+  margin-bottom:6px;
+}
+.page-sub{
+  font-family:var(--mono);
+  font-size:11px;color:var(--text3);
+  letter-spacing:.06em;
+}
+
+/* ── Main grid ── */
+.grid{
+  display:grid;
+  grid-template-columns:186px 220px 1fr;
+  gap:20px;
+  align-items:start;
+}
+.col{display:flex;flex-direction:column;gap:12px}
+
+/* ── Card ── */
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:10px;
+  overflow:hidden;
+}
+.card-head{
+  background:var(--card2);
+  padding:8px 13px;
+  font-family:var(--mono);
+  font-size:12px;font-weight:700;
+  color:var(--text);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;
+}
+.card-head .accent-dot{
+  width:7px;height:7px;border-radius:50%;flex-shrink:0;
+}
+.card-row{
+  padding:6px 13px;
+  font-family:var(--mono);
+  font-size:11px;
+  color:var(--text2);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:7px;
+  line-height:1.4;
+}
+.card-row:last-child{border-bottom:none}
+.card-row.muted{color:var(--text3);font-size:10px}
+.kw{color:var(--coral)}
+.ty{color:var(--blue)}
+.nm{color:var(--text)}
+.fn{color:var(--teal)}
+
+/* ── Legend ── */
+.legend{
+  display:flex;flex-direction:column;gap:5px;
+  margin-top:4px;
+  padding:10px 13px;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:10px;
+}
+.legend-row{
+  display:flex;align-items:center;gap:7px;
+  font-family:var(--mono);font-size:10px;color:var(--text2);
+}
+.leg-box{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+
+/* ── Platforms grid ── */
+.platforms{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.plat{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:10px;
+  overflow:hidden;
+}
+.plat-head{
+  padding:8px 13px;
+  font-family:var(--mono);
+  font-size:11.5px;font-weight:700;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.plat-sub{
+  font-size:9.5px;font-weight:400;
+  color:var(--text3);
+  font-family:var(--mono);
+}
+
+/* ── Bit bar ── */
+.bit-bar{
+  display:flex;height:6px;
+  margin:10px 13px 6px;
+  border-radius:3px;overflow:hidden;gap:1px;
+}
+.bs{height:100%;border-radius:1px;transition:filter .15s}
+.bs:hover{filter:brightness(1.4)}
+.bs-teal{background:var(--teal)}
+.bs-purple{background:var(--purple)}
+.bs-amber{background:var(--amber)}
+.bs-coral{background:var(--coral)}
+.bs-gray{background:var(--gray)}
+
+/* ── Field rows ── */
+.frow{
+  display:grid;
+  grid-template-columns:26px 1fr 52px;
+  align-items:center;
+  padding:5px 13px;
+  font-family:var(--mono);
+  font-size:10.5px;
+  border-bottom:1px solid var(--border);
+  cursor:default;
+  transition:background .1s;
+  position:relative;
+}
+.frow:last-child{border-bottom:none}
+.frow:hover{background:rgba(255,255,255,0.025)}
+.frow:hover .tooltip{opacity:1;pointer-events:auto}
+.fbits{color:var(--text3);text-align:right;padding-right:8px;font-size:10px}
+.fname{color:var(--text2)}
+.fbits-pos{color:var(--text3);font-size:9.5px;text-align:right}
+.ct{color:var(--teal)}
+.cp{color:var(--purple)}
+.ca{color:var(--amber)}
+.cc{color:var(--coral)}
+.cg{color:var(--gray)}
+
+/* ── Tooltip ── */
+.tooltip{
+  position:absolute;right:calc(100% + 8px);top:50%;
+  transform:translateY(-50%);
+  background:#1e1e2e;
+  border:1px solid var(--border2);
+  border-radius:6px;
+  padding:6px 10px;
+  font-size:10px;
+  color:var(--text2);
+  white-space:nowrap;
+  pointer-events:none;
+  opacity:0;
+  transition:opacity .15s;
+  z-index:10;
+}
+
+/* ── Platform note ── */
+.plat-note{
+  padding:5px 13px 7px;
+  font-size:9.5px;color:var(--text3);
+  font-family:var(--mono);
+  border-top:1px solid var(--border);
+}
+
+/* ── Badge ── */
+.badge{
+  display:inline-block;
+  padding:1px 6px;border-radius:4px;
+  font-size:9.5px;font-weight:500;
+  font-family:var(--mono);
+  margin-left:5px;vertical-align:middle;
+}
+.b-pac{background:rgba(251,113,133,.15);color:var(--coral);border:1px solid rgba(251,113,133,.25)}
+.b-sim{background:rgba(167,139,250,.15);color:var(--purple);border:1px solid rgba(167,139,250,.25)}
+.b-idx{background:rgba(251,191,36,.15);color:var(--amber);border:1px solid rgba(251,191,36,.25)}
+
+/* ── Footer note ── */
+.footer-note{
+  margin-top:20px;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-left:2px solid var(--teal);
+  border-radius:8px;
+  padding:12px 16px;
+  font-family:var(--mono);
+  font-size:10.5px;
+  color:var(--text2);
+  line-height:1.9;
+}
+.footer-note .hl{color:var(--teal)}
+.footer-note .em{color:var(--coral)}
+
+/* ── Divider ── */
+.divider{
+  height:1px;
+  background:var(--border);
+  margin:4px 13px;
+}
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div class="page-title">Objective-C Runtime — isa_t Layout</div>
+  <div class="page-sub">apple-oss-distributions / objc4 · latest · objc_object uses isa_storage</div>
+</div>
+
+<div class="grid">
+
+  <!-- ── Col 1: objc_object / objc_class ── -->
+  <div class="col">
+
+    <div class="card">
+      <div class="card-head">
+        <span class="accent-dot" style="background:var(--teal)"></span>
+        objc_object
+      </div>
+      <div class="card-row"><span class="kw">private:</span></div>
+      <div class="card-row">
+        <span class="ty">char</span>&nbsp;<span class="nm">isa_storage</span>[sizeof(isa_t)]
+      </div>
+      <div class="card-row muted">↳ reinterpret_cast&lt;isa_t*&gt; 访问</div>
+      <div class="card-row muted">↳ 旧版为 isa_t isa（public）</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="accent-dot" style="background:var(--purple)"></span>
+        objc_class : objc_object
+      </div>
+      <div class="card-row"><span class="ty">Class</span>&nbsp;<span class="nm">superclass</span></div>
+      <div class="card-row"><span class="ty">cache_t</span>&nbsp;<span class="nm">cache</span></div>
+      <div class="card-row"><span class="ty">class_data_bits_t</span>&nbsp;<span class="nm">bits</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="accent-dot" style="background:var(--blue)"></span>
+        id / ordinary object
+      </div>
+      <div class="card-row muted">typedef objc_object * id</div>
+      <div class="card-row muted">isa 位于 isa_storage 起始</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="accent-dot" style="background:var(--amber)"></span>
+        NSObject instance
+      </div>
+      <div class="card-row muted">继承自 objc_object</div>
+      <div class="card-row muted">isa 即 isa_storage 内存</div>
+    </div>
+
+    <!-- legend -->
+    <div class="legend">
+      <div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:3px">位域颜色</div>
+      <div class="legend-row"><div class="leg-box" style="background:var(--teal)"></div>1-bit 标志位</div>
+      <div class="legend-row"><div class="leg-box" style="background:var(--purple)"></div>shiftcls（Class 指针）</div>
+      <div class="legend-row"><div class="leg-box" style="background:var(--amber)"></div>magic 校验值</div>
+      <div class="legend-row"><div class="leg-box" style="background:var(--coral)"></div>引用计数相关</div>
+      <div class="legend-row"><div class="leg-box" style="background:var(--gray)"></div>unused / 预留</div>
+    </div>
+  </div>
+
+  <!-- ── Col 2: isa_t union ── -->
+  <div class="col">
+    <div class="card">
+      <div class="card-head">
+        <span class="accent-dot" style="background:var(--coral)"></span>
+        isa_t
+        <span style="font-size:9.5px;color:var(--text3);font-weight:400;margin-left:4px">union · 8 bytes</span>
+      </div>
+      <!-- public members -->
+      <div class="card-row"><span class="ty">uintptr_t</span>&nbsp;<span class="nm">bits</span></div>
+      <div class="divider"></div>
+      <div class="card-row"><span class="kw">private:</span>&nbsp;<span class="ty">Class</span>&nbsp;<span class="nm">cls</span></div>
+      <div class="card-row muted">↳ PAC 签名，不可直接访问</div>
+      <div class="divider"></div>
+      <div class="card-row">
+        <span style="color:var(--text3)">anonymous</span>&nbsp;<span class="nm">ISA_BITFIELD</span>
+      </div>
+      <div class="card-row muted">↳ 按平台展开为位域 struct</div>
+      <div class="divider"></div>
+      <div class="card-row"><span class="fn">setClass</span>(cls, obj)</div>
+      <div class="card-row"><span class="fn">getClass</span>(authenticated)</div>
+      <div class="card-row"><span class="fn">getDecodedClass</span>(auth)</div>
+      <div class="divider"></div>
+      <div class="card-row"><span class="fn">isDeallocating</span>()</div>
+      <div class="card-row"><span class="fn">setDeallocating</span>()</div>
+    </div>
+
+    <!-- union explanation -->
+    <div class="card">
+      <div class="card-head">
+        <span class="accent-dot" style="background:var(--amber)"></span>
+        union 的含义
+      </div>
+      <div class="card-row muted">三个成员共享同一块内存</div>
+      <div class="card-row muted">bits → 整数读法</div>
+      <div class="card-row muted">cls → 指针读法（private）</div>
+      <div class="card-row muted">ISA_BITFIELD → 位域读法</div>
+      <div class="card-row muted">改其一，另外两个随之变化</div>
+    </div>
+  </div>
+
+  <!-- ── Col 3: Platforms ── -->
+  <div class="platforms">
+
+    <!-- arm64e -->
+    <div class="plat">
+      <div class="plat-head" style="color:var(--coral)">
+        arm64e <span class="badge b-pac">PAC</span>
+        <span class="plat-sub">64 bit</span>
+      </div>
+      <div class="bit-bar">
+        <div class="bs bs-teal" style="flex:1" title="nonpointer"></div>
+        <div class="bs bs-teal" style="flex:1" title="has_assoc"></div>
+        <div class="bs bs-teal" style="flex:1" title="weakly_referenced"></div>
+        <div class="bs bs-purple" style="flex:52" title="shiftcls_and_sig"></div>
+        <div class="bs bs-coral" style="flex:1" title="has_sidetable_rc"></div>
+        <div class="bs bs-coral" style="flex:8" title="extra_rc"></div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">nonpointer</span>
+        <span class="fbits-pos">bit 0</span>
+        <div class="tooltip">1 = nonpointer isa 格式</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">has_assoc</span>
+        <span class="fbits-pos">bit 1</span>
+        <div class="tooltip">有关联对象</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">weakly_referenced</span>
+        <span class="fbits-pos">bit 2</span>
+        <div class="tooltip">有弱引用</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cp">52</span>
+        <span class="fname cp">shiftcls_and_sig</span>
+        <span class="fbits-pos">3~54</span>
+        <div class="tooltip">Class 指针 + PAC 签名</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cc">1</span>
+        <span class="fname cc">has_sidetable_rc</span>
+        <span class="fbits-pos">bit 55</span>
+        <div class="tooltip">引用计数溢出到 SideTable</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cc">8</span>
+        <span class="fname cc">extra_rc</span>
+        <span class="fbits-pos">56~63</span>
+        <div class="tooltip">内联引用计数（rc - 1）</div>
+      </div>
+      <div class="plat-note">has_cxx_dtor 移至 class_ro_t.flags</div>
+    </div>
+
+    <!-- arm64 packed / simulator -->
+    <div class="plat">
+      <div class="plat-head" style="color:var(--purple)">
+        arm64 packed <span class="badge b-sim">+ simulator</span>
+        <span class="plat-sub">64 bit</span>
+      </div>
+      <div class="bit-bar">
+        <div class="bs bs-teal" style="flex:1"></div>
+        <div class="bs bs-teal" style="flex:1"></div>
+        <div class="bs bs-teal" style="flex:1"></div>
+        <div class="bs bs-purple" style="flex:33"></div>
+        <div class="bs bs-amber" style="flex:6"></div>
+        <div class="bs bs-teal" style="flex:1"></div>
+        <div class="bs bs-gray" style="flex:1"></div>
+        <div class="bs bs-coral" style="flex:1"></div>
+        <div class="bs bs-coral" style="flex:19"></div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">nonpointer</span>
+        <span class="fbits-pos">bit 0</span>
+        <div class="tooltip">1 = nonpointer isa 格式</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">has_assoc</span>
+        <span class="fbits-pos">bit 1</span>
+        <div class="tooltip">有关联对象</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">has_cxx_dtor</span>
+        <span class="fbits-pos">bit 2</span>
+        <div class="tooltip">有 C++ 析构 / .cxx_destruct</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cp">33</span>
+        <span class="fname cp">shiftcls</span>
+        <span class="fbits-pos">3~35</span>
+        <div class="tooltip">Class 指针右移 3 位</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ca">6</span>
+        <span class="fname ca">magic</span>
+        <span class="fbits-pos">36~41</span>
+        <div class="tooltip">固定值 0x3b，调试校验</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">weakly_referenced</span>
+        <span class="fbits-pos">bit 42</span>
+        <div class="tooltip">有弱引用</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cg">1</span>
+        <span class="fname cg">unused</span>
+        <span class="fbits-pos">bit 43</span>
+        <div class="tooltip">预留位，未使用</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cc">1</span>
+        <span class="fname cc">has_sidetable_rc</span>
+        <span class="fbits-pos">bit 44</span>
+        <div class="tooltip">引用计数溢出到 SideTable</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cc">19</span>
+        <span class="fname cc">extra_rc</span>
+        <span class="fbits-pos">45~63</span>
+        <div class="tooltip">内联引用计数，最大 524287</div>
+      </div>
+    </div>
+
+    <!-- x86_64 packed -->
+    <div class="plat">
+      <div class="plat-head" style="color:var(--blue)">
+        x86_64 packed
+        <span class="plat-sub">64 bit</span>
+      </div>
+      <div class="bit-bar">
+        <div class="bs bs-teal" style="flex:1"></div>
+        <div class="bs bs-teal" style="flex:1"></div>
+        <div class="bs bs-teal" style="flex:1"></div>
+        <div class="bs bs-purple" style="flex:44"></div>
+        <div class="bs bs-amber" style="flex:6"></div>
+        <div class="bs bs-teal" style="flex:1"></div>
+        <div class="bs bs-gray" style="flex:1"></div>
+        <div class="bs bs-coral" style="flex:1"></div>
+        <div class="bs bs-coral" style="flex:8"></div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">nonpointer</span>
+        <span class="fbits-pos">bit 0</span>
+        <div class="tooltip">1 = nonpointer isa 格式</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">has_assoc</span>
+        <span class="fbits-pos">bit 1</span>
+        <div class="tooltip">有关联对象</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">has_cxx_dtor</span>
+        <span class="fbits-pos">bit 2</span>
+        <div class="tooltip">有 C++ 析构 / .cxx_destruct</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cp">44</span>
+        <span class="fname cp">shiftcls</span>
+        <span class="fbits-pos">3~46</span>
+        <div class="tooltip">Class 指针右移 3 位</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ca">6</span>
+        <span class="fname ca">magic</span>
+        <span class="fbits-pos">47~52</span>
+        <div class="tooltip">固定值 0x3b，调试校验</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">weakly_referenced</span>
+        <span class="fbits-pos">bit 53</span>
+        <div class="tooltip">有弱引用</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cg">1</span>
+        <span class="fname cg">unused</span>
+        <span class="fbits-pos">bit 54</span>
+        <div class="tooltip">预留位，未使用</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cc">1</span>
+        <span class="fname cc">has_sidetable_rc</span>
+        <span class="fbits-pos">bit 55</span>
+        <div class="tooltip">引用计数溢出到 SideTable</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cc">8</span>
+        <span class="fname cc">extra_rc</span>
+        <span class="fbits-pos">56~63</span>
+        <div class="tooltip">内联引用计数（rc - 1）</div>
+      </div>
+    </div>
+
+    <!-- indexed isa -->
+    <div class="plat">
+      <div class="plat-head" style="color:var(--amber)">
+        indexed isa <span class="badge b-idx">armv7k · arm64_32</span>
+        <span class="plat-sub">32 bit</span>
+      </div>
+      <div class="bit-bar">
+        <div class="bs bs-teal" style="flex:1"></div>
+        <div class="bs bs-teal" style="flex:1"></div>
+        <div class="bs bs-purple" style="flex:15"></div>
+        <div class="bs bs-amber" style="flex:4"></div>
+        <div class="bs bs-teal" style="flex:1"></div>
+        <div class="bs bs-teal" style="flex:1"></div>
+        <div class="bs bs-gray" style="flex:1"></div>
+        <div class="bs bs-coral" style="flex:1"></div>
+        <div class="bs bs-coral" style="flex:7"></div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">nonpointer</span>
+        <span class="fbits-pos">bit 0</span>
+        <div class="tooltip">1 = nonpointer isa 格式</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">has_assoc</span>
+        <span class="fbits-pos">bit 1</span>
+        <div class="tooltip">有关联对象</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cp">15</span>
+        <span class="fname cp">indexcls</span>
+        <span class="fbits-pos">2~16</span>
+        <div class="tooltip">类表索引（非直接指针）</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ca">4</span>
+        <span class="fname ca">magic</span>
+        <span class="fbits-pos">17~20</span>
+        <div class="tooltip">校验值</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">has_cxx_dtor</span>
+        <span class="fbits-pos">bit 21</span>
+        <div class="tooltip">有 C++ 析构</div>
+      </div>
+      <div class="frow">
+        <span class="fbits ct">1</span>
+        <span class="fname ct">weakly_referenced</span>
+        <span class="fbits-pos">bit 22</span>
+        <div class="tooltip">有弱引用</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cg">1</span>
+        <span class="fname cg">unused</span>
+        <span class="fbits-pos">bit 23</span>
+        <div class="tooltip">预留位</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cc">1</span>
+        <span class="fname cc">has_sidetable_rc</span>
+        <span class="fbits-pos">bit 24</span>
+        <div class="tooltip">引用计数溢出到 SideTable</div>
+      </div>
+      <div class="frow">
+        <span class="fbits cc">7</span>
+        <span class="fname cc">extra_rc</span>
+        <span class="fbits-pos">25~31</span>
+        <div class="tooltip">内联引用计数（rc - 1）</div>
+      </div>
+    </div>
+
+  </div><!-- .platforms -->
+</div><!-- .grid -->
+
+<div class="footer-note">
+  <span class="hl">arm64e</span>：启用 PAC / ptrauth，<span class="em">has_cxx_dtor</span> 移至 class_ro_t.flags，shiftcls_and_sig 52 bit 同时存 Class + 签名。&nbsp;&nbsp;
+  <span class="hl">arm64 simulator</span>：不启用 PAC，走 arm64 packed 同一套布局。&nbsp;&nbsp;
+  <span class="hl">objc_object</span>：最新源码将 isa_t isa 重构为 <span class="em">char isa_storage[sizeof(isa_t)]</span>（private），通过 reinterpret_cast&lt;isa_t*&gt; 访问。&nbsp;&nbsp;
+  鼠标悬停字段行查看说明。
+</div>
+
+</body>
+</html>
