@@ -404,8 +404,6 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 
 所以「对象的本质是什么」这个问题，到这里就收敛成了：`isa_t` 里到底装了什么？
 
-![objc_isa_t_latest_layout.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/objc_isa_t_latest_layout.png)
-
 
 ## isa_t
 
