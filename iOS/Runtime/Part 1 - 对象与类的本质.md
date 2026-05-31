@@ -424,29 +424,31 @@ private:
     // force clients to go through setClass/getClass by making this
 
     // private.
+    
 
     Class cls;
+    // 这段放在 private 中，让你不能从外部通过isa.cls直接访问，注释的意思是说：访问 `Class` 指针时，可能需要做 **ptrauth 指针认证**。在 Apple 的 arm64e 架构上，指针可能带有签名，不能像普通地址一样随便读出来用。Runtime 需要通过专门逻辑去认证、解码、还原。
 
   
 
 public:
 
 #if defined(ISA_BITFIELD)
-
+// 如果当前平台定义了 ISA_BITFIELD，就启用 isa 位域结构。
     struct {
-
         ISA_BITFIELD;  // defined in isa.h
-
     };
 
   
-
+// 当前平台的 isa 是否支持把一部分引用计数直接存在 isa 里面。
 #if ISA_HAS_INLINE_RC
 
     bool isDeallocating() const {
 
         return extra_rc == 0 && has_sidetable_rc == 0;
 
+	//extra_rc：存在 isa 里的额外引用计数
+	//has_sidetable_rc：是否还有引用计数存在 SideTable 里
     }
 
     void setDeallocating() {
@@ -475,9 +477,6 @@ public:
 ```
 
 如上代码为 isa_t 联合体本体
-
-
-
 我们接下来看看`ISA_BITFIELD`：
 ```objc
 # if __arm64__
