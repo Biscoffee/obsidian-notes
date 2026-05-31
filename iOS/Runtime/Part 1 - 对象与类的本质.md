@@ -540,74 +540,161 @@ uintptr_t extra_rc          : 7;    // bit25-31 内联引用计数
 刚才我们了解了，isa_t 长什么样、位怎么分布，接下来我们看看 Runtime是怎么从isa_t 里拿到 Class 的？
 
 ```objc
+// 从 isa 里把 Class 指针抠出来。authenticated 决定要不要做 PAC 指针认证：
+// 多数调用方对安全不敏感，默认 false 跳过认证换性能；只有 msgSend / 填缓存
+// 这类安全攸关的路径才会传 true。
+inline Class
 isa_t::getClass(MAYBE_UNUSED_AUTHENTICATED_PARAM bool authenticated) const {
-
 #if SUPPORT_INDEXED_ISA
-
-    return cls;
-
+    // 索引式 isa（armv7k / arm64_32）：cls 本身就是裸类指针，原样返回
+    return cls;
 #else
+    uintptr_t clsbits = bits;          // 先拿到完整的 64 位 isa
 
-  
+#   if __has_feature(ptrauth_calls)    // ===== arm64e：类指针被 PAC 签过名 =====
+#       if ISA_SIGNING_AUTH_MODE == ISA_SIGNING_AUTH
+    if (authenticated) {
+        // 要认证：先用 ISA_MASK 保留「类指针 + 签名」那 52 位（shiftcls_and_sig）
+        clsbits &= ISA_MASK;
+        if (clsbits == 0)
+            return Nil;
+        // 再用 ptrauth_auth_data 验签 + 还原出真正能用的指针；鉴别子由
+        // this(本 isa 的地址) 和固定常量混合而成，地址不对就还原失败
+        clsbits = (uintptr_t)ptrauth_auth_data((void *)clsbits, ISA_SIGNING_KEY,
+                      ptrauth_blend_discriminator(this, ISA_SIGNING_DISCRIMINATOR));
+    } else {
+        // 不认证：直接用运行期算好的 objc_debug_isa_class_mask 把签名/标志/RC 抹掉
+        clsbits &= objc_debug_isa_class_mask;
+    }
+#       else
+    clsbits &= objc_debug_isa_class_mask;   // 编译配置不要求认证，同样走快路
+#       endif
 
-    uintptr_t clsbits = bits;
+#   else                               // ===== arm64(非e) / x86_64：指针无签名 =====
+    clsbits &= ISA_MASK;               // 一把 ISA_MASK 抹掉低位标志 + 高位 RC 即可
+#   endif
 
-  
-
-#   if __has_feature(ptrauth_calls)
-
-#       if ISA_SIGNING_AUTH_MODE == ISA_SIGNING_AUTH
-
-    // Most callers aren't security critical, so skip the
-
-    // authentication unless they ask for it. Message sending and
-
-    // cache filling are protected by the auth code in msgSend.
-
-    if (authenticated) {
-
-        // Mask off all bits besides the class pointer and signature.
-
-        clsbits &= ISA_MASK;
-
-        if (clsbits == 0)
-
-            return Nil;
-
-        clsbits = (uintptr_t)ptrauth_auth_data((void *)clsbits, ISA_SIGNING_KEY, ptrauth_blend_discriminator(this, ISA_SIGNING_DISCRIMINATOR));
-
-    } else {
-
-        // If not authenticating, strip using the precomputed class mask.
-
-        clsbits &= objc_debug_isa_class_mask;
-
-    }
-
-#       else
-
-    // If not authenticating, strip using the precomputed class mask.
-
-    clsbits &= objc_debug_isa_class_mask;
-
-#       endif
-
-  
-
-#   else
-
-    clsbits &= ISA_MASK;
-
-#   endif
-
-  
-
-    return (Class)clsbits;
-
+    return (Class)clsbits;             // 剩下的就是一根干净的 Class 指针
 #endif
-
 }
 ```
+
+### Tagged Pointer 优化
+
+到这里我们讲的「对象」，都是堆上一块内存、开头一根 `isa` 的普通对象。但其实还有一类「对象」根本没有 `isa`——它就是 **Tagged Pointer（标记指针）**。
+
+对一个 `NSNumber *n = @5` 这种**又小又高频**的值类型来说，为了一个 `5` 去 `malloc` 一块堆内存、维护 `isa`、再管引用计数，实在太奢侈。Tagged Pointer 的思路很直接：**干脆不分配内存，把「类型标记 + 数据本身」直接塞进那 8 字节的指针里。** 这个「指针」根本不指向任何地址，**它本身就是数据**——`@5` 里的 `5`，就藏在这根「指针」的二进制位里。
+
+#### 怎么判定一个指针是不是 Tagged Pointer
+
+判定逻辑只有一行（`objc-internal.h`）：
+
+```objc
+static inline bool
+_objc_isTaggedPointer(const void * _Nullable ptr)
+{
+    // 标记位被置 1 的，就不是真指针，而是 Tagged Pointer
+    return ((uintptr_t)ptr & _OBJC_TAG_MASK) == _OBJC_TAG_MASK;
+}
+```
+
+关键就在 `_OBJC_TAG_MASK` 这个「标记位」放在哪，随平台不同：
+
+```objc
+#if OBJC_SPLIT_TAGGED_POINTERS        // arm64（iOS 真机 / Apple Silicon）
+#   define _OBJC_TAG_MASK (1UL<<63)   // 看最高位 bit63
+#elif OBJC_MSB_TAGGED_POINTERS        // 其它（如旧 iOS）
+#   define _OBJC_TAG_MASK (1UL<<63)
+#else                                 // x86_64 Mac
+#   define _OBJC_TAG_MASK 1UL         // 看最低位 bit0
+#endif
+```
+
+这就解释了一个常见现象：真机上打印一个 Tagged 的 `NSNumber`，地址常是 `0xb000...` / `0x8000...` 这种「最高位为 1 的怪地址」——因为那根本不是地址，是被置了标记位的数据。
+
+#### 它标记的是哪些类
+
+指针里除了标记位，还存了一个 `tag`，用来标识「这是哪个类的对象」。`tag` 的取值来自一张枚举表（`objc-internal.h`，这里节选）：
+
+```objc
+enum objc_tag_index_t : uint16_t
+{
+    // tag 0..6：60 位载荷
+    OBJC_TAG_NSAtom            = 0,
+    OBJC_TAG_NSString          = 2,
+    OBJC_TAG_NSNumber          = 3,
+    OBJC_TAG_NSIndexPath       = 4,
+    OBJC_TAG_NSManagedObjectID = 5,
+    OBJC_TAG_NSDate            = 6,
+    OBJC_TAG_RESERVED_7        = 7,   // 保留
+
+    // tag 8..263：52 位扩展载荷（NSColor / UIColor / NSIndexSet ...）
+    OBJC_TAG_Photos_1          = 8,
+    OBJC_TAG_NSColor           = 16,
+    OBJC_TAG_UIColor           = 17,
+    // ...
+};
+```
+
+所以 arm64 上那 8 个字节大致是这样分的：
+
+```
+bit63        标记位（=1 表示这是 Tagged Pointer）
+低位若干 bit   tag —— 它是哪个类（NSNumber? NSString? NSDate?）
+中间 bit      payload —— 真正的数据
+```
+
+tag 0–6 有 60 位载荷，扩展 tag 有 52 位载荷。**装不下就退回普通堆对象**——比如一个很大的整数、一个很长的字符串，就不会做成 Tagged Pointer。
+
+#### 没有 isa，它怎么找到类
+
+这一点正好和前面 `getClass` 那节对照着看。普通对象靠 `isa.bits & mask` 拿到 `Class`；而 Tagged Pointer 根本没有 `isa`，于是 `getIsa()` 走了另一条路（`objc-object.h`）：
+
+```objc
+inline Class
+objc_object::getIsa() const
+{
+    // 普通对象：还是走 isa
+    if (fastpath(!isTaggedPointer())) return ISA(/*authenticated*/true);
+
+    // Tagged Pointer：从指针里抠出 tag 当下标，去全局表里查类
+    uintptr_t slot = ((uintptr_t)this >> _OBJC_TAG_SLOT_SHIFT) & _OBJC_TAG_SLOT_MASK;
+    Class cls = objc_tag_classes[slot];   // 即 objc_debug_taggedpointer_classes[]
+    // ...（扩展 tag 再查 ext 表）
+    return cls;
+}
+```
+
+它把指针里的 `tag` 当作下标，去 `objc_debug_taggedpointer_classes[]` 这张「tag → Class」的全局表里查出类。
+
+这也顺带解释了前面 `objc_object` 源码里那一堆 `ASSERT(!isTaggedPointer())`——像 `ISA()` 开头就断言「我不是 tagged」，因为 `ISA()` 只处理真有 `isa` 的对象，**Tagged Pointer 必须改走 `getIsa()`**。
+
+#### 为什么内存里看到的值像「乱码」
+
+iOS 8.3 之后，Tagged Pointer 的真实布局在存进指针前，会先和一个全局混淆值 `objc_debug_taggedpointer_obfuscator` 做一次**异或加扰**：
+
+```objc
+uintptr_t value = (obfuscator ^ ptr);   // 编码/解码都要异或这个值
+```
+
+目的是**防止开发者去硬编码、依赖它的内部位布局**（Apple 保留随时改布局的权利）。所以你直接在内存里看到的 Tagged 指针位是被混淆过的，要 decode 才能还原出真正的 tag 和 payload。
+
+#### 它带来的好处
+
+- **零分配**：不 `malloc`、不进堆，创建和销毁几乎零成本；
+- **引用计数免费**：Tagged 对象的 `retain / release` 直接是 no-op——源码里 `rootRetain` 开头就是 `if (isTaggedPointer()) return (id)this;` 原样返回；
+- **访问快**：数据就在指针里，无需解引用去堆上读。
+
+> **几点边界**
+> 1. 不是所有 `NSNumber / NSString` 都是 Tagged——超出载荷容量（大数、长字符串）会退回普通堆对象。
+> 2. Tagged 对象 `object_getClass` 能拿到类（如 `__NSCFNumber` / `NSTaggedPointerString`），但它**没有 isa 字段**，行为和普通对象不完全一样（retain 免费、布局被混淆）。
+> 3. 布局随架构 / 系统版本会变（arm64 看 bit63、x86 Mac 看 bit0），别把某个具体 bit 位当成「永远如此」写死。
+
+
+
+
+
+
 
 
 
