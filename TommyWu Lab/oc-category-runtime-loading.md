@@ -6,7 +6,7 @@ tags: ["iOS", "Objective-C", "Runtime", "Category"]
 category: "iOS"
 series: "iOS Runtime 系列"
 seriesSlug: "ios-runtime"
-seriesOrder: 1
+seriesOrder: 2
 pinned: true
 draft: false
 ---

@@ -1,4 +1,14 @@
-# 【iOS】Runtime - Part 1 && 对象与类的本质
+---
+title: "【iOS】Runtime - Part 1 && 对象与类的本质"
+published: 2026-05-31
+description: "从 objc_object、isa_t、Tagged Pointer、对象内存布局一路拆到类与对象的本质，梳理 Objective-C Runtime 中对象如何关联到类。"
+tags: ["iOS", "Objective-C", "Runtime", "isa", "objc4"]
+category: "iOS"
+series: "iOS Runtime 系列"
+seriesSlug: "ios-runtime"
+seriesOrder: 1
+draft: false
+---
 
 ## 目录
 
@@ -67,7 +77,7 @@ objc_msgSend(person, @selector(sayHello));
  你会搜到两个结果，这正是本章的核心对比：
 
 这里是入口：他说明OC对象底层至少有一个isa，isa用来找到对象对应的类
-```objective-C
+```objc
 /// Represents an instance of a class.
 struct objc_object {
     Class _Nonnull isa  OBJC_ISA_AVAILABILITY;
@@ -81,29 +91,29 @@ private:
 
     char isa_storage[sizeof(isa_t)];
 
-  
+
 
     isa_t &isa() { return *reinterpret_cast<isa_t *>(isa_storage); }
 
     const isa_t &isa() const { return *reinterpret_cast<const isa_t *>(isa_storage); }
 
-  
+
 
 public:
 
-  
+
 
     // ISA() assumes this is NOT a tagged pointer object
 
     Class ISA(bool authenticated = false) const;
 
-  
+
 
     // rawISA() assumes this is NOT a tagged pointer object or a non pointer ISA
 
     Class rawISA() const;
 
-  
+
 
     // getIsa() allows this to be a tagged pointer object
 
@@ -111,7 +121,7 @@ public:
 
     uintptr_t isaBits() const;
 
-  
+
 
     // initIsa() should be used to init the isa of new objects only.
 
@@ -133,7 +143,7 @@ public:
 
     void initInstanceIsa(Class cls, bool hasCxxDtor);
 
-  
+
 
     // changeIsa() should be used to change the isa of existing objects.
 
@@ -141,7 +151,7 @@ public:
 
     Class changeIsa(Class newCls);
 
-  
+
 
     bool hasNonpointerIsa() const;
 
@@ -153,7 +163,7 @@ public:
 
     bool isClass() const;
 
-  
+
 
     // object may have associated objects?
 
@@ -161,7 +171,7 @@ public:
 
     void setHasAssociatedObjects();
 
-  
+
 
     // object may be weakly referenced?
 
@@ -169,19 +179,19 @@ public:
 
     void setWeaklyReferenced_nolock();
 
-  
+
 
     // object may be uniquely referenced?
 
     bool isUniquelyReferenced() const;
 
-  
+
 
     // object may have -.cxx_destruct implementation?
 
     bool hasCxxDtor() const;
 
-  
+
 
     // Optimized calls to retain/release methods
 
@@ -191,7 +201,7 @@ public:
 
     id autorelease();
 
-  
+
 
     // Implementations of retain/release methods
 
@@ -207,7 +217,7 @@ public:
 
     uintptr_t rootRetainCount() const;
 
-  
+
 
     // Implementation of dealloc methods
 
@@ -217,19 +227,19 @@ public:
 
     void rootDealloc();
 
-  
+
 
 private:
 
     void initIsa(Class newCls, bool nonpointer, bool hasCxxDtor);
 
-  
+
 
     // Slow paths for inline control
 
     id rootAutorelease2();
 
-  
+
 
 #if SUPPORT_NONPOINTER_ISA
 
@@ -253,7 +263,7 @@ private:
 
     };
 
-  
+
 
     // Unified retain count manipulation for nonpointer isa
 
@@ -265,23 +275,23 @@ private:
 
     uintptr_t rootRelease_underflow(bool performDealloc);
 
-  
+
 
     void clearDeallocating_slow();
 
-  
+
 
     // Side table retain count overflow for nonpointer isa
 
     struct SidetableBorrow { size_t borrowed, remaining; };
 
-  
+
 
     void sidetable_lock() const;
 
     void sidetable_unlock() const;
 
-  
+
 
     void sidetable_moveExtraRC_nolock(size_t extra_rc, bool isDeallocating, bool weaklyReferenced);
 
@@ -295,7 +305,7 @@ private:
 
 #endif  SUPPORT_NONPOINTER_ISA 
 
-  
+
 
     // Side-table-only retain count
 
@@ -303,29 +313,29 @@ private:
 
     void sidetable_clearDeallocating();
 
-  
+
 
     bool sidetable_isWeaklyReferenced() const;
 
     void sidetable_setWeaklyReferenced_nolock();
 
-  
+
 
     id sidetable_retain(bool locked = false);
 
     id sidetable_retain_slow(SideTable& table);
 
-  
+
 
     uintptr_t sidetable_release(bool locked = false, bool performDealloc = true);
 
     uintptr_t sidetable_release_slow(SideTable& table, bool performDealloc = true);
 
-  
+
 
     bool sidetable_tryRetain();
 
-  
+
 
     uintptr_t sidetable_retainCount() const;
 
@@ -335,7 +345,7 @@ private:
 
 #endif
 
-  
+
 
     void performDealloc();
 
@@ -397,7 +407,7 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 
 不管是内部用的 `isa()`，还是对外的 `ISA()`，它们去读那 8 个裸字节时，都是指的同一个——`isa_t`。换句话说，`objc_object` 这个壳本身没几两肉，它把「对象到底属于哪个类、引用计数是多少、有没有关联对象、是否被弱引用」这些信息，**全都打包压进了 `isa_t` 这 8 个字节里**。
 
-![[isa_storage_to_isa_t_steps.html]]
+<iframe src="/posts/ios-runtime-part-1-object-class/isa-storage-to-isa-t-steps.html" title="isa_storage 到 isa_t 的解读过程" loading="lazy" style="width:100%;min-height:520px;border:1px solid var(--line-divider);border-radius:18px;background:#07110f;overflow:hidden;"></iframe>
 
 所以「对象的本质是什么」这个问题，到这里就收敛成了：`isa_t` 里到底装了什么？
 
@@ -413,7 +423,7 @@ union isa_t {
 
     uintptr_t bits;   //isa_t 里面真正存的是一个和指针一样大的无符号整数(64)。
 
-  
+
 
 private:
 
@@ -422,12 +432,12 @@ private:
     // force clients to go through setClass/getClass by making this
 
     // private.
-    
+   
 
     Class cls;
     // 这段放在 private 中，让你不能从外部通过isa.cls直接访问，注释的意思是说：访问 `Class` 指针时，可能需要做 **ptrauth 指针认证**。在 Apple 的 arm64e 架构上，指针可能带有签名，不能像普通地址一样随便读出来用。Runtime 需要通过专门逻辑去认证、解码、还原。
 
-  
+
 
 public:
 
@@ -437,7 +447,7 @@ public:
         ISA_BITFIELD;  // defined in isa.h
     };
 
-  
+
 // 当前平台的 isa 是否支持把一部分引用计数直接存在 isa 里面。
 #if ISA_HAS_INLINE_RC
 
@@ -459,11 +469,11 @@ public:
 
 #endif // ISA_HAS_INLINE_RC
 
-  
+
 
 #endif  defined(ISA_BITFIELD) 
 
-  
+
 
     void setClass(Class cls, objc_object *obj);
 
@@ -476,7 +486,7 @@ public:
 
 如上代码为 isa_t 联合体本体，**union 里所有成员，起始地址相同，共享同一块内存。bits、cls、ISA_BITFIELD struct 都是这块内存的**成员
 
-![[isa_t_three_views.html]]
+<iframe src="/posts/ios-runtime-part-1-object-class/isa-t-three-views.html" title="isa_t 的三种视角" loading="lazy" style="width:100%;min-height:620px;border:1px solid var(--line-divider);border-radius:18px;background:#07110f;overflow:hidden;"></iframe>
 
 
 ## ISA_BITFIELD：isa 的位布局
@@ -692,7 +702,7 @@ uintptr_t value = (obfuscator ^ ptr);   // 编码/解码都要异或这个值
 > 3. 布局随架构 / 系统版本会变（arm64 看 bit63、x86 Mac 看 bit0），别把某个具体 bit 位当成「永远如此」写死。
 
 
-![[isa_t_layout 1.html]]
+<iframe src="/posts/ios-runtime-part-1-object-class/isa-t-layout.html" title="isa_t 位布局" loading="lazy" style="width:100%;min-height:760px;border:1px solid var(--line-divider);border-radius:18px;background:#0b0b0f;overflow:hidden;"></iframe>
 
 
 # 对象的内存布局
@@ -1128,43 +1138,18 @@ struct class_ro_t {
 `§2` 里反复提到的 `instanceSize`、`instanceStart`，源头就在这里。再看上面那层 `class_rw_t`——它是运行期可写的部分：
 
 ```objc
-// objc-runtime-new.h:2212 —— class_rw_t（运行期可写）
+// objc-runtime-new.h:2212 —— class_rw_t（运行期可写，节选）
 struct class_rw_t {
     uint32_t flags;
     uint16_t witness;
-#if SUPPORT_INDEXED_ISA
-    uint16_t index;
-#endif
-    explicit_atomic<uintptr_t> ro_or_rw_ext;   // 二选一：const class_ro_t* 或 class_rw_ext_t*
-    Class firstSubclass;
+
+    explicit_atomic<uintptr_t> ro_or_rw_ext;   // ← 「二选一」联合指针：ro 或 rw_ext
+
+    Class firstSubclass;        // 运行期维护的子类链
     Class nextSiblingClass;
 
-private:
-    using ro_or_rw_ext_t = objc::PointerUnion<const class_ro_t, class_rw_ext_t,
-                            PTRAUTH_STR("class_ro_t"), PTRAUTH_STR("class_rw_ext_t")>;
-    const ro_or_rw_ext_t get_ro_or_rwe() const { return ro_or_rw_ext_t{ro_or_rw_ext}; }
-    void set_ro_or_rwe(const class_ro_t *ro);
-    void set_ro_or_rwe(class_rw_ext_t *rwe, const class_ro_t *ro);
-    class_rw_ext_t *extAlloc(const class_ro_t *ro, bool deep = false);   // 真要改时才分配 rwe
-
-public:
-    void setFlags(uint32_t set);
-    void clearFlags(uint32_t clear);
-    void changeFlags(uint32_t set, uint32_t clear);
-
-    class_rw_ext_t *ext() const;
-    class_rw_ext_t *extAllocIfNeeded();
-    class_rw_ext_t *deepCopy(const class_ro_t *ro);
-
-    const class_ro_t *ro() const {           // rwe 在就从 rwe 取 ro，否则 ro_or_rw_ext 本身就是 ro
-        auto v = get_ro_or_rwe();
-        if (slowpath(v.is<class_rw_ext_t *>()))
-            return v.get<class_rw_ext_t *>(&ro_or_rw_ext)->ro;
-        return v.get<const class_ro_t *>(&ro_or_rw_ext);
-    }
-    void set_ro(const class_ro_t *ro);
-
-    const method_array_t   methods() const;     // rwe 在取 rwe->methods；否则取 ro->baseMethods
+    const class_ro_t *ro() const;               // 取出底层只读的 ro
+    const method_array_t   methods() const;     // 方法（可能含 Category 合并进来的）
     const property_array_t properties() const;
     const protocol_array_t protocols() const;
 };
@@ -1182,7 +1167,7 @@ public:
 ```objc
 // objc-runtime-new.h:2202 —— 真要动态改时才分配的扩展
 struct class_rw_ext_t {
-    class_ro_t_authed_ptr<const class_ro_t> ro;   // 指回只读 ro（带 ptrauth）
+    class_ro_t *ro;
     method_array_t   methods;      // 可写方法数组（base + category + 动态添加）
     property_array_t properties;
     protocol_array_t protocols;
