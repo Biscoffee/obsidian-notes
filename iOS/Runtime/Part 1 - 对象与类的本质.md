@@ -1024,6 +1024,8 @@ struct cache_t {
 };
 ```
 
+
+
 ## bits ：class_rw_t → class_ro_t
 
 `bits` 本身只是个包装（`class_data_bits_t`），通过 `data()` 取出真正的数据结构 `class_rw_t`；`class_rw_t` 再通过 `ro()` 拿到 `class_ro_t`。也就是说，类的数据是**两层**结构：
