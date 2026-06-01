@@ -1111,13 +1111,14 @@ struct class_ro_t {
 #define FAST_IS_SWIFT_LEGACY    (1UL<<0)
 #define FAST_IS_SWIFT_STABLE    (1UL<<1)
 #define FAST_HAS_DEFAULT_RR     (1UL<<2)
-#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+
+#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR  用来扣真正指针地址的
 #define FAST_DATA_MASK          0x0f00007ffffffff8UL
 #else
 #define FAST_DATA_MASK          0x0f007ffffffffff8UL
 #endif
-#define FAST_FLAGS_MASK         0x0000000000000007UL
-#define FAST_IS_RW_POINTER      0x8000000000000000UL   // 快速判断这是 rw 指针而非 ro
+#define FAST_FLAGS_MASK         0x0000000000000007UL   用来取低三位 能把最低三位抠出来
+#define FAST_IS_RW_POINTER      0x8000000000000000UL   // 快速判断这是 rw 指针而非 ro，未realiz时候，bits指向ro，realize后，Runtime生产rw 里面包装ro
 ```
 ```objc
 // objc-runtime-new.h:2364

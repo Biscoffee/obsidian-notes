@@ -1113,7 +1113,7 @@ struct class_ro_t {
 
 
 下面来看看新版，这段代码讲的是 **Objective-C 类对象里** **`bits`** **这个字段怎么存 class 数据**。它不是单纯存一个指针，而是把：class_ro_t * 或 class_rw_t *和一些快速标志位 `FAST_XXX` **塞在同一个 uintptr_t 里**。
-这是典
+即：指针地址 + 低位/高位标志位混合存储。
 `bits` 的真身 `class_data_bits_t`（它用到的 `FAST_*` 掩码先列出）：
 
 ```objc
@@ -1121,13 +1121,14 @@ struct class_ro_t {
 #define FAST_IS_SWIFT_LEGACY    (1UL<<0)
 #define FAST_IS_SWIFT_STABLE    (1UL<<1)
 #define FAST_HAS_DEFAULT_RR     (1UL<<2)
-#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+
+#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR  用来扣真正指针地址的
 #define FAST_DATA_MASK          0x0f00007ffffffff8UL
 #else
 #define FAST_DATA_MASK          0x0f007ffffffffff8UL
 #endif
-#define FAST_FLAGS_MASK         0x0000000000000007UL
-#define FAST_IS_RW_POINTER      0x8000000000000000UL   // 快速判断这是 rw 指针而非 ro
+#define FAST_FLAGS_MASK         0x0000000000000007UL   用来取低三位 能把最低三位抠出来
+#define FAST_IS_RW_POINTER      0x8000000000000000UL   // 快速判断这是 rw 指针而非 ro，未realiz时候，bits指向ro，realize后，Runtime生产rw 里面包装ro
 ```
 ```objc
 // objc-runtime-new.h:2364
