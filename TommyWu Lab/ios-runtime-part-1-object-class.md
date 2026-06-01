@@ -1050,6 +1050,69 @@ objc_class.bits
  class_ro_t   （编译期只读，read-only）
 ```
 
+先看旧版（objc4-750~781 那代）这三件套长什么样，再逐个看新版：
+
+```objc
+// 旧版 class_data_bits_t：bits 是裸 uintptr_t，无 atomic / 无 ptrauth
+struct class_data_bits_t {
+    // Values are the FAST_ flags above.
+    uintptr_t bits;
+};
+
+// 旧版 class_rw_t：ro / methods / properties / protocols 四个「直接内嵌」，还带 version
+struct class_rw_t {
+    uint32_t flags;
+    uint32_t version;
+
+    const class_ro_t *ro;
+
+    method_array_t   methods;
+    property_array_t properties;
+    protocol_array_t protocols;
+
+    Class firstSubclass;
+    Class nextSiblingClass;
+
+    char *demangledName;
+};
+
+// 旧版 class_ro_t：name 是裸 const char*；方法表叫 baseMethodList（+baseMethods() 访问器）；
+//                 baseProtocols/baseProperties 是普通指针；ivarLayout 是独立字段
+struct class_ro_t {
+    uint32_t flags;
+    uint32_t instanceStart;
+    uint32_t instanceSize;
+#ifdef __LP64__
+    uint32_t reserved;
+#endif
+
+    const uint8_t *ivarLayout;
+
+    const char      *name;
+    method_list_t   *baseMethodList;
+    protocol_list_t *baseProtocols;
+    const ivar_list_t *ivars;
+
+    const uint8_t   *weakIvarLayout;
+    property_list_t *baseProperties;
+
+    method_list_t *baseMethods() const {
+        return baseMethodList;
+    }
+};
+```
+
+
+### 新老对照
+
+| | 老版（objc4-750 那代） | 新版 951.1（本文这版） |
+|---|---|---|
+| `class_rw_t` 怎么存方法/属性/协议 | **直接内嵌** `method_array_t methods; property_array_t properties; protocol_array_t protocols; const class_ro_t *ro;`——不管改不改，每个类都背着 | 抽到**懒分配**的 `class_rw_ext_t`，用 `ro_or_rw_ext` 一个联合指针「ro 或 rw_ext 二选一」 |
+| 取只读数据 | `data()->ro`（`ro` 是字段，直接 `.`） | `data()->ro()`（`ro()` 是方法，从联合指针里取） |
+| 内存代价 | 每个 realize 的类都摊一份完整 rw | 多数类只指向 ro，不分配 rw_ext，**省 dirty memory** |
+
+
+下面来看看新版：
 `bits` 的真身 `class_data_bits_t`（它用到的 `FAST_*` 掩码先列出）：
 
 ```objc
@@ -1213,13 +1276,6 @@ struct class_rw_ext_t {
 - **情况 A（绝大多数类）**：`ro_or_rw_ext` 直接指向 `class_ro_t`——**不额外分配 `rw_ext`**，省下一整块 dirty memory；
 - **情况 B（真的要动态改方法时）**：才 `extAlloc` 一个 `class_rw_ext_t`，把可变的 `methods/properties/protocols` 装进去，`ro_or_rw_ext` 转而指向它。
 
-### 新老对照
-
-| | 老版（objc4-750 那代） | 新版 951.1（本文这版） |
-|---|---|---|
-| `class_rw_t` 怎么存方法/属性/协议 | **直接内嵌** `method_array_t methods; property_array_t properties; protocol_array_t protocols; const class_ro_t *ro;`——不管改不改，每个类都背着 | 抽到**懒分配**的 `class_rw_ext_t`，用 `ro_or_rw_ext` 一个联合指针「ro 或 rw_ext 二选一」 |
-| 取只读数据 | `data()->ro`（`ro` 是字段，直接 `.`） | `data()->ro()`（`ro()` 是方法，从联合指针里取） |
-| 内存代价 | 每个 realize 的类都摊一份完整 rw | 多数类只指向 ro，不分配 rw_ext，**省 dirty memory** |
 
 一句话总结这一章：**类也是对象（有 isa）；它的四大件是 isa / superclass / cache / bits；真正的数据在 `bits` 身后的 `class_rw_t`（可写）→ `class_ro_t`（只读）两层里，而 ro/rw 的分离正是为了把编译期定死的部分放进可共享、可换出的 clean memory，省下宝贵的 dirty memory。**
 
