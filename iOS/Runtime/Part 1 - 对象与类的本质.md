@@ -1134,6 +1134,7 @@ public:
     void copyRWFrom(const class_data_bits_t &other);
     void copyROFrom(const class_data_bits_t &other, bool authenticate);
 
+	// 判断当前bits里是不是 class_rw_t 
     bool has_rw_pointer() const { return has_rw_pointer(bits.load(std::memory_order_relaxed)); }
     static bool has_rw_pointer(uintptr_t bits) {
 #if FAST_IS_RW_POINTER
