@@ -1112,11 +1112,12 @@ struct class_ro_t {
 | 内存代价 | 每个 realize 的类都摊一份完整 rw | 多数类只指向 ro，不分配 rw_ext，**省 dirty memory** |
 
 
-下面来看看新版：
+下面来看看新版，这段代码讲的是 **Objective-C 类对象里** **`bits`** **这个字段怎么存 class 数据**。它不是单纯存一个指针，而是把：class_ro_t * 或 class_rw_t *和一些快速标志位 `FAST_XXX` **塞在同一个 uintptr_t 里**。
+这是典
 `bits` 的真身 `class_data_bits_t`（它用到的 `FAST_*` 掩码先列出）：
 
 ```objc
-// objc-runtime-new.h:122（__LP64__）
+// objc-runtime-new.h:122（__LP64__） 下面三行是低三位标志
 #define FAST_IS_SWIFT_LEGACY    (1UL<<0)
 #define FAST_IS_SWIFT_STABLE    (1UL<<1)
 #define FAST_HAS_DEFAULT_RR     (1UL<<2)
