@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>cache_t Layout — ObjC Runtime</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0b0f;
+  --card:#13131a;
+  --card2:#1a1a24;
+  --border:rgba(255,255,255,0.06);
+  --border2:rgba(255,255,255,0.12);
+  --text:#dddae8;
+  --text2:#8e8ba3;
+  --text3:#4e4c63;
+  --teal:#2dd4bf;
+  --purple:#a78bfa;
+  --amber:#fbbf24;
+  --coral:#fb7185;
+  --blue:#60a5fa;
+  --green:#4ade80;
+  --gray:#6b7280;
+  --mono:'JetBrains Mono',monospace;
+  --sans:'DM Sans',sans-serif;
+}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  padding:32px 28px 56px;
+  min-width:980px;
+}
+
+/* ── Header ── */
+.page-title{
+  font-family:var(--mono);font-size:15px;font-weight:700;
+  text-align:center;letter-spacing:.04em;margin-bottom:5px;
+}
+.page-sub{
+  font-family:var(--mono);font-size:11px;color:var(--text3);
+  text-align:center;letter-spacing:.06em;margin-bottom:36px;
+}
+
+/* ── Section label ── */
+.sec-label{
+  font-family:var(--mono);font-size:10px;color:var(--text3);
+  letter-spacing:.08em;text-transform:uppercase;
+  margin-bottom:8px;margin-top:24px;
+}
+
+/* ── Card ── */
+.card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:10px;overflow:hidden;
+}
+.card-head{
+  background:var(--card2);padding:8px 14px;
+  font-family:var(--mono);font-size:12px;font-weight:700;
+  color:var(--text);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;
+}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.card-row{
+  padding:6px 14px;font-family:var(--mono);font-size:11px;
+  color:var(--text2);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;line-height:1.5;
+}
+.card-row:last-child{border-bottom:none}
+.card-row.muted{color:var(--text3);font-size:10px}
+.kw{color:var(--coral)}
+.ty{color:var(--blue)}
+.nm{color:var(--text)}
+.fn{color:var(--teal)}
+
+/* ── Memory block ── */
+.mem-wrap{margin:0 0 6px}
+.mem-label{
+  font-family:var(--mono);font-size:10px;color:var(--text3);
+  margin-bottom:5px;
+}
+.mem-row{
+  display:flex;border-radius:6px;overflow:hidden;
+  border:1px solid var(--border2);height:44px;
+}
+.mem-cell{
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  border-right:1px solid var(--border2);
+  font-family:var(--mono);cursor:default;
+  transition:filter .15s;position:relative;
+  min-width:0;padding:0 4px;
+}
+.mem-cell:last-child{border-right:none}
+.mem-cell:hover{filter:brightness(1.25)}
+.mem-cell:hover .mcell-tip{opacity:1;pointer-events:auto}
+.mem-cell-name{font-size:10.5px;font-weight:600;text-align:center;line-height:1.2}
+.mem-cell-sub{font-size:9px;color:rgba(255,255,255,0.45);text-align:center;margin-top:2px}
+
+.mcell-tip{
+  position:absolute;bottom:calc(100% + 7px);left:50%;
+  transform:translateX(-50%);
+  background:#1e1e2e;border:1px solid var(--border2);
+  border-radius:6px;padding:6px 10px;
+  font-size:10px;color:var(--text2);
+  white-space:nowrap;pointer-events:none;
+  opacity:0;transition:opacity .15s;z-index:20;
+}
+
+/* color classes */
+.mc-teal{background:rgba(45,212,191,.18);color:var(--teal)}
+.mc-purple{background:rgba(167,139,250,.18);color:var(--purple)}
+.mc-amber{background:rgba(251,191,36,.18);color:var(--amber)}
+.mc-coral{background:rgba(251,113,133,.18);color:var(--coral)}
+.mc-blue{background:rgba(96,165,250,.18);color:var(--blue)}
+.mc-green{background:rgba(74,222,128,.18);color:var(--green)}
+.mc-gray{background:rgba(107,114,128,.15);color:var(--gray)}
+
+/* ── Bit strip ── */
+.bit-strip{
+  display:flex;height:8px;border-radius:4px;
+  overflow:hidden;gap:1px;margin:8px 0 4px;
+}
+.bs{height:100%;border-radius:1px;transition:filter .15s}
+.bs:hover{filter:brightness(1.4)}
+
+/* ── Flags table ── */
+.flags-grid{
+  display:grid;
+  grid-template-columns: 70px 130px 1fr;
+  font-family:var(--mono);font-size:10.5px;
+}
+.fgh{
+  padding:5px 10px;font-size:9.5px;color:var(--text3);
+  border-bottom:1px solid var(--border);
+  font-weight:600;letter-spacing:.04em;
+}
+.fgr{
+  display:contents;cursor:default;
+}
+.fgr > div{
+  padding:5px 10px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:6px;
+  transition:background .1s;
+}
+.fgr:last-child > div{border-bottom:none}
+.fgr:hover > div{background:rgba(255,255,255,.025)}
+
+.badge{
+  display:inline-block;padding:1px 6px;border-radius:4px;
+  font-size:9.5px;font-weight:500;font-family:var(--mono);
+}
+.b-arm64{background:rgba(45,212,191,.15);color:var(--teal);border:1px solid rgba(45,212,191,.25)}
+.b-lp64{background:rgba(167,139,250,.15);color:var(--purple);border:1px solid rgba(167,139,250,.25)}
+.b-all{background:rgba(107,114,128,.2);color:var(--gray);border:1px solid rgba(107,114,128,.3)}
+
+/* ── Platform grid ── */
+.plat-grid{
+  display:grid;grid-template-columns:1fr 1fr 1fr 1fr;
+  gap:10px;
+}
+.plat{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:10px;overflow:hidden;
+}
+.plat-head{
+  padding:7px 12px;font-family:var(--mono);
+  font-size:10.5px;font-weight:700;
+  border-bottom:1px solid var(--border);
+  display:flex;flex-direction:column;gap:2px;
+}
+.plat-sub{font-size:9px;font-weight:400;color:var(--text3);margin-top:1px}
+.prow{
+  padding:5px 12px;font-family:var(--mono);font-size:10px;
+  color:var(--text2);border-bottom:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;
+}
+.prow:last-child{border-bottom:none}
+.prow .pname{color:var(--text2)}
+.prow .ploc{color:var(--text3);font-size:9px}
+.prow.sep{background:rgba(255,255,255,.02);color:var(--text3);font-size:9.5px;justify-content:center}
+
+/* ── Footer ── */
+.footer-note{
+  margin-top:20px;background:var(--card);
+  border:1px solid var(--border);border-left:2px solid var(--teal);
+  border-radius:8px;padding:12px 16px;
+  font-family:var(--mono);font-size:10.5px;
+  color:var(--text2);line-height:2;
+}
+.footer-note .hl{color:var(--teal)}
+.footer-note .em{color:var(--coral)}
+.footer-note .am{color:var(--amber)}
+
+/* ── Two col ── */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:start}
+
+hr.dim{border:none;border-top:1px solid var(--border);margin:20px 0}
+</style>
+</head>
+<body>
+
+<div class="page-title">Objective-C Runtime — cache_t Layout</div>
+<div class="page-sub">apple-oss-distributions / objc4 · latest · sizeof(cache_t) == 2 * sizeof(void*) == 16 bytes</div>
+
+<!-- ══ Section 1: 整体内存布局 ══ -->
+<div class="sec-label">整体内存布局（64-bit 内联 mask，最常见的 arm64 / x86_64）</div>
+<div class="card">
+  <div class="card-head"><span class="dot" style="background:var(--teal)"></span>cache_t &nbsp;<span style="font-size:9.5px;color:var(--text3);font-weight:400">16 bytes total</span></div>
+  <div style="padding:14px 16px">
+
+    <!-- Row 1 -->
+    <div class="mem-label">+0 &nbsp;·&nbsp; 8 bytes</div>
+    <div class="mem-row" style="margin-bottom:10px">
+      <div class="mem-cell mc-purple" style="flex:5">
+        <div class="mem-cell-name">bucket_t *</div>
+        <div class="mem-cell-sub">桶数组指针</div>
+        <div class="mcell-tip">低位存 buckets 地址，通过 ISA_MASK 类似的操作提取</div>
+      </div>
+      <div class="mem-cell mc-amber" style="flex:3">
+        <div class="mem-cell-name">mask</div>
+        <div class="mem-cell-sub">桶数 - 1（内联）</div>
+        <div class="mcell-tip">内联方案：mask 塞进高位 bit，和指针共享 8 字节</div>
+      </div>
+    </div>
+    <div style="font-size:9.5px;color:var(--text3);font-family:var(--mono);margin:-4px 0 12px">
+      ↳ _bucketsAndMaybeMask (uintptr_t) — 内联方案将 bucket_t* 和 mask 压缩在同一个 64-bit 字段
+    </div>
+
+    <!-- Row 2 -->
+    <div class="mem-label">+8 &nbsp;·&nbsp; 8 bytes &nbsp;(union)</div>
+    <div class="mem-row">
+      <div class="mem-cell mc-coral" style="flex:4">
+        <div class="mem-cell-name">_disguisedPreoptCacheSignature</div>
+        <div class="mem-cell-sub">uint32_t · 预优化缓存签名</div>
+        <div class="mcell-tip">用于校验 _originalPreoptCache 是否有效</div>
+      </div>
+      <div class="mem-cell mc-teal" style="flex:2">
+        <div class="mem-cell-name">_occupied</div>
+        <div class="mem-cell-sub">uint16_t · 已用桶数</div>
+        <div class="mcell-tip">已放入缓存的方法数量，超过 3/4 触发扩容</div>
+      </div>
+      <div class="mem-cell mc-blue" style="flex:2">
+        <div class="mem-cell-name">_flags</div>
+        <div class="mem-cell-sub">uint16_t · 类元信息</div>
+        <div class="mcell-tip">16 bit 存 has_cxx_dtor / instanceSize 等标志</div>
+      </div>
+    </div>
+    <div style="font-size:9.5px;color:var(--text3);font-family:var(--mono);margin-top:6px">
+      ↳ 或 &nbsp;_originalPreoptCache (preopt_cache_t*) — 指向 dyld 共享缓存中预构建的方法缓存（两者互斥）
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ Section 2: union 互斥说明 + bucket_t ══ -->
+<hr class="dim">
+<div class="two-col">
+
+  <!-- union 互斥 -->
+  <div>
+    <div class="sec-label">+8 字节 union — 两种状态互斥</div>
+    <div class="card">
+      <div class="card-head"><span class="dot" style="background:var(--coral)"></span>运行时构建的缓存</div>
+      <div class="card-row"><span class="ty">uint32_t</span>&nbsp;<span class="nm">_disguisedPreoptCacheSignature</span></div>
+      <div class="card-row"><span class="ty">uint16_t</span>&nbsp;<span class="nm">_occupied</span><span class="muted" style="color:var(--text3);font-size:10px;margin-left:6px">已占用桶数</span></div>
+      <div class="card-row"><span class="ty">uint16_t</span>&nbsp;<span class="nm">_flags</span><span class="muted" style="color:var(--text3);font-size:10px;margin-left:6px">类元信息位</span></div>
+      <div class="card-row muted">↳ 运行时 insert() 写入方法后使用</div>
+    </div>
+    <div style="text-align:center;padding:8px 0;font-family:var(--mono);font-size:11px;color:var(--text3)">── OR（互斥）──</div>
+    <div class="card">
+      <div class="card-head"><span class="dot" style="background:var(--green)"></span>dyld 预优化缓存</div>
+      <div class="card-row"><span class="ty">preopt_cache_t *</span>&nbsp;<span class="nm">_originalPreoptCache</span></div>
+      <div class="card-row muted">↳ 系统类在 dyld 共享缓存中已预构建</div>
+      <div class="card-row muted">↳ 直接指向现成缓存，不需要运行时构建</div>
+      <div class="card-row muted">↳ isConstantOptimizedCache() 返回 true</div>
+    </div>
+  </div>
+
+  <!-- bucket_t -->
+  <div>
+    <div class="sec-label">bucket_t — 缓存桶单元</div>
+    <div class="card">
+      <div class="card-head"><span class="dot" style="background:var(--purple)"></span>bucket_t &nbsp;<span style="font-size:9.5px;color:var(--text3);font-weight:400">16 bytes</span></div>
+      <div class="mem-row" style="margin:12px 14px 8px;height:40px">
+        <div class="mem-cell mc-purple" style="flex:1">
+          <div class="mem-cell-name">SEL</div>
+          <div class="mem-cell-sub">_sel · 8 bytes</div>
+          <div class="mcell-tip">方法选择器，散列键</div>
+        </div>
+        <div class="mem-cell mc-teal" style="flex:1">
+          <div class="mem-cell-name">IMP</div>
+          <div class="mem-cell-sub">_imp · 8 bytes</div>
+          <div class="mcell-tip">函数指针，命中后直接跳转</div>
+        </div>
+      </div>
+      <div class="card-row muted">散列地址：(sel ^ (sel >> shift)) & mask</div>
+      <div class="card-row muted">冲突：向前线性探测（--index & mask）</div>
+      <div class="card-row muted">占用 > 3/4 时触发 reallocate() 扩容</div>
+    </div>
+
+    <div class="sec-label" style="margin-top:16px">_bucketsAndMaybeMask 内联方案</div>
+    <div class="card">
+      <div class="card-head"><span class="dot" style="background:var(--amber)"></span>内联 mask（64-bit 平台）</div>
+      <div style="padding:10px 14px">
+        <div class="bit-strip">
+          <div class="bs" style="flex:17;background:rgba(167,139,250,.7)" title="bucket_t* 低位指针"></div>
+          <div class="bs" style="flex:1;background:rgba(107,114,128,.5)"></div>
+          <div class="bs" style="flex:46;background:rgba(251,191,36,.7)" title="mask 内联在高位"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:8px">
+          <span>bit 0</span><span>bucket_t* 指针 ←</span><span>→ mask（高位）</span><span>bit 63</span>
+        </div>
+      </div>
+      <div class="card-row muted">buckets() → bits & bucketsMask 提取指针</div>
+      <div class="card-row muted">mask()    → bits >> maskShift 提取 mask</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══ Section 3: _flags 16-bit 详解 ══ -->
+<hr class="dim">
+<div class="sec-label">_flags (uint16_t) — 16 bit 位域详解</div>
+<div class="card">
+  <div class="card-head"><span class="dot" style="background:var(--blue)"></span>_flags &nbsp;<span style="font-size:9.5px;color:var(--text3);font-weight:400">16 bits · 存在 cache_t 里避免每次去 class_ro_t 取</span></div>
+
+  <div style="padding:10px 14px 6px">
+    <div class="bit-strip">
+      <div class="bs" style="flex:1;background:rgba(45,212,191,.8)" title="HAS_CXX_DTOR arm64"></div>
+      <div class="bs" style="flex:1;background:rgba(45,212,191,.6)" title="HAS_CXX_CTOR"></div>
+      <div class="bs" style="flex:1;background:rgba(45,212,191,.4)" title="META"></div>
+      <div class="bs" style="flex:9;background:rgba(251,191,36,.7)" title="ALLOC_MASK (bit3~11) 实例大小"></div>
+      <div class="bs" style="flex:1;background:rgba(251,113,133,.5)" title="HAS_CUSTOM_DEALLOC_INITIATION"></div>
+      <div class="bs" style="flex:1;background:rgba(251,113,133,.6)" title="REQUIRES_RAW_ISA"></div>
+      <div class="bs" style="flex:1;background:rgba(251,113,133,.7)" title="HAS_DEFAULT_AWZ"></div>
+      <div class="bs" style="flex:1;background:rgba(251,113,133,.9)" title="HAS_DEFAULT_CORE"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:10px">
+      <span>bit 0</span>
+      <span style="color:rgba(251,191,36,.7)">← instanceSize (bit 3~11) →</span>
+      <span>bit 15</span>
+    </div>
+  </div>
+
+  <div class="flags-grid">
+    <div class="fgh">bit</div>
+    <div class="fgh">宏名</div>
+    <div class="fgh">含义</div>
+
+    <div class="fgr">
+      <div style="color:var(--teal)">0</div>
+      <div><span class="nm">HAS_CXX_DTOR</span></div>
+      <div style="color:var(--text2)">有 C++ 析构 / .cxx_destruct &nbsp;<span class="badge b-arm64">arm64</span></div>
+    </div>
+    <div class="fgr">
+      <div style="color:var(--teal)">1</div>
+      <div><span class="nm">HAS_CXX_CTOR</span></div>
+      <div style="color:var(--text2)">有 C++ 构造 / .cxx_construct &nbsp;<span class="badge b-arm64">arm64</span></div>
+    </div>
+    <div class="fgr">
+      <div style="color:var(--teal)">2</div>
+      <div><span class="nm">META</span></div>
+      <div style="color:var(--text2)">是元类 &nbsp;<span class="badge b-arm64">arm64</span></div>
+    </div>
+    <div class="fgr">
+      <div style="color:var(--amber)">3~11</div>
+      <div><span class="nm">ALLOC_MASK</span></div>
+      <div style="color:var(--text2)">对齐后的实例大小（+ DELTA16 偏移编码）&nbsp;<span class="badge b-lp64">LP64</span></div>
+    </div>
+    <div class="fgr">
+      <div style="color:var(--coral)">12</div>
+      <div><span class="nm">HAS_CUSTOM_DEALLOC_INITIATION</span></div>
+      <div style="color:var(--text2)">有自定义 dealloc 触发逻辑 &nbsp;<span class="badge b-all">all</span></div>
+    </div>
+    <div class="fgr">
+      <div style="color:var(--coral)">13</div>
+      <div><span class="nm">REQUIRES_RAW_ISA</span></div>
+      <div style="color:var(--text2)">实例必须用裸 isa（不能用 nonpointer）&nbsp;<span class="badge b-all">all</span></div>
+    </div>
+    <div class="fgr">
+      <div style="color:var(--coral)">14</div>
+      <div><span class="nm">HAS_DEFAULT_AWZ</span></div>
+      <div style="color:var(--text2)">有默认 alloc / allocWithZone（存元类）&nbsp;<span class="badge b-all">all</span></div>
+    </div>
+    <div class="fgr">
+      <div style="color:var(--coral)">15</div>
+      <div><span class="nm">HAS_DEFAULT_CORE</span></div>
+      <div style="color:var(--text2)">有默认 new / self / class / retain / release… &nbsp;<span class="badge b-all">all</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Section 4: fastInstanceSize 编码 ══ -->
+<hr class="dim">
+<div class="sec-label">fastInstanceSize — 实例大小编码在 _flags bit 3~11</div>
+<div class="card">
+  <div class="card-head"><span class="dot" style="background:var(--amber)"></span>快速实例大小（避免每次 alloc 走 class_ro_t）</div>
+  <div style="padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div>
+      <div style="font-family:var(--mono);font-size:10.5px;color:var(--text3);margin-bottom:8px">写入 setFastInstanceSize</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text2);line-height:2">
+        sizeBits = <span style="color:var(--amber)">word_align(newSize)</span> + DELTA16<br>
+        sizeBits &amp;= ALLOC_MASK &nbsp;&nbsp;<span style="color:var(--text3)">// 只保留 bit 3~11</span><br>
+        _flags = (flags &amp; ~ALLOC_MASK) | sizeBits
+      </div>
+    </div>
+    <div>
+      <div style="font-family:var(--mono);font-size:10.5px;color:var(--text3);margin-bottom:8px">读取 fastInstanceSize</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text2);line-height:2">
+        size = _flags &amp; <span style="color:var(--amber)">ALLOC_MASK</span><br>
+        return <span style="color:var(--teal)">align16</span>(size + extra - DELTA16)<br>
+        <span style="color:var(--text3)">// 还原真实字节大小</span>
+      </div>
+    </div>
+  </div>
+  <div style="padding:0 14px 12px;font-family:var(--mono);font-size:10px;color:var(--text3)">
+    ↳ alloc 快速路径直接读 cache._flags，一次内存访问拿到大小，无需走 bits → class_rw_t → class_ro_t
+  </div>
+</div>
+
+<!-- ══ Section 5: 四种平台 CACHE_MASK_STORAGE 对比 ══ -->
+<hr class="dim">
+<div class="sec-label">CACHE_MASK_STORAGE — 四种平台方案对比</div>
+<div class="plat-grid">
+
+  <!-- outlined 32-bit -->
+  <div class="plat">
+    <div class="plat-head" style="color:var(--gray)">
+      OUTLINED
+      <div class="plat-sub">32-bit（!LP64）</div>
+    </div>
+    <div class="prow"><span class="pname" style="color:var(--purple)">_bucketsAndMaybeMask</span><span class="ploc">bucket_t*</span></div>
+    <div class="prow sep">── union ──</div>
+    <div class="prow"><span class="pname" style="color:var(--amber)">_mask</span><span class="ploc">独立字段</span></div>
+    <div class="prow"><span class="pname" style="color:var(--teal)">_occupied</span><span class="ploc">uint16_t</span></div>
+    <div class="prow" style="color:var(--text3)"><span>_flags</span><span class="ploc">❌ 无</span></div>
+  </div>
+
+  <!-- outlined 64-bit -->
+  <div class="plat">
+    <div class="plat-head" style="color:var(--blue)">
+      OUTLINED
+      <div class="plat-sub">64-bit（LP64）</div>
+    </div>
+    <div class="prow"><span class="pname" style="color:var(--purple)">_bucketsAndMaybeMask</span><span class="ploc">bucket_t*</span></div>
+    <div class="prow sep">── union ──</div>
+    <div class="prow"><span class="pname" style="color:var(--amber)">_mask</span><span class="ploc">独立字段</span></div>
+    <div class="prow"><span class="pname" style="color:var(--teal)">_occupied</span><span class="ploc">uint16_t</span></div>
+    <div class="prow"><span class="pname" style="color:var(--blue)">_flags</span><span class="ploc">✅ 有</span></div>
+  </div>
+
+  <!-- inline 64-bit -->
+  <div class="plat">
+    <div class="plat-head" style="color:var(--teal)">
+      INLINE mask
+      <div class="plat-sub">64-bit · arm64 / x86_64</div>
+    </div>
+    <div class="prow"><span class="pname" style="color:var(--purple)">_bucketsAndMaybeMask</span><span class="ploc">ptr + mask</span></div>
+    <div class="prow sep">── union ──</div>
+    <div class="prow"><span class="pname" style="color:var(--coral)">_disguisedPreoptSig</span><span class="ploc">uint32_t</span></div>
+    <div class="prow"><span class="pname" style="color:var(--teal)">_occupied</span><span class="ploc">uint16_t</span></div>
+    <div class="prow"><span class="pname" style="color:var(--blue)">_flags</span><span class="ploc">✅ 有</span></div>
+  </div>
+
+  <!-- inline 32-bit -->
+  <div class="plat">
+    <div class="plat-head" style="color:var(--amber)">
+      INLINE mask
+      <div class="plat-sub">32-bit · armv7k</div>
+    </div>
+    <div class="prow"><span class="pname" style="color:var(--purple)">_bucketsAndMaybeMask</span><span class="ploc">ptr + mask</span></div>
+    <div class="prow sep">── union ──</div>
+    <div class="prow"><span class="pname" style="color:var(--teal)">_occupied</span><span class="ploc">uint16_t</span></div>
+    <div class="prow"><span class="pname" style="color:var(--blue)">_flags</span><span class="ploc">✅ 有</span></div>
+    <div class="prow" style="color:var(--text3)"><span>_disguisedPreoptSig</span><span class="ploc">❌ 无</span></div>
+  </div>
+
+</div>
+
+<!-- ══ Footer ══ -->
+<div class="footer-note">
+  <span class="hl">_bucketsAndMaybeMask</span>：内联方案将 bucket_t* 和 mask 压入同一 uintptr_t，与 nonpointer isa 同一思路，减少内存占用。&nbsp;&nbsp;
+  <span class="hl">union</span>：运行时缓存（_occupied + _flags）与 dyld 预优化缓存（_originalPreoptCache）互斥，节省 8 字节。&nbsp;&nbsp;
+  <span class="am">_flags</span>：把 has_cxx_dtor / instanceSize 等常用信息从 class_ro_t 搬到 cache_t，<span class="em">alloc / msgSend 快路径只读一次内存</span>即可完成判断。&nbsp;&nbsp;
+  鼠标悬停内存格查看说明。
+</div>
+
+</body>
+</html>
