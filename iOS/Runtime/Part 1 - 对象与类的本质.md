@@ -1142,7 +1142,7 @@ public:
 #else
         return bits != 0 && (flags(bits) & RW_REALIZED);
 #endif
-    }
+    }    // 最高位是 1，说明是rw，如果是 0，存的是ro
 
     class_rw_t *data() const {       // 取 rw：arm64e 下验签 + FAST_DATA_MASK 抠地址
         ASSERT(has_rw_pointer());

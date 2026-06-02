@@ -1034,7 +1034,7 @@ struct cache_t {
 };
 ```
 
-![[cache_t_layout.html]]
+<iframe src="/posts/ios-runtime-part-1-object-class/cache-t-layout.html" title="cache_t 位布局" loading="lazy" style="width:100%;min-height:640px;border:1px solid var(--line-divider);border-radius:18px;background:#0b0b0f;overflow:hidden;"></iframe>
 
 ## bits ：class_rw_t → class_ro_t
 
@@ -1152,7 +1152,7 @@ public:
 #else
         return bits != 0 && (flags(bits) & RW_REALIZED);
 #endif
-    }
+    }    // 最高位是 1，说明是rw，如果是 0，存的是ro
 
     class_rw_t *data() const {       // 取 rw：arm64e 下验签 + FAST_DATA_MASK 抠地址
         ASSERT(has_rw_pointer());
