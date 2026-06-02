@@ -28,6 +28,7 @@ draft: false
   - 类的四大件：isa / superclass / cache / bits
   - bits：class_rw_t → class_ro_t
   - ro 与 rw 的分离：clean memory vs dirty memory
+  - 还有两块「不弄脏内存」的优化（相对方法列表 / preopt cache）
 - 元类 metaclass（待写）
 - isa 走位与继承链（待写）
 - [At Last](#at-last)
@@ -163,192 +164,13 @@ public:
 
     bool isClass() const;
 
-
-
-    // object may have associated objects?
-
-    bool hasAssociatedObjects() const;
-
-    void setHasAssociatedObjects();
-
-
-
-    // object may be weakly referenced?
-
-    bool isWeaklyReferenced() const;
-
-    void setWeaklyReferenced_nolock();
-
-
-
-    // object may be uniquely referenced?
-
-    bool isUniquelyReferenced() const;
-
-
-
-    // object may have -.cxx_destruct implementation?
-
-    bool hasCxxDtor() const;
-
-
-
-    // Optimized calls to retain/release methods
-
-    id retain();
-
-    void release();
-
-    id autorelease();
-
-
-
-    // Implementations of retain/release methods
-
-    id rootRetain();
-
-    bool rootRelease();
-
-    id rootAutorelease();
-
-    bool rootTryRetain();
-
-    bool rootReleaseShouldDealloc();
-
-    uintptr_t rootRetainCount() const;
-
-
-
-    // Implementation of dealloc methods
-
-    bool rootIsDeallocating() const;
-
-    void clearDeallocating();
-
-    void rootDealloc();
-
-
-
-private:
-
-    void initIsa(Class newCls, bool nonpointer, bool hasCxxDtor);
-
-
-
-    // Slow paths for inline control
-
-    id rootAutorelease2();
-
-
-
-#if SUPPORT_NONPOINTER_ISA
-
-    // Controls what parts of root{Retain,Release} to emit/inline
-
-    // - Full means the full (slow) implementation
-
-    // - Fast means the fastpaths only
-
-    // - FastOrMsgSend means the fastpaths but checking whether we should call
-
-    //   -retain/-release or Swift, for the usage of objc_{retain,release}
-
-    enum class RRVariant {
-
-        Full,
-
-        Fast,
-
-        FastOrMsgSend,
-
-    };
-
-
-
-    // Unified retain count manipulation for nonpointer isa
-
-    inline id rootRetain(bool tryRetain, RRVariant variant);
-
-    inline bool rootRelease(bool performDealloc, RRVariant variant);
-
-    id rootRetain_overflow(bool tryRetain);
-
-    uintptr_t rootRelease_underflow(bool performDealloc);
-
-
-
-    void clearDeallocating_slow();
-
-
-
-    // Side table retain count overflow for nonpointer isa
-
-    struct SidetableBorrow { size_t borrowed, remaining; };
-
-
-
-    void sidetable_lock() const;
-
-    void sidetable_unlock() const;
-
-
-
-    void sidetable_moveExtraRC_nolock(size_t extra_rc, bool isDeallocating, bool weaklyReferenced);
-
-    bool sidetable_addExtraRC_nolock(size_t delta_rc);
-
-    SidetableBorrow sidetable_subExtraRC_nolock(size_t delta_rc);
-
-    size_t sidetable_getExtraRC_nolock() const;
-
-    void sidetable_clearExtraRC_nolock();
-
-#endif  SUPPORT_NONPOINTER_ISA 
-
-
-
-    // Side-table-only retain count
-
-    bool sidetable_isDeallocating() const;
-
-    void sidetable_clearDeallocating();
-
-
-
-    bool sidetable_isWeaklyReferenced() const;
-
-    void sidetable_setWeaklyReferenced_nolock();
-
-
-
-    id sidetable_retain(bool locked = false);
-
-    id sidetable_retain_slow(SideTable& table);
-
-
-
-    uintptr_t sidetable_release(bool locked = false, bool performDealloc = true);
-
-    uintptr_t sidetable_release_slow(SideTable& table, bool performDealloc = true);
-
-
-
-    bool sidetable_tryRetain();
-
-
-
-    uintptr_t sidetable_retainCount() const;
-
-#if DEBUG
-
-    bool sidetable_present() const;
-
-#endif
-
-
-
-    void performDealloc();
-
+    bool hasCxxDtor() const;        // 类/父类有无 C++ 析构（dealloc 时要不要走 .cxx_destruct）
+
+    // —— 以下省略一大簇方法 ——
+    // hasAssociatedObjects / isWeaklyReferenced / retain / release /
+    // rootRetain / rootRelease / sidetable_* …… 全是引用计数、关联对象、
+    // 弱引用、SideTable 的内容，与「对象 = isa」主线无关，
+    // 留到 Part 8（关联对象）、Part 9（weak 与 SideTable）再展开。
 };
 ```
 
@@ -387,7 +209,7 @@ public:
 };
 ```
 
-我们可以看到， isa_storage是真正存isa的地方。旧版本的写法是直接暴露 `isa_t isa` 作为 public 成员，任何人都能直接读写。新版本改成：`**char** isa_storage[**sizeof**(isa_t)];`  使用一个char 数组来占位。arm64e上，isa里面那根指针是被签名过的，如果有一个公开有类型的 isa_t  isa，外部代码就能直接obj->isa.cls直接摸到那根带签名的指针
+我们可以看到， isa_storage是真正存isa的地方。旧版本的写法是直接暴露 `isa_t isa` 作为 public 成员，任何人都能直接读写。新版本改成：`char isa_storage[sizeof(isa_t)];` 使用一个 char 数组来占位。arm64e上，isa里面那根指针是被签名过的，如果有一个公开有类型的 isa_t  isa，外部代码就能直接obj->isa.cls直接摸到那根带签名的指针
 ——读出来是“看着像乱码”的值，甚至可能绕过验证。修改后，想要接触这8个字节都要经过isa()访问器，isa_t里面的 cls又被设置为private，因此你必须`getClass()/setClass()`
 
 - `char` 在 C++ 标准里是"字节类型"，用它做原始存储是合法的 type-punning，不触发 UB（Undefined Behavior）。直接在 union 成员之间互相访问在 C++ 里有严格限制，但通过 `char[]` 中转是标准允许的。
@@ -471,7 +293,7 @@ public:
 
 
 
-#endif  defined(ISA_BITFIELD) 
+#endif // defined(ISA_BITFIELD)
 
 
 
@@ -949,7 +771,7 @@ public:
     static size_t bytesForCapacity(uint32_t cap);
 
     // ===== FAST_CACHE_* 标志（存在 _flags 里）=====
-#if CACHE_T_HAS_FLAGS  如果当前平台的 `cache_t` 支持 `_flags` 字段，就启用这些快速标志
+#if CACHE_T_HAS_FLAGS  // 当前平台 cache_t 支持 _flags 字段时才启用这些快速标志
 #   if __arm64__
 #       define FAST_CACHE_HAS_CXX_DTOR       (1<<0)   // 第 0 位，便于 bfi 进 isa_t::has_cxx_dtor
 #       define FAST_CACHE_HAS_CXX_CTOR       (1<<1)
@@ -1108,7 +930,7 @@ struct class_ro_t {
 | | 老版（objc4-750 那代） | 新版 951.1（本文这版） |
 |---|---|---|
 | `class_rw_t` 怎么存方法/属性/协议 | **直接内嵌** `method_array_t methods; property_array_t properties; protocol_array_t protocols; const class_ro_t *ro;`——不管改不改，每个类都背着 | 抽到**懒分配**的 `class_rw_ext_t`，用 `ro_or_rw_ext` 一个联合指针「ro 或 rw_ext 二选一」 |
-| 取只读数据 | `data()->ro`（`ro` 是字段，直接 `.`） | `data()->ro()`（`ro()` 是方法，从联合指针里取） |
+| 取只读数据 | `data()->ro`（`ro` 是字段，直接 `.`） | `data()->ro()`（`ro()` 是方法，从联合指针里取；realize 后才有 `data()`，未 realize 走 `safe_ro()`） |
 | 内存代价 | 每个 realize 的类都摊一份完整 rw | 多数类只指向 ro，不分配 rw_ext，**省 dirty memory** |
 
 
@@ -1117,17 +939,17 @@ struct class_ro_t {
 `bits` 的真身 `class_data_bits_t`（它用到的 `FAST_*` 掩码先列出）：
 
 ```objc
-// objc-runtime-new.h:122（__LP64__） 下面三行是低三位标志
+// objc-runtime-new.h:125（__LP64__） 下面三行是低三位标志
 #define FAST_IS_SWIFT_LEGACY    (1UL<<0)
 #define FAST_IS_SWIFT_STABLE    (1UL<<1)
 #define FAST_HAS_DEFAULT_RR     (1UL<<2)
 
-#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR  用来扣真正指针地址的
+#if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR  // 下面这条掩码用来扣出真正的指针地址
 #define FAST_DATA_MASK          0x0f00007ffffffff8UL
 #else
 #define FAST_DATA_MASK          0x0f007ffffffffff8UL
 #endif
-#define FAST_FLAGS_MASK         0x0000000000000007UL   用来取低三位 能把最低三位抠出来
+#define FAST_FLAGS_MASK         0x0000000000000007UL   // 取低三位：把最低三位标志抠出来
 #define FAST_IS_RW_POINTER      0x8000000000000000UL   // 快速判断这是 rw 指针而非 ro，未realiz时候，bits指向ro，realize后，Runtime生产rw 里面包装ro
 ```
 ```objc
@@ -1213,7 +1035,7 @@ struct class_ro_t {
 ```
 
 `§2` 里反复提到的 `instanceSize`、`instanceStart`，源头就在这里。
-`class_rw_t` 由 `objc_class::bits.data()` 取得,它内部再指向 `class_ro_t`。但这里有个关键时间点问题:类在编译产物里**最初只有 `ro`​**,`bits.data()` 一开始指向的其实是 `ro` 而非 `rw`。只有当这个类第一次被使用(消息发送、`+alloc` 等)触发 `realizeClassWithoutSwift` 时,runtime 才会分配一个 `class_rw_t`,把 `ro` 塞进去,并回写 `bits`。所以 `class_rw_t` 是"类被实现(realize)"的产物,而 `class_ro_t` 是"类被编译"的产物。
+`class_rw_t` 由 `objc_class::bits.data()` 取得,它内部再指向 `class_ro_t`。但这里有个关键时间点问题:类在编译产物里**最初只有 `ro`​**,`bits` 里一开始存的其实是 `ro` 指针而非 `rw`（注意：此时还**不能**调用 `data()`——它内部 `ASSERT(has_rw_pointer())` 会失败；要取只读数据得走 `safe_ro()`）。只有当这个类第一次被使用(消息发送、`+alloc` 等)触发 `realizeClassWithoutSwift` 时,runtime 才会分配一个 `class_rw_t`,把 `ro` 塞进去,并回写 `bits`。所以 `class_rw_t` 是"类被实现(realize)"的产物,而 `class_ro_t` 是"类被编译"的产物。
 
 ```objc
 // objc-runtime-new.h:2212 —— class_rw_t（运行期可写）
@@ -1265,7 +1087,7 @@ public:
 - **`class_ro_t` = clean memory（干净内存）**：编译期就定死、运行期只读。它可以在进程间**共享**、能被系统按需换出/换入（page in/out），**不占用宝贵的 dirty memory**。`instanceSize`、`name`、原始方法列表都在这。
 - **`class_rw_t` = dirty memory（脏内存）**：类一旦被 realize（运行期初始化），就需要一块可写的数据来合并 Category 方法、支持 `class_addMethod` 动态加方法、维护子类链。dirty memory 不能共享、不能换出，是实打实的内存开销。
 
-苹果统计发现：**绝大多数类，运行期根本不会去改方法 / 属性 / 协议列表。** 给它们都分配一份内嵌了三个数组的完整 `rw`，太浪费。于是新版（818 起）做了关键优化——把那三个可变数组抽到一个**懒分配**的 `class_rw_ext_t` 里：
+苹果统计发现：**绝大多数类，运行期根本不会去改方法 / 属性 / 协议列表。** 给它们都分配一份内嵌了三个数组的完整 `rw`，太浪费。WWDC2020 给过实测数据：运行期真正会改方法 / 属性 / 协议的类**只占约 10%**，只给这部分类分配 `class_rw_ext_t`、其余直接指向 `ro`，**全系统省下约 14MB 脏内存**。于是新版（818 起）把那三个可变数组抽到一个**懒分配**的 `class_rw_ext_t` 里：
 
 ```objc
 // objc-runtime-new.h:2202 —— 真要动态改时才分配的扩展
@@ -1279,8 +1101,24 @@ struct class_rw_ext_t {
 };
 ```
 
+![[rw_ro_ext_layout.html]]
 
-![Objective-C-类元数据-ro-rw-rwe-关系图.svg](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/Objective-C-%E7%B1%BB%E5%85%83%E6%95%B0%E6%8D%AE-ro-rw-rwe-%E5%85%B3%E7%B3%BB%E5%9B%BE.svg)
+## 还有两块「不弄脏内存」的优化（同属 WWDC2020）
+
+clean / dirty 这条思路在 951.1 里不止用在 `ro`，还有两处也值得一提：
+
+### 相对方法列表（Relative Method Lists）
+
+回头看上面 `class_ro_t` 里的 `objc::PointerUnion<method_list_t, relative_list_list_t<…>, …>`——这正是 WWDC2020 的另一项重头戏。老版方法项 `method_t` 把 `name / types / imp` 存成三根 **64 位绝对指针**（共 24 字节）；新版引入 `method_t::small`（`objc-runtime-new.h:975`），换成三个 **32 位相对偏移**（共 12 字节），体积直接减半。
+
+更关键的是：相对偏移按「自身地址 + 偏移」现算，**镜像加载时不需要 rebase（重写指针）**，所以方法列表能继续待在 **clean memory**、随 dyld 共享缓存被多进程共享，不会因为 ASLR 重定位而被「弄脏」——和 `ro` 是同一招。承载这种表示的列表类型是 `relative_list_list_t`（`objc-runtime-new.h:1380`）。
+
+> 代价：`int32` 偏移要求方法和它引用的目标落在 ±2GB 内；越界（极少数情况）才回退到绝对指针。
+
+### 预优化缓存（preopt cache）
+
+前面 `cache_t` 那个 union 里的 `_originalPreoptCache`，指向的就是 **dyld 共享缓存里预先算好的方法缓存**：`NSObject`、`UIView` 这类系统类的高频 `SEL → IMP` 在构建共享缓存时就填好了，App 启动时它们的缓存**不必从空冷启动**，同样以 clean memory 形式被各进程共享。`cache_t::initializeToEmptyOrPreoptimizedInDisguise()` 就是在「空缓存」与「预优化缓存」之间做选择。
+
 
 
 
