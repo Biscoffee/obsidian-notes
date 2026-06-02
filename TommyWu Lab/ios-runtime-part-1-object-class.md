@@ -1122,6 +1122,160 @@ clean / dirty 这条思路在 951.1 里不止用在 `ro`，还有两处也值得
 
 
 
+# 元类 metaclass
+
+上一章留了个钩子：类的 `isa` 指向谁？还有一个更现实的问题——**类方法（`+` 方法）存在哪？** 实例方法存在类的方法列表里，那 `[Person new]`、`+ (void)breathe` 这些类方法呢？答案是同一个东西：**元类（metaclass）**。
+
+## 元类没有独立结构体，它也是 `objc_class`
+
+一个反直觉的事实：元类**没有**自己的结构体定义，它和普通类共用 `objc_class`，仅靠**标志位**区分自己是不是元类：
+
+```objc
+// objc-runtime-new.h:3043 —— realize 之后判定
+bool isMetaClass() const {
+    ASSERT(isRealized());
+#if FAST_CACHE_META
+    return cache.getBit(FAST_CACHE_META);    // 真机：直接读 cache 的 META 标志位（快）
+#else
+    return data()->flags & RW_META;
+#endif
+}
+
+// objc-runtime-new.h:3054 —— 未 realize 也能判定
+bool isMetaClassMaybeUnrealized() const {
+    // flags 在 class_ro_t 和 class_rw_t 的同一偏移（§bits 讲过），且 RO_META==RW_META，
+    // 所以不管 bits 里现在是 ro 还是 rw，直接读 flags 都能拿到 META 位
+    static_assert(offsetof(class_rw_t, flags) == offsetof(class_ro_t, flags), "flags alias");
+    static_assert(RO_META == RW_META, "flags alias");
+    if (isStubClass()) return false;
+    return bits.flags() & RW_META;
+}
+```
+
+这正好回收了 §bits 里那个 `flags()` 的伏笔：**`flags` 之所以放在 `ro`/`rw` 的起始处、能直接 strip+mask 读出，就是为了在类还没 realize 时也能判断它是不是元类。**
+
+## 类方法，其实就是元类的「实例方法」
+
+这是元类存在的根本原因，源码给得非常直白：
+
+```objc
+// objc-class.mm:598 —— 取类方法 = 去「元类」里取同名实例方法
+Method class_getClassMethod(Class cls, SEL sel)
+{
+    if (!cls || !sel) return nil;
+    return class_getInstanceMethod(cls->getMeta(), sel);   // getMeta() 就是 cls->ISA()
+}
+
+// objc-runtime-new.h:3063 —— 类 ↔ 元类互导
+Class getMeta() const {
+    if (isMetaClassMaybeUnrealized()) return (Class)this;  // 自己是元类 → 返回自己
+    else return this->ISA();                               // 普通类 → isa 指向的元类
+}
+```
+
+也就是说：**「类对象」之于「元类」，等同于「实例对象」之于「类」**。实例的方法存在类里、类的方法（类方法）存在元类里——同一套机制套了两层。
+
+### 实测：类方法落在元类里
+
+> demo：`isa_walk.m`（`Animal` 声明了类方法 `+breathe`），`clang -fno-objc-arc -framework Foundation` 编译直接运行：
+
+```
+==== 类方法存在元类里 (class_getClassMethod) ====
+class_getClassMethod(Animal, breathe)         = 0x100d30c91
+class_getInstanceMethod(Animal 元类, breathe) = 0x100d30c91   ← 同一个 Method ✓
+Animal 自己有没有 breathe 实例方法：没有（它在元类里）
+```
+
+`class_getClassMethod(Animal, breathe)` 和「在 **Animal 的元类** 上取实例方法 `breathe`」拿到的是**同一个 `Method` 指针**；而直接在 `Animal` 类上找 `breathe` 的实例方法是找不到的——它根本不在类里，在元类里。
+
+# isa 走位与继承链
+
+类的 `isa` 指向元类，元类的 `isa` 又指向谁？元类有没有父类？把这两条链走完，就是经典的「isa 走位图」。
+
+## 接环就发生在 realize
+
+类加载时，`isa`（指向元类）和 `superclass`（指向父类）这两根指针，是在 `realizeClassWithoutSwift` 里回写的：
+
+```objc
+// objc-runtime-new.mm:3019-3084 —— 节选
+// 先把父类、元类也 realize（cls->ISA() 此刻就是编译期写好的元类）
+supercls = realizeClassWithoutSwift(remapClass(cls->getSuperclass()), nil);
+metacls  = realizeClassWithoutSwift(remapClass(cls->ISA()), nil);
+...
+cls->setSuperclass(supercls);   // superclass → 父类
+cls->initClassIsa(metacls);     // isa        → 元类
+```
+
+而「根」的两条判定，把整张图的两个特殊点钉死了：
+
+```objc
+// objc-runtime-new.h:3077 / 3080
+bool isRootClass()     const { return getSuperclass() == nil; }   // 根类：superclass 为 nil（NSObject）
+bool isRootMetaclass() const { return ISA() == (Class)this; }     // 根元类：isa 指向自己（闭环）
+```
+
+## 走位规律
+
+| 起点 | `isa` 指向 | `superclass` 指向 |
+|---|---|---|
+| 实例 | 它的类 | —— |
+| 类 | 它的元类 | 父类 |
+| 元类 | **根元类** | 父类的元类 |
+| 根元类（NSObject 元类） | **自己**（闭环） | **根类 NSObject** |
+| 根类 NSObject | 根元类 | nil |
+
+最反直觉、也是面试最爱问的两条都在最后两行：**根元类的 `isa` 指回自己**、**根元类的 `superclass` 指向 `NSObject` 类**（不是 nil！）。
+
+```mermaid
+graph BT
+  d["Dog 实例"]
+  Dog["Dog 类"]; Animal["Animal 类"]; NSObj["NSObject 类(根类)"]
+  DogM["Dog 元类"]; AnimalM["Animal 元类"]; RootM["NSObject 元类(根元类)"]
+  nilNode(("nil"))
+
+  Dog --> Animal --> NSObj --> nilNode
+  DogM --> AnimalM --> RootM --> NSObj
+
+  d -. isa .-> Dog
+  Dog -. isa .-> DogM
+  Animal -. isa .-> AnimalM
+  NSObj -. isa .-> RootM
+  DogM -. isa .-> RootM
+  AnimalM -. isa .-> RootM
+  RootM -. isa .-> RootM
+```
+> 实线 = `superclass`，虚线 = `isa`。注意右下角 `RootM` 那根指回自己的虚线（闭环），以及 `RootM` 的实线 `superclass` 拐回左边的 `NSObject 类`。
+
+### 实测：真实地址把这张图跑通
+
+> 同一个 `isa_walk.m`，`Dog : Animal : NSObject` 三层继承，用 `object_getClass` / `class_getSuperclass` 逐层打印（地址为某次运行实测值）：
+
+```
+==== isa 链（object_getClass 逐层）====
+instance d                  0x100d6f430
+d.isa   = Dog 类            0x100d381a0
+Dog.isa = Dog 元类          0x100d38178
+Dog 元类.isa                0x1f6e35bb0   ← 跳到根元类
+Animal 元类                 0x100d38128
+NSObject 类                 0x1f6e35bd8
+NSObject 元类(根元类)        0x1f6e35bb0
+根元类.isa  →               0x1f6e35bb0   ← 等于自己，闭环 ✓
+
+==== superclass 链 ====
+Dog.superclass              0x100d38150   → Animal 类
+Animal.superclass           0x1f6e35bd8   → NSObject 类
+NSObject.superclass         0x0           → nil
+Dog 元类.superclass         0x100d38128   → Animal 元类
+Animal 元类.superclass      0x1f6e35bb0   → 根元类
+根元类.superclass  →        0x1f6e35bd8   ← 等于 NSObject 类 ✓
+```
+
+对着地址核对两个闭环点：
+1. **`根元类.isa (0x1f6e35bb0) == 根元类自身 (0x1f6e35bb0)`** —— isa 链到根元类就咬住自己，不再往上。
+2. **`根元类.superclass (0x1f6e35bd8) == NSObject 类 (0x1f6e35bd8)`** —— 元类的 superclass 链不是断在根元类，而是拐回 `NSObject` 类，再由它 `superclass=nil` 收尾。
+
+至此，「对象 → 类 → 元类 → 根元类」一条 isa 链、「子类 → 父类 → 根类 → nil」与「子元类 → 父元类 → 根元类 → 根类 → nil」两条 superclass 链，就全部闭合了。
+
 # At Last
 
 ## 参考与感谢
