@@ -1114,8 +1114,6 @@ clean / dirty 这条思路在 951.1 里不止用在 `ro`，还有两处也值得
 前面 `cache_t` 那个 union 里的 `_originalPreoptCache`，指向的就是 **dyld 共享缓存里预先算好的方法缓存**：`NSObject`、`UIView` 这类系统类的高频 `SEL → IMP` 在构建共享缓存时就填好了，App 启动时它们的缓存**不必从空冷启动**，同样以 clean memory 形式被各进程共享。`cache_t::initializeToEmptyOrPreoptimizedInDisguise()` 就是在「空缓存」与「预优化缓存」之间做选择。
 
 
-
-
 # 元类 metaclass
 
 ## 元类没有独立结构体，它也是 `objc_class`
@@ -1144,7 +1142,7 @@ bool isMetaClassMaybeUnrealized() const {
 }
 ```
 
-这正好回收了 §bits 里那个 `flags()` 的伏笔：**`flags` 之所以放在 `ro`/`rw` 的起始处、能直接 strip+mask 读出，就是为了在类还没 realize 时也能判断它是不是元类。**
+这正好回收了 bits 里那个 `flags()` 的伏笔：**`flags` 之所以放在 `ro`/`rw` 的起始处、能直接 strip+mask 读出，就是为了在类还没 realize 时也能判断它是不是元类。**
 
 ## 类方法，其实就是元类的「实例方法」
 
@@ -1182,7 +1180,12 @@ Animal 自己有没有 breathe 实例方法：没有（它在元类里）
 
 # isa 走位与继承链
 
+![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260602162105369.png)
+
+
 类的 `isa` 指向元类，元类的 `isa` 又指向谁？元类有没有父类？把这两条链走完，就是经典的「isa 走位图」。
+
+![[isa_chain_diagram 1.html]]
 
 ## 接环就发生在 realize
 
