@@ -1169,6 +1169,9 @@ public:
 
 先看底下那层 `class_ro_t`——它就是编译期写死、运行期不可变的部分：
 
+![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260602110437370.png)
+
+
 ```objc
 // objc-runtime-new.h:1598 —— class_ro_t（编译期只读）
 struct class_ro_t {

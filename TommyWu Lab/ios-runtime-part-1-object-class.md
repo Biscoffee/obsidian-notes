@@ -1179,6 +1179,9 @@ public:
 
 先看底下那层 `class_ro_t`——它就是编译期写死、运行期不可变的部分：
 
+![Uploading file...tglr9]()
+
+
 ```objc
 // objc-runtime-new.h:1598 —— class_ro_t（编译期只读）
 struct class_ro_t {
