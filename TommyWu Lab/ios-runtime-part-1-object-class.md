@@ -29,8 +29,12 @@ draft: false
   - bits：class_rw_t → class_ro_t
   - ro 与 rw 的分离：clean memory vs dirty memory
   - 还有两块「不弄脏内存」的优化（相对方法列表 / preopt cache）
-- 元类 metaclass（待写）
-- isa 走位与继承链（待写）
+- [元类 metaclass](#元类-metaclass)
+  - 元类没有独立结构体，它也是 objc_class
+  - 类方法，其实就是元类的「实例方法」
+- [isa 走位与继承链](#isa-走位与继承链)
+  - 接环就发生在 realize
+  - 走位规律
 - [At Last](#at-last)
 
 # Runtime 简介
@@ -1123,8 +1127,6 @@ clean / dirty 这条思路在 951.1 里不止用在 `ro`，还有两处也值得
 
 
 # 元类 metaclass
-
-上一章留了个钩子：类的 `isa` 指向谁？还有一个更现实的问题——**类方法（`+` 方法）存在哪？** 实例方法存在类的方法列表里，那 `[Person new]`、`+ (void)breathe` 这些类方法呢？答案是同一个东西：**元类（metaclass）**。
 
 ## 元类没有独立结构体，它也是 `objc_class`
 
