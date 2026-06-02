@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>class_ro_t / class_rw_t / class_rw_ext_t</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0b0f;
+  --card:#13131a;
+  --card2:#1a1a24;
+  --border:rgba(255,255,255,0.06);
+  --border2:rgba(255,255,255,0.13);
+  --text:#dddae8;
+  --text2:#8e8ba3;
+  --text3:#4e4c63;
+  --teal:#2dd4bf;
+  --purple:#a78bfa;
+  --amber:#fbbf24;
+  --coral:#fb7185;
+  --blue:#60a5fa;
+  --green:#4ade80;
+  --gray:#6b7280;
+  --mono:'JetBrains Mono',monospace;
+  --sans:'DM Sans',sans-serif;
+}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:var(--sans);
+  padding:32px 28px 56px;min-width:900px;
+}
+.page-title{font-family:var(--mono);font-size:15px;font-weight:700;text-align:center;letter-spacing:.04em;margin-bottom:5px}
+.page-sub{font-family:var(--mono);font-size:11px;color:var(--text3);text-align:center;letter-spacing:.06em;margin-bottom:36px}
+.sec-label{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;margin-top:24px}
+
+/* card */
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.card-head{background:var(--card2);padding:8px 14px;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--text);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-head-left{display:flex;align-items:center;gap:8px}
+.hdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.card-row{padding:6px 14px;font-family:var(--mono);font-size:11px;color:var(--text2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;line-height:1.5;position:relative}
+.card-row:last-child{border-bottom:none}
+.card-row.muted{color:var(--text3);font-size:10px}
+.card-row:hover .rowtip{opacity:1}
+.kw{color:var(--coral)}
+.ty{color:var(--blue)}
+.nm{color:var(--text)}
+.fn{color:var(--teal)}
+
+.rowtip{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);background:#1e1e2e;border:1px solid var(--border2);border-radius:6px;padding:5px 10px;font-size:10px;color:var(--text2);white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;z-index:20}
+
+hr.dim{border:none;border-top:1px solid var(--border);margin:20px 0}
+
+/* timeline */
+.timeline{display:flex;align-items:stretch;gap:0;margin-bottom:20px;border-radius:10px;overflow:hidden;border:1px solid var(--border)}
+.tl-step{flex:1;padding:14px 16px;border-right:1px solid var(--border);position:relative}
+.tl-step:last-child{border-right:none}
+.tl-num{font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:4px;letter-spacing:.06em}
+.tl-title{font-family:var(--mono);font-size:12px;font-weight:700;margin-bottom:6px}
+.tl-body{font-family:var(--mono);font-size:10px;color:var(--text2);line-height:1.7}
+.tl-arrow{display:flex;align-items:center;justify-content:center;padding:0 4px;color:var(--text3);font-size:16px;flex-shrink:0;align-self:center}
+
+/* three structures */
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:start}
+
+/* pointer diagram */
+.ptr-diagram{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px 24px}
+
+.ptr-row{display:flex;align-items:center;gap:0;margin:10px 0}
+.ptr-box{border-radius:6px;padding:8px 14px;font-family:var(--mono);font-size:11px;font-weight:600;text-align:center;min-width:120px;flex-shrink:0}
+.ptr-line{height:2px;flex:1;position:relative}
+.ptr-line::after{content:'▶';position:absolute;right:-6px;top:50%;transform:translateY(-50%);font-size:10px}
+.ptr-label{font-family:var(--mono);font-size:10px;color:var(--text3);position:absolute;top:-16px;left:50%;transform:translateX(-50%);white-space:nowrap}
+.ptr-line-wrap{flex:1;position:relative;height:2px;display:flex;align-items:center}
+
+/* badge */
+.badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:9.5px;font-weight:500;font-family:var(--mono)}
+.b-ro{background:rgba(96,165,250,.15);color:var(--blue);border:1px solid rgba(96,165,250,.25)}
+.b-rw{background:rgba(45,212,191,.15);color:var(--teal);border:1px solid rgba(45,212,191,.25)}
+.b-rwe{background:rgba(251,191,36,.15);color:var(--amber);border:1px solid rgba(251,191,36,.25)}
+.b-lazy{background:rgba(74,222,128,.15);color:var(--green);border:1px solid rgba(74,222,128,.25)}
+
+/* memory savings */
+.saving-bar{display:flex;height:32px;border-radius:6px;overflow:hidden;border:1px solid var(--border);margin:10px 0}
+.saving-seg{display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;font-weight:600}
+
+/* ro_or_rwe state machine */
+.state-row{display:flex;gap:14px;align-items:stretch}
+.state-box{flex:1;background:var(--card);border-radius:8px;padding:12px 14px;border:1px solid var(--border)}
+.state-title{font-family:var(--mono);font-size:11px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.state-body{font-family:var(--mono);font-size:10px;color:var(--text2);line-height:1.8}
+.state-arrow-box{display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:20px;padding:0 4px;flex-shrink:0}
+
+.footer-note{margin-top:20px;background:var(--card);border:1px solid var(--border);border-left:2px solid var(--teal);border-radius:8px;padding:12px 16px;font-family:var(--mono);font-size:10.5px;color:var(--text2);line-height:2}
+.footer-note .hl{color:var(--teal)}
+.footer-note .em{color:var(--coral)}
+.footer-note .am{color:var(--amber)}
+</style>
+</head>
+<body>
+
+<div class="page-title">class_ro_t &nbsp;/&nbsp; class_rw_t &nbsp;/&nbsp; class_rw_ext_t</div>
+<div class="page-sub">objc4 · 三者关系、生命周期与内存优化</div>
+
+<!-- ══ Timeline ══ -->
+<div class="sec-label">生命周期 — 什么时候创建</div>
+<div class="timeline">
+  <div class="tl-step" style="background:rgba(96,165,250,.04)">
+    <div class="tl-num">① COMPILE TIME</div>
+    <div class="tl-title" style="color:var(--blue)">class_ro_t 诞生</div>
+    <div class="tl-body">
+      编译器写入二进制<br>
+      存在 __DATA_CONST 段<br>
+      内存只读，永不修改<br>
+      <span style="color:var(--blue)">每个类必然存在</span>
+    </div>
+  </div>
+  <div class="tl-arrow">→</div>
+  <div class="tl-step" style="background:rgba(45,212,191,.04)">
+    <div class="tl-num">② LOAD TIME · realizeClass()</div>
+    <div class="tl-title" style="color:var(--teal)">class_rw_t 诞生</div>
+    <div class="tl-body">
+      首次使用类时懒创建<br>
+      heap 上分配<br>
+      ro_or_rwe → class_ro_t<br>
+      <span style="color:var(--teal)">每个类必然存在</span>
+    </div>
+  </div>
+  <div class="tl-arrow">→</div>
+  <div class="tl-step" style="background:rgba(251,191,36,.04)">
+    <div class="tl-num">③ RUNTIME · 按需创建</div>
+    <div class="tl-title" style="color:var(--amber)">class_rw_ext_t 诞生</div>
+    <div class="tl-body">
+      Category 附加时创建<br>
+      或运行时修改方法时<br>
+      合并 category 方法列表<br>
+      <span style="color:var(--amber)">~10% 的类才会创建</span>
+    </div>
+  </div>
+  <div class="tl-arrow">→</div>
+  <div class="tl-step" style="background:rgba(107,114,128,.04)">
+    <div class="tl-num">④ NEVER</div>
+    <div class="tl-title" style="color:var(--gray)">未修改的类</div>
+    <div class="tl-body">
+      纯系统类 / 无 Category<br>
+      class_rw_t 直接指向 ro<br>
+      <span style="color:var(--green)">不创建 rwe，节省内存</span><br>
+      ≈ 90% 的类走这条路
+    </div>
+  </div>
+</div>
+
+<!-- ══ Three Structures ══ -->
+<div class="sec-label">三个结构体的字段</div>
+<div class="three-col">
+
+  <!-- class_ro_t -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-left"><span class="hdot" style="background:var(--blue)"></span>class_ro_t</div>
+      <span class="badge b-ro">只读 · 编译期</span>
+    </div>
+    <div class="card-row"><span class="ty">uint32_t</span>&nbsp;<span class="nm">flags</span><div class="rowtip">RO_META / RO_ROOT / RO_HAS_CXX_STRUCTORS 等</div></div>
+    <div class="card-row"><span class="ty">uint32_t</span>&nbsp;<span class="nm">instanceStart</span><div class="rowtip">实例变量起始偏移（继承链对齐用）</div></div>
+    <div class="card-row"><span class="ty">uint32_t</span>&nbsp;<span class="nm">instanceSize</span><div class="rowtip">实例字节大小（alloc 的依据）</div></div>
+    <div class="card-row"><span class="ty">method_list_t *</span>&nbsp;<span class="nm">baseMethods</span><div class="rowtip">编译期方法列表，不含 category</div></div>
+    <div class="card-row"><span class="ty">protocol_list_t *</span>&nbsp;<span class="nm">baseProtocols</span><div class="rowtip">编译期协议列表</div></div>
+    <div class="card-row"><span class="ty">ivar_list_t *</span>&nbsp;<span class="nm">ivars</span><div class="rowtip">实例变量列表，运行时不可增删</div></div>
+    <div class="card-row"><span class="ty">uint8_t *</span>&nbsp;<span class="nm">weakIvarLayout</span><div class="rowtip">弱引用变量的内存布局</div></div>
+    <div class="card-row"><span class="ty">property_list_t *</span>&nbsp;<span class="nm">baseProperties</span><div class="rowtip">编译期属性列表</div></div>
+    <div class="card-row"><span class="ty">const char *</span>&nbsp;<span class="nm">name</span><div class="rowtip">类名字符串</div></div>
+    <div class="card-row muted">存于 __DATA_CONST，只读保护</div>
+  </div>
+
+  <!-- class_rw_t -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-left"><span class="hdot" style="background:var(--teal)"></span>class_rw_t</div>
+      <span class="badge b-rw">可读写 · 运行时</span>
+    </div>
+    <div class="card-row"><span class="ty">uint32_t</span>&nbsp;<span class="nm">flags</span><div class="rowtip">RW_REALIZED / RW_INITIALIZING 等运行时标志</div></div>
+    <div class="card-row"><span class="ty">uint16_t</span>&nbsp;<span class="nm">witness</span><div class="rowtip">并发安全版本号，用于检测 rwe 是否已创建</div></div>
+    <div class="card-row" style="background:rgba(251,191,36,.05)">
+      <span class="ty">uintptr_t</span>&nbsp;<span class="nm" style="color:var(--amber)">ro_or_rwe</span>
+      <div class="rowtip">核心字段：低1位=0指向ro，低1位=1指向rwe</div>
+    </div>
+    <div class="card-row"><span class="ty">Class</span>&nbsp;<span class="nm">firstSubclass</span><div class="rowtip">子类链表头节点</div></div>
+    <div class="card-row"><span class="ty">Class</span>&nbsp;<span class="nm">nextSiblingClass</span><div class="rowtip">兄弟类链表，用于遍历类层级</div></div>
+    <div class="card-row muted">methods() / properties() / protocols()</div>
+    <div class="card-row muted">↳ 从 rwe 或 ro 取，调用方无感知</div>
+    <div class="card-row muted">heap 分配，每次 realizeClass 时创建</div>
+  </div>
+
+  <!-- class_rw_ext_t -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-left"><span class="hdot" style="background:var(--amber)"></span>class_rw_ext_t</div>
+      <span class="badge b-rwe">按需 · ~10%</span>
+    </div>
+    <div class="card-row"><span class="ty">const class_ro_t *</span>&nbsp;<span class="nm">ro</span><div class="rowtip">始终指向编译期 ro，不变</div></div>
+    <div class="card-row"><span class="ty">method_array_t</span>&nbsp;<span class="nm">methods</span><div class="rowtip">合并后的完整方法列表（含 category）</div></div>
+    <div class="card-row"><span class="ty">property_array_t</span>&nbsp;<span class="nm">properties</span><div class="rowtip">合并后的完整属性列表</div></div>
+    <div class="card-row"><span class="ty">protocol_ref_array_t</span>&nbsp;<span class="nm">protocols</span><div class="rowtip">合并后的完整协议列表</div></div>
+    <div class="card-row"><span class="ty">char *</span>&nbsp;<span class="nm">demangledName</span><div class="rowtip">Swift 类名解码后的 ObjC 名</div></div>
+    <div class="card-row"><span class="ty">uint32_t</span>&nbsp;<span class="nm">version</span><div class="rowtip">类版本号</div></div>
+    <div class="card-row muted">Category 附加 / method_setImplementation</div>
+    <div class="card-row muted">↳ 触发创建，方法列表在这里合并</div>
+  </div>
+
+</div>
+
+<!-- ══ ro_or_rwe 状态机 ══ -->
+<hr class="dim">
+<div class="sec-label">ro_or_rwe — 核心指针的三种状态</div>
+<div class="state-row">
+
+  <!-- 状态 1 -->
+  <div class="state-box" style="border-color:rgba(96,165,250,.3)">
+    <div class="state-title" style="color:var(--blue)">
+      <span style="font-size:16px">①</span> 未实现（before realizeClass）
+    </div>
+    <div class="state-body">
+      bits 直接存的是 class_ro_t*<br>
+      低位 bit 用作区分标志<br><br>
+      <span style="color:var(--blue)">bits = (class_ro_t* | flag)</span><br>
+      data() 检测标志后返回 ro
+    </div>
+  </div>
+
+  <div class="state-arrow-box">→</div>
+
+  <!-- 状态 2 -->
+  <div class="state-box" style="border-color:rgba(45,212,191,.3)">
+    <div class="state-title" style="color:var(--teal)">
+      <span style="font-size:16px">②</span> 已实现，无 rwe
+    </div>
+    <div class="state-body">
+      class_rw_t 已分配<br>
+      ro_or_rwe 低位 = 0<br><br>
+      <span style="color:var(--teal)">ro_or_rwe → class_ro_t</span><br>
+      ≈ 90% 的类停在这里
+    </div>
+  </div>
+
+  <div class="state-arrow-box">→</div>
+
+  <!-- 状态 3 -->
+  <div class="state-box" style="border-color:rgba(251,191,36,.3)">
+    <div class="state-title" style="color:var(--amber)">
+      <span style="font-size:16px">③</span> 已实现，有 rwe
+    </div>
+    <div class="state-body">
+      class_rw_ext_t 已分配<br>
+      ro_or_rwe 低位 = 1<br><br>
+      <span style="color:var(--amber)">ro_or_rwe → class_rw_ext_t</span><br>
+      rwe 内部再持有 ro 指针
+    </div>
+  </div>
+
+</div>
+
+<!-- ══ 指针链 ══ -->
+<hr class="dim">
+<div class="sec-label">完整指针链 — 从 objc_class 到 ivars</div>
+<div class="card">
+  <div style="padding:20px 20px 16px">
+
+    <!-- 无 rwe 路径 -->
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:8px">路径 A：无 rwe（绝大多数类）</div>
+    <div style="display:flex;align-items:center;gap:0;margin-bottom:18px;flex-wrap:nowrap">
+      <div style="background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.3);border-radius:6px;padding:7px 12px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--purple);white-space:nowrap">objc_class.bits</div>
+      <div style="flex:1;height:1px;background:var(--border2);position:relative;margin:0 4px">
+        <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">.data()</div>
+        <div style="position:absolute;right:-5px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:10px">▶</div>
+      </div>
+      <div style="background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);border-radius:6px;padding:7px 12px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--teal);white-space:nowrap">class_rw_t</div>
+      <div style="flex:1;height:1px;background:var(--border2);position:relative;margin:0 4px">
+        <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">ro_or_rwe (低位=0)</div>
+        <div style="position:absolute;right:-5px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:10px">▶</div>
+      </div>
+      <div style="background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.3);border-radius:6px;padding:7px 12px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--blue);white-space:nowrap">class_ro_t</div>
+      <div style="flex:1;height:1px;background:var(--border2);position:relative;margin:0 4px">
+        <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">.ivars / .baseMethods</div>
+        <div style="position:absolute;right:-5px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:10px">▶</div>
+      </div>
+      <div style="background:rgba(107,114,128,.12);border:1px solid rgba(107,114,128,.3);border-radius:6px;padding:7px 12px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--gray);white-space:nowrap">ivar_list_t / method_list_t</div>
+    </div>
+
+    <!-- 有 rwe 路径 -->
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:8px">路径 B：有 rwe（附加了 Category 的类）</div>
+    <div style="display:flex;align-items:center;gap:0;flex-wrap:nowrap">
+      <div style="background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.3);border-radius:6px;padding:7px 12px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--purple);white-space:nowrap">objc_class.bits</div>
+      <div style="flex:1;height:1px;background:var(--border2);position:relative;margin:0 4px">
+        <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">.data()</div>
+        <div style="position:absolute;right:-5px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:10px">▶</div>
+      </div>
+      <div style="background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);border-radius:6px;padding:7px 12px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--teal);white-space:nowrap">class_rw_t</div>
+      <div style="flex:1;height:1px;background:var(--border2);position:relative;margin:0 4px">
+        <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">ro_or_rwe (低位=1)</div>
+        <div style="position:absolute;right:-5px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:10px">▶</div>
+      </div>
+      <div style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);border-radius:6px;padding:7px 12px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--amber);white-space:nowrap">class_rw_ext_t</div>
+      <div style="display:flex;flex-direction:column;gap:3px;margin:0 6px">
+        <div style="display:flex;align-items:center;gap:3px">
+          <div style="width:24px;height:1px;background:var(--border2);position:relative">
+            <div style="position:absolute;right:-5px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:9px">▶</div>
+          </div>
+          <div style="font-family:var(--mono);font-size:9.5px;color:var(--blue)">.ro → class_ro_t</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:3px">
+          <div style="width:24px;height:1px;background:var(--border2);position:relative">
+            <div style="position:absolute;right:-5px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:9px">▶</div>
+          </div>
+          <div style="font-family:var(--mono);font-size:9.5px;color:var(--amber)">.methods → 合并方法列表</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 内存节省 ══ -->
+<hr class="dim">
+<div class="sec-label">为什么要拆出 rwe — WWDC 2020 内存优化</div>
+<div class="card">
+  <div style="padding:14px 16px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-family:var(--mono);font-size:10.5px;color:var(--text3);margin-bottom:8px">旧方案（objc4-781 之前）</div>
+        <div class="saving-bar">
+          <div class="saving-seg" style="flex:1;background:rgba(96,165,250,.25);color:var(--blue)">class_ro_t</div>
+          <div class="saving-seg" style="flex:1;background:rgba(251,113,133,.35);color:var(--coral)">class_rw_t（全部类）</div>
+        </div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text2);line-height:1.8;margin-top:8px">
+          每个类都分配 class_rw_t<br>
+          含完整 methods / props / protos<br>
+          <span style="color:var(--coral)">典型 App ≈ 30MB 用于 rw</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:10.5px;color:var(--text3);margin-bottom:8px">新方案（objc4-781+）</div>
+        <div class="saving-bar">
+          <div class="saving-seg" style="flex:1;background:rgba(96,165,250,.25);color:var(--blue)">class_ro_t</div>
+          <div class="saving-seg" style="flex:9;background:rgba(45,212,191,.2);color:var(--teal);font-size:9px">class_rw_t（精简，无 methods）</div>
+          <div class="saving-seg" style="flex:1;background:rgba(251,191,36,.35);color:var(--amber);font-size:9px">rwe（仅10%）</div>
+        </div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text2);line-height:1.8;margin-top:8px">
+          rw 不再存方法列表，只存指针<br>
+          90% 的类不创建 rwe<br>
+          <span style="color:var(--green)">节省 ≈ 14MB（Apple 数据）</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer-note">
+  <span class="hl">class_ro_t</span>：编译期写入 __DATA_CONST，只读，包含 ivars / baseMethods / name 等，<span class="em">运行时永远不变</span>。&nbsp;&nbsp;
+  <span class="hl">class_rw_t</span>：realizeClass() 时创建，通过 <span class="am">ro_or_rwe</span> 低位 bit 区分当前指向 ro 还是 rwe，methods() / properties() 等访问器对调用方透明。&nbsp;&nbsp;
+  <span class="am">class_rw_ext_t</span>：仅在 Category 附加或运行时修改方法时按需创建（约 10% 的类），持有合并后的完整方法列表并保存一份 ro 指针。鼠标悬停字段行查看详情。
+</div>
+
+</body>
+</html>

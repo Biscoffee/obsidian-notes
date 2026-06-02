@@ -1184,6 +1184,7 @@ struct class_ro_t {
     union {
         const uint8_t *ivarLayout;
         Class nonMetaclass;
+        // 对实例类而言,这里存 `ivarLayout`——描述哪些 ivar 是 strong 引用的位图,供 ARC 在拷贝/释放对象时遍历强引用。对**元类**而言,ivar 布局无意义,于是这块空间被复用为 `nonMetaclass`,反向指回它所对应的实例类。
     };
     explicit_atomic<const char *> name;
     // baseMethods/baseProtocols 用 PointerUnion 包了相对/绝对 + ptrauth 多种表示
@@ -1201,7 +1202,8 @@ struct class_ro_t {
 };
 ```
 
-`§2` 里反复提到的 `instanceSize`、`instanceStart`，源头就在这里。再看上面那层 `class_rw_t`——它是运行期可写的部分：
+`§2` 里反复提到的 `instanceSize`、`instanceStart`，源头就在这里。
+`class_rw_t` 由 `objc_class::bits.data()` 取得,它内部再指向 `class_ro_t`。但这里有个关键时间点问题:类在编译产物里**最初只有 `ro`​**,`bits.data()` 一开始指向的其实是 `ro` 而非 `rw`。只有当这个类第一次被使用(消息发送、`+alloc` 等)触发 `realizeClassWithoutSwift` 时,runtime 才会分配一个 `class_rw_t`,把 `ro` 塞进去,并回写 `bits`。所以 `class_rw_t` 是"类被实现(realize)"的产物,而 `class_ro_t` 是"类被编译"的产物。
 
 ```objc
 // objc-runtime-new.h:2212 —— class_rw_t（运行期可写）
@@ -1232,11 +1234,11 @@ public:
     class_rw_ext_t *extAllocIfNeeded();
     class_rw_ext_t *deepCopy(const class_ro_t *ro);
 
-    const class_ro_t *ro() const {           // rwe 在就从 rwe 取 ro，否则 ro_or_rw_ext 本身就是 ro
+    const class_ro_t *ro() const {        // rwe 在就从 rwe 取 ro，否则 ro_or_rw_ext 本身就是 ro
         auto v = get_ro_or_rwe();
-        if (slowpath(v.is<class_rw_ext_t *>()))
+        if (slowpath(v.is<class_rw_ext_t *>()))  //如果已经升级，那么从rwe里取ro
             return v.get<class_rw_ext_t *>(&ro_or_rw_ext)->ro;
-        return v.get<const class_ro_t *>(&ro_or_rw_ext);
+        return v.get<const class_ro_t *>(&ro_or_rw_ext);// 不然自己就是ro
     }
     void set_ro(const class_ro_t *ro);
 
@@ -1267,16 +1269,7 @@ struct class_rw_ext_t {
 };
 ```
 
-`class_rw_t` 里的 `ro_or_rw_ext` 就是个「二选一」的联合指针（`PointerUnion`）：
-
-- **情况 A（绝大多数类）**：`ro_or_rw_ext` 直接指向 `class_ro_t`——**不额外分配 `rw_ext`**，省下一整块 dirty memory；
-- **情况 B（真的要动态改方法时）**：才 `extAlloc` 一个 `class_rw_ext_t`，把可变的 `methods/properties/protocols` 装进去，`ro_or_rw_ext` 转而指向它。
-
-
-一句话总结这一章：**类也是对象（有 isa）；它的四大件是 isa / superclass / cache / bits；真正的数据在 `bits` 身后的 `class_rw_t`（可写）→ `class_ro_t`（只读）两层里，而 ro/rw 的分离正是为了把编译期定死的部分放进可共享、可换出的 clean memory，省下宝贵的 dirty memory。**
-
-那么——类的 `isa` 指向的「元类」，又是何方神圣？下一章见。
-
+![[rw_ro_ext_layout.html]]
 
 # At Last
 
