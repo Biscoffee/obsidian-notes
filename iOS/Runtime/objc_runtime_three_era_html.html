@@ -1,0 +1,174 @@
+
+<h2 class="sr-only">OC Runtime 三版本结构对照：Objc 1.0 / objc4-680 / objc4-818+</h2>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;padding:16px 12px 20px;font-size:12px}
+.col{display:flex;flex-direction:column;gap:10px;padding:0 8px}
+.col+.col{border-left:0.5px solid var(--color-border-tertiary)}
+.col-title{font-size:13px;font-weight:500;color:var(--color-text-primary);text-align:center;padding-bottom:6px;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:2px}
+.col-sub{font-size:11px;color:var(--color-text-tertiary);text-align:center;margin-top:-6px;margin-bottom:4px}
+.struct{border-radius:var(--border-radius-md);overflow:hidden;border:0.5px solid var(--color-border-secondary)}
+.struct-head{padding:5px 8px;font-weight:500;font-size:12px;text-align:center;background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-secondary);color:var(--color-text-primary)}
+.field{padding:4px 8px;font-size:11px;color:var(--color-text-secondary);border-bottom:0.5px solid var(--color-border-tertiary);font-family:var(--font-mono);white-space:nowrap}
+.field:last-child{border-bottom:none}
+.field.hi-coral{background:#FAECE7;color:#712B13}
+.field.hi-amber{background:#FAEEDA;color:#633806}
+.field.hi-blue{background:#E6F1FB;color:#0C447C}
+.field.hi-purple{background:#EEEDFE;color:#3C3489}
+.field.hi-teal{background:#E1F5EE;color:#085041}
+.field.hi-gray{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.field.note{font-family:var(--font-sans);font-style:italic;color:var(--color-text-tertiary);font-size:10px;background:var(--color-background-tertiary)}
+.badge{display:inline-block;font-size:9px;padding:1px 4px;border-radius:3px;margin-left:4px;vertical-align:middle;font-family:var(--font-sans);font-weight:500}
+.badge-new{background:#FAEEDA;color:#633806}
+.badge-del{background:#FCEBEB;color:#791F1F;text-decoration:line-through}
+.badge-pu{background:#EEEDFE;color:#3C3489}
+.arr-wrap{display:flex;align-items:center;justify-content:center;gap:4px;padding:2px 0}
+.arr-label{font-size:10px;color:var(--color-text-tertiary)}
+.arrow{font-size:14px;color:var(--color-text-tertiary)}
+.fork-row{display:flex;gap:6px;justify-content:center}
+.fork-item{flex:1;text-align:center;font-size:10px;padding:3px 4px;border-radius:4px;border:0.5px dashed}
+.fork-ro{border-color:#BA7517;color:#BA7517;background:#FAEEDA22}
+.fork-rwe{border-color:#534AB7;color:#534AB7;background:#EEEDFE22}
+@media (prefers-color-scheme: dark){
+  .field.hi-coral{background:#4A1B0C;color:#F5C4B3}
+  .field.hi-amber{background:#412402;color:#FAC775}
+  .field.hi-blue{background:#042C53;color:#B5D4F4}
+  .field.hi-purple{background:#26215C;color:#CECBF6}
+  .field.hi-teal{background:#04342C;color:#9FE1CB}
+  .badge-new{background:#412402;color:#FAC775}
+  .badge-del{background:#501313;color:#F7C1C1}
+  .badge-pu{background:#26215C;color:#CECBF6}
+  .fork-ro{border-color:#EF9F27;color:#EF9F27;background:transparent}
+  .fork-rwe{border-color:#7F77DD;color:#7F77DD;background:transparent}
+}
+</style>
+
+<div class="wrap">
+
+  <!-- ── COL 1: Objc 1.0 ── -->
+  <div class="col">
+    <div class="col-title">Objc 1.0</div>
+    <div class="col-sub">编译期静态绑定</div>
+
+    <div class="struct">
+      <div class="struct-head">objc_class</div>
+      <div class="field hi-gray">Class isa</div>
+      <div class="field hi-gray">Class super_class</div>
+      <div class="field hi-gray">const char *name</div>
+      <div class="field hi-gray">long version</div>
+      <div class="field hi-gray">long info</div>
+      <div class="field hi-gray">long instance_size</div>
+      <div class="field hi-gray">objc_ivar_list *ivars</div>
+      <div class="field hi-gray">objc_method_list **methodLists</div>
+      <div class="field hi-gray">objc_cache *cache</div>
+      <div class="field hi-gray">objc_protocol_list *protocols</div>
+    </div>
+
+    <div class="arr-wrap"><span class="arr-label">所有信息平铺在一个结构体</span></div>
+    <div class="arr-wrap"><span class="arr-label">无运行时动态修改能力</span></div>
+  </div>
+
+  <!-- ── COL 2: objc4-680 ── -->
+  <div class="col">
+    <div class="col-title">Objc 2.0 · objc4-680</div>
+    <div class="col-sub">~2016，Halfrost 博客版本</div>
+
+    <div class="struct">
+      <div class="struct-head">objc_class : objc_object</div>
+      <div class="field hi-gray">isa_t isa</div>
+      <div class="field hi-gray">Class superclass</div>
+      <div class="field hi-gray">cache_t cache</div>
+      <div class="field hi-coral">class_data_bits_t bits ↓</div>
+    </div>
+
+    <div class="arr-wrap"><span class="arrow">↓</span><span class="arr-label">data()</span></div>
+
+    <div class="struct">
+      <div class="struct-head">class_rw_t</div>
+      <div class="field hi-purple">uint32_t flags</div>
+      <div class="field hi-purple">uint32_t version</div>
+      <div class="field hi-coral">const class_ro_t *ro ↓</div>
+      <div class="field hi-purple">method_array_t methods</div>
+      <div class="field hi-purple">property_array_t properties</div>
+      <div class="field hi-purple">protocol_array_t protocols</div>
+      <div class="field hi-purple">Class firstSubclass</div>
+      <div class="field hi-purple">Class nextSiblingClass</div>
+      <div class="field hi-purple">char *demangledName</div>
+    </div>
+
+    <div class="arr-wrap"><span class="arrow">↓</span><span class="arr-label">裸指针直接指向</span></div>
+
+    <div class="struct">
+      <div class="struct-head">class_ro_t</div>
+      <div class="field hi-teal">uint32_t flags</div>
+      <div class="field hi-teal">uint32_t instanceStart</div>
+      <div class="field hi-teal">uint32_t instanceSize</div>
+      <div class="field hi-teal">const char *name</div>
+      <div class="field hi-teal">method_list_t *baseMethodList</div>
+      <div class="field hi-teal">protocol_list_t *baseProtocols</div>
+      <div class="field hi-teal">ivar_list_t *ivars</div>
+      <div class="field hi-teal">uint8_t *ivarLayout</div>
+      <div class="field hi-teal">property_list_t *baseProperties</div>
+    </div>
+  </div>
+
+  <!-- ── COL 3: objc4-818+ ── -->
+  <div class="col">
+    <div class="col-title">Objc 2.0 · objc4-818+</div>
+    <div class="col-sub">WWDC 2020 重构，当前版本</div>
+
+    <div class="struct">
+      <div class="struct-head">objc_class : objc_object</div>
+      <div class="field hi-gray">isa_t isa</div>
+      <div class="field hi-gray">Class superclass</div>
+      <div class="field hi-gray">cache_t cache <span class="badge badge-new">重构</span></div>
+      <div class="field hi-coral">class_data_bits_t bits ↓</div>
+    </div>
+
+    <div class="arr-wrap"><span class="arrow">↓</span><span class="arr-label">data()</span></div>
+
+    <div class="struct">
+      <div class="struct-head">class_rw_t <span class="badge badge-new">精简</span></div>
+      <div class="field hi-purple">uint32_t flags</div>
+      <div class="field hi-purple">uint16_t witness <span class="badge badge-new">新增</span></div>
+      <div class="field hi-amber">ro_or_rw_ext <span class="badge badge-pu">PointerUnion</span></div>
+      <div class="field hi-purple">Class firstSubclass</div>
+      <div class="field hi-purple">Class nextSiblingClass</div>
+      <div class="field note">version / demangledName / methods</div>
+      <div class="field note">properties / protocols → 移入 rwe</div>
+    </div>
+
+    <div class="arr-wrap"><span class="arr-label">ro_or_rw_ext 按需分叉：</span></div>
+    <div class="fork-row">
+      <div class="fork-item fork-ro">↙ 无动态修改<br>直接指 ro</div>
+      <div class="fork-item fork-rwe">↘ 懒分配<br>class_rw_ext_t</div>
+    </div>
+
+    <div class="arr-wrap" style="margin-top:4px"><span class="arrow">↓</span></div>
+
+    <div class="struct">
+      <div class="struct-head">class_ro_t</div>
+      <div class="field hi-teal">uint32_t flags</div>
+      <div class="field hi-teal">uint32_t instanceStart / Size</div>
+      <div class="field hi-amber">name <span class="badge badge-new">atomic</span></div>
+      <div class="field hi-amber">baseMethods <span class="badge badge-pu">PointerUnion</span></div>
+      <div class="field hi-amber">baseProtocols <span class="badge badge-pu">PointerUnion</span></div>
+      <div class="field hi-teal">ivar_list_t *ivars</div>
+      <div class="field hi-amber">baseProperties <span class="badge badge-pu">PointerUnion</span></div>
+      <div class="field hi-amber">ivarLayout ∪ nonMetaclass <span class="badge badge-new">union</span></div>
+    </div>
+
+    <div class="arr-wrap"><span class="arr-label">↕ rwe.ro 反向持有 class_ro_t</span></div>
+
+    <div class="struct">
+      <div class="struct-head">class_rw_ext_t <span class="badge badge-new">新结构</span></div>
+      <div class="field hi-blue">method_array_t methods</div>
+      <div class="field hi-blue">property_array_t properties</div>
+      <div class="field hi-blue">protocol_array_t protocols</div>
+      <div class="field hi-blue">const class_ro_t *ro</div>
+      <div class="field hi-blue">uint32_t version</div>
+      <div class="field hi-blue">const char *demangledName</div>
+    </div>
+  </div>
+
+</div>
