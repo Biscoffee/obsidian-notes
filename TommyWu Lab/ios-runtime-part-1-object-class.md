@@ -1357,38 +1357,9 @@ Animal 元类.superclass      0x1f6e35bb0   → 根元类
 
 **④ `+ isKindOfClass:`（类方法版）** 从 `self->ISA()`（元类）起步，沿**元类的 superclass 链**往上爬。对 Person 来说是：`Person 元类 → NSObject 元类 → NSObject 类 → nil`。注意倒数第二站是 **NSObject 类**——根元类的 superclass 指回根类。就是这条特殊连线，埋下了下面那个"灵异"结论。
 
-### 一道经典陷阱：`[NSObject isKindOfClass:[NSObject class]]` 是 YES，`[Person isKindOfClass:[Person class]]` 却是 NO
+![Uploading file...kkgh7]()
 
-都用方法 ④ 的循环逐站走一遍就清楚了。
 
-`[Person isKindOfClass:[Person class]]`，`cls` = Person 类：
-
-| 轮次 | tcls | == Person 类？ |
-|---|---|---|
-| 1 | Person 元类 | 否 |
-| 2 | NSObject 元类 | 否 |
-| 3 | NSObject 类 | 否 |
-| 4 | nil（结束） | 否 |
-
-全程没有「Person 类」这一站——它在 isa 横线的另一侧，不在元类的纵向继承链上，所以返回 **NO**。
-
-`[NSObject isKindOfClass:[NSObject class]]`，`cls` = NSObject 类：
-
-| 轮次 | tcls | == NSObject 类？ |
-|---|---|---|
-| 1 | NSObject 元类 | 否 |
-| 2 | NSObject 类（根元类 superclass 拐回根类） | **是 → YES** |
-
-第二站就撞上了。所以结论是：**只有 NSObject 这一个类，对自己调 `+isKindOfClass:` 返回 YES；其它任何类 `[XXX isKindOfClass:[XXX class]]` 都是 NO**。根源就是"根元类的 superclass 指回根类"这条连线，让元类链最后绕回了 NSObject 类。
-
-### 四个方法横向对比
-
-| 方法 | self 是 | 比较起点 | 遍历继承链 | 走哪条链 |
-|---|---|---|---|---|
-| `- isMemberOfClass:` | 实例 | `[self class]`（类） | 否，精确比一层 | — |
-| `- isKindOfClass:` | 实例 | `[self class]`（类） | 是 | 类的 superclass 链 |
-| `+ isMemberOfClass:` | 类 | `self->ISA()`（元类） | 否，精确比一层 | — |
-| `+ isKindOfClass:` | 类 | `self->ISA()`（元类） | 是 | 元类的 superclass 链 |
 
 最后补一句运行时的实情：`[obj isKindOfClass:]` 多半根本走不到上面这个方法。编译器有个快路径 `objc_opt_isKindOfClass`（`NSObject.mm:2185`）：
 

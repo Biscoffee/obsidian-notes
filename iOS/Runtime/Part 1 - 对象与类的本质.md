@@ -1347,8 +1347,6 @@ Animal 元类.superclass      0x1f6e35bb0   → 根元类
 
 **④ `+ isKindOfClass:`（类方法版）** 从 `self->ISA()`（元类）起步，沿**元类的 superclass 链**往上爬。对 Person 来说是：`Person 元类 → NSObject 元类 → NSObject 类 → nil`。注意倒数第二站是 **NSObject 类**——根元类的 superclass 指回根类。就是这条特殊连线，埋下了下面那个"灵异"结论。
 
-
-
 最后补一句运行时的实情：`[obj isKindOfClass:]` 多半根本走不到上面这个方法。编译器有个快路径 `objc_opt_isKindOfClass`（`NSObject.mm:2185`）：
 
 ```objc
