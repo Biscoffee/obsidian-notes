@@ -10,33 +10,6 @@ seriesOrder: 1
 draft: false
 ---
 
-## 目录
-
-- [Runtime 简介](#runtime-简介)
-- [对象的本质：objc_object](#对象的本质objc_object)
-  - objc_object：对象的骨架
-  - isa_t
-  - ISA_BITFIELD：isa 的位布局
-  - getClass：从 isa 里取出 Class
-  - Tagged Pointer 优化
-- [对象的内存布局](#对象的内存布局)
-  - 实例里装了什么：isa + 成员变量
-  - 对象多大：从「需求」到「实分」的三个数
-  - 实战：NSObject 为什么是「8 需求 / 16 实分」
-- [类的本质：objc_class](#类的本质objc_class)
-  - 类本身也是对象
-  - 类的四大件：isa / superclass / cache / bits
-  - bits：class_rw_t → class_ro_t
-  - ro 与 rw 的分离：clean memory vs dirty memory
-  - 还有两块「不弄脏内存」的优化（相对方法列表 / preopt cache）
-- [元类 metaclass](#元类-metaclass)
-  - 元类没有独立结构体，它也是 objc_class
-  - 类方法，其实就是元类的「实例方法」
-- [isa 走位与继承链](#isa-走位与继承链)
-  - 接环就发生在 realize
-  - 走位规律
-- [At Last](#at-last)
-
 # Runtime 简介
 
 写 Objective-C 的人,每天都在敲这样的代码:
@@ -78,9 +51,7 @@ objc_msgSend(person, @selector(sayHello));
 
 ## objc_object：对象的骨架
 
-我们首先打开源码工程，全局搜索 (`command + shift + F`)
- 你会搜到两个结果，这正是本章的核心对比：
-
+我们首先打开源码工程
 这里是入口：他说明OC对象底层至少有一个isa，isa用来找到对象对应的类
 ```objc
 /// Represents an instance of a class.
@@ -315,7 +286,7 @@ public:
 <iframe src="/posts/ios-runtime-part-1-object-class/isa-t-three-views.html" title="isa_t 的三种视角" loading="lazy" style="width:100%;min-height:620px;border:1px solid var(--line-divider);border-radius:18px;background:#07110f;overflow:hidden;"></iframe>
 
 
-## ISA_BITFIELD：isa 的位布局
+### ISA_BITFIELD：isa 的位布局
 
 我们接下来看看`ISA_BITFIELD`：
 ```objc
@@ -372,7 +343,7 @@ uintptr_t extra_rc          : 7;    // bit25-31 内联引用计数
 ```
 
 
-## getClass：从 isa 里取出 Class
+### getClass：从 isa 里取出 Class
 
 刚才我们了解了，isa_t 长什么样、位怎么分布，接下来我们看看 Runtime是怎么从isa_t 里拿到 Class 的？
 
@@ -1195,7 +1166,7 @@ Animal 自己有没有 breathe 实例方法：没有（它在元类里）
 
 类的 `isa` 指向元类，元类的 `isa` 又指向谁？元类有没有父类？把这两条链走完，就是经典的「isa 走位图」。
 
-
+![[isa_chain_diagram 1.html]]
 
 ## 接环就发生在 realize
 
