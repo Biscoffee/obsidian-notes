@@ -1364,6 +1364,61 @@ BOOL objc_opt_isKindOfClass(id obj, Class otherClass) {
 
 只要这个类没重写过 NSObject 的核心方法（`hasCustomCore()` 为假），判定就被内联成一段裸 C 循环直接爬完 `superclass` 链，连消息都不发——和前面 cache 那套「热路径少绕一层」是一个意思。
 
+## self 与 super：[self class] 和 [super class] 为什么都打印 Son
+
+再看一道老题。`Son` 继承 `Father`，在 `Son` 的 `init` 里打印两行：
+
+```objc
+@implementation Son : Father
+- (id)init {
+    self = [super init];
+    if (self) {
+        NSLog(@"%@", NSStringFromClass([self class]));   // 输出？
+        NSLog(@"%@", NSStringFromClass([super class]));  // 输出？
+    }
+    return self;
+}
+@end
+```
+
+直觉容易答「Son、Father」。其实两行都是 `Son`。要讲清，得先分清 `self` 和 `super`。
+
+- **`self` 是方法的隐藏参数。** 每个方法被调用时，编译器都偷偷塞了两个参数：`self`（消息接收者）和 `_cmd`（SEL）。`[self class]` 编译成 `objc_msgSend(self, @selector(class))`——`self` 既是接收者，也是方法查找的起点（从 `self` 的类开始找）。`objc_msgSend` 的完整机制是 Part 2 的主角，这里只用到「接收者 + 查找起点」这一层。
+- **`super` 不是参数，是个编译器指示符。** 它告诉编译器：这条消息的方法查找**从父类开始**，但接收者**仍然是 `self`**。所以 `[super class]` 不走 `objc_msgSend`，走的是它的变体 `objc_msgSendSuper2`。
+
+`objc_msgSendSuper2` 的第一个参数是个 `objc_super` 结构体（`message.h:34`）：
+
+```objc
+struct objc_super {
+    id    receiver;     // 接收者——还是 self（son）
+    Class super_class;  // 方法查找的起点
+};
+```
+
+编译器为 `[super …]` 生成的是 `objc_msgSendSuper2`，不是公开头文件里那个 `objc_msgSendSuper`。两者复用同一个结构体，但第二个字段的含义不一样——`objc-abi.h:237` 写得很清楚：
+
+```objc
+// objc_msgSendSuper2() takes the current search class, not its superclass.
+objc_msgSendSuper2(struct objc_super *super, SEL op, ...);
+```
+
+也就是说，编译器填进 `super_class` 的其实是**当前类 `Son`**，由 `objc_msgSendSuper2` 在运行时**自己取一次 `Son` 的 superclass（`Father`）**当查找起点。为什么不直接填父类？把「取 superclass」留到运行时做，才好配合继承关系的动态变化。
+
+接下来是题眼。不管走 `objc_msgSend` 还是 `objc_msgSendSuper2`，**接收者 `receiver` 自始至终都是 `self`（这个 son 实例）**；`super` 改变的只是**从哪个类开始找 `class` 这个方法**：
+
+- `[self class]`：从 `Son` 开始找 `class`。
+- `[super class]`：从 `Father` 开始找 `class`。
+
+但 `Son`、`Father` 都没重写 `class`，最终都落到 `NSObject` 那唯一一份实现（`NSObject.mm:2438`）：
+
+```objc
+- (Class)class { return object_getClass(self); }
+```
+
+它返回的是 `object_getClass(self)`，而这里的 `self` 就是传进来的 `receiver`，也就是 son 实例。所以两次调用，`object_getClass(self)` 拿到的都是 son 的类——`Son`。
+
+总而言之：`super` 只换了**方法查找的起点**，没换 **receiver**；而 `class` 又只认 `object_getClass(self)`，所以 `[self class]` 和 `[super class]` 殊途同归，都打印 `Son`。
+
 
 # At Last
 
