@@ -187,9 +187,21 @@ public:
 };
 ```
 
-如上代码为 isa_t 联合体本体，**union 里所有成员，起始地址相同，共享同一块内存。bits、cls、ISA_BITFIELD struct 都是这块内存的**成员
+如上代码为 isa_t 联合体本体，**union 里所有成员，起始地址相同，共享同一块内存。bits、cls、ISA_BITFIELD struct 都是这块内存的**成员。
+
+bits ：整块 8 字节当作一个 64 位无符号整数。Runtime 内部大量用它做位运算，比如用 mask 提取 Class 地址：(Class)(bits & ISA_MASK)
+
+cls ：同一块 8 字节当作一个 Class 指针来解读。之所以 private，是因为 arm64e 上指针带 PAC 签名，不能直接读，必须走 `setClass` / `getClass` 做签名和验证。
+
+ISA_BITFIELD struct ：见下文
+
+>用一个例子来解释这个union： 假设这块 8 字节内存里存的是 0x011d800100000001
+>用bits 读：isa.bits == 0x011d800100000001 就是一个普通的64位整数，没有任何结构 拿来做位运算；用cls读 isa.cls == 0x011d800100000001 把同一个数字当成一个内存地址，认为它指向某个 Class 对象。用 匿名 struct 解读：把同一个数字按 bit 切开，每段单独看；
+
+> 也就是说，内存本身没有类型，字节本身从来没有变过，变的只是你怎么解读他
 
 ![[isa_t_three_views.html]]
+
 
 ### ISA_BITFIELD：isa 的位布局
 
@@ -246,6 +258,9 @@ uintptr_t unused            : 1;    // bit23
 uintptr_t has_sidetable_rc  : 1;    // bit24
 uintptr_t extra_rc          : 7;    // bit25-31 内联引用计数
 ```
+
+![[isa_t-四套架构位布局对照（可切换）.html]]
+
 ### isa 位域的历史演进（2015 → 至今）
 
 上面那张 arm64e 的图，和在很多老博客里看到的「`shiftcls:33` + `magic` + `deallocating`」并不一样。这不是谁画错了，而是 isa 的位布局本身改过——而且关键的一次改动就发生在 iOS 14→15 之间。把几个节点版本的 objc4 源码摆在一起看就清楚了（以下均为各版本 `isa.h` / `objc-private.h` 实际源码）：
@@ -289,6 +304,7 @@ uintptr_t has_sidetable_rc:1; extra_rc:8;
 一句话记忆：**老博客那张 isa 图（`shiftcls:33`/`magic`/`deallocating`）一直用到 781；分水岭是 781↔818，arm64e 上为了塞进 PAC 签名，一口气合并了 `shiftcls` 并删掉了 `magic`、`deallocating` 两个字段。** 而 781 之前五年（680→781）arm64 布局几乎没动过，这也是它被无数博客沿用的原因。
 
 > 注意：上面的对照只针对 **arm64e**。同一份 818/951 源码里，arm64（非 e）、x86_64 分支仍保留着 `magic` / `has_cxx_dtor`（见前一节的 ②③），所以「老字段消失」只发生在开了指针签名的 arm64e 上。
+
 
 ### getClass：从 isa 里取出 Class
 
