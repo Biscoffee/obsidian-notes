@@ -1305,9 +1305,9 @@ Animal 元类.superclass      0x1f6e35bb0   → 根元类
 1. **`根元类.isa (0x1f6e35bb0) == 根元类自身 (0x1f6e35bb0)`** —— isa 链到根元类就咬住自己，不再往上。
 2. **`根元类.superclass (0x1f6e35bd8) == NSObject 类 (0x1f6e35bd8)`** —— 元类的 superclass 链不是断在根元类，而是拐回 `NSObject` 类，再由它 `superclass=nil` 收尾。
 
-## isKindOfClass / isMemberOfClass：isa 走位的一次应用
+## isKindOfClass / isMemberOfClass
 
-上面这张 isa 走位图不只是理论——你每天写的 `isKindOfClass:` / `isMemberOfClass:`，底层就是顺着 `superclass` 链和 isa/元类链在走。源码只有几行（`NSObject.mm:2450`）：
+这张走位图不只是理论。我们天天用的 `isKindOfClass:` / `isMemberOfClass:`，底层就是顺着 `superclass` 链、isa 和元类链在走。源码只有几行（`NSObject.mm:2450`）：
 
 ```objc
 + (BOOL)isMemberOfClass:(Class)cls { return self->ISA() == cls; }   // 类方法版：比 isa（元类）
@@ -1325,14 +1325,18 @@ Animal 元类.superclass      0x1f6e35bb0   → 根元类
 }
 ```
 
-两组对照一眼看懂：
+`isMemberOfClass` 就一个 `==`，问的是「是不是*正好*这个类」。`isKindOfClass` 多了个 `for`，顺着 `superclass` 一路往上爬，自己或哪个祖先撞上都算——所以它管的范围比 `isMemberOf` 宽。
 
-- **`isMemberOf` vs `isKindOf`**：前者只用 `==` 比**一层**（必须正好是这个类）；后者从起点开始**沿 `getSuperclass()` 链往上遍历**，自己或任一祖先命中就 YES。所以 `isKindOf` 的范围永远**包含** `isMemberOf`。
-- **实例版 vs 类方法版**：差别只在**遍历的起点**。实例版起点是 `[self class]`，走的是**普通类继承链**（`Dog → Animal → NSObject → nil`）；类方法版起点是 `self->ISA()`，也就是**元类**，走的是上面刚实测过的那条**元类 superclass 链**（`Dog元类 → Animal元类 → 根元类 → NSObject类 → nil`）。
+`+` 和 `-` 两个版本，差别只有一处：从哪儿开始爬。
 
-第二点是最容易绊住人的地方：**当接收者本身是一个类对象**（拿 `[SomeClass class]` 当 receiver）时，调到的是 `+` 版，它比的是**元类链**，而不是你直觉里的类继承链。所以"类是不是它自己的 kind"这种判断，得照着上面那条元类链一格一格数——前面实测的「根元类 superclass 拐回 NSObject 类」那条边，正是在这里起作用。好在日常判断对象类型时，传进去的几乎都是实例（走 `-` 版、走类继承链），所以结果都符合直觉；只有把**类对象**塞进去才会反直觉。
+- `-` 实例版从 `[self class]` 起步，爬的是平时那条类继承链：`Dog → Animal → NSObject`。
+- `+` 类方法版从 `self->ISA()` 起步，也就是元类，爬的是上一节实测的那条元类链：`Dog元类 → Animal元类 → 根元类 → NSObject类`。
 
-最后补一刀：`[obj isKindOfClass:]` 在运行时**多数情况根本不发消息**。编译器有个优化入口 `objc_opt_isKindOfClass`（`NSObject.mm:2185`）：
+平时我们都是拿实例去判断类型，走的是 `-` 版、爬类继承链，结果跟直觉一致。可一旦把类对象本身传进去（`[SomeClass class]` 当接收者），调到的就是 `+` 版、比的是元类链，结果就得照着那条链一格格数，很容易跟想当然对不上。
+
+> 一句话记：`-` 版爬类继承链，`+` 版爬元类链；前者顺直觉，后者要当心。
+
+顺带一提，`[obj isKindOfClass:]` 平时多半根本走不到上面这个方法。编译器有个快路径 `objc_opt_isKindOfClass`（`NSObject.mm:2185`）：
 
 ```objc
 BOOL objc_opt_isKindOfClass(id obj, Class otherClass) {
@@ -1347,7 +1351,7 @@ BOOL objc_opt_isKindOfClass(id obj, Class otherClass) {
 }
 ```
 
-只要这个类没重写过 NSObject 的核心方法（`hasCustomCore()` 为假，背后正是 §cache 讲的 `FAST_CACHE_HAS_DEFAULT_CORE` 那类标志位在兜底），判定会被**内联成一段裸 C 循环**直接走完 `superclass` 链——和前面讲 cache 时「热路径省一层」是同一套省事哲学。
+只要这个类没重写过 NSObject 的核心方法（`hasCustomCore()` 为假，背后正是 cache 讲的 `FAST_CACHE_HAS_DEFAULT_CORE` 那类标志位在兜底），判定会被**内联成一段裸 C 循环**直接走完 `superclass` 链——和前面讲 cache 时「热路径省一层」是同一套省事哲学。
 
 
 # At Last
