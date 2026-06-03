@@ -585,7 +585,7 @@ uintptr_t value = (obfuscator ^ ptr);   // 编码/解码都要异或这个值
 
 这里有个**源码和内存对不上的地方**：你去翻 `objc_object` 源码，会发现它**只有 isa**（`char isa_storage[sizeof(isa_t)]`），根本没声明任何成员变量——那上图里 `+8` 之后的 ivar 是哪来的？
 
-答案是：**ivar 不是 `objc_object` 的 C 结构体字段，而是 `alloc` 时拼在 isa 之后的尾巴**，它的位置由元数据描述、靠偏移量寻址。源码里 `objc_object` 只写了 `isa_t isa`，是因为成员变量并非写死在结构体里，而是编译器根据类的 `ivar_list` 在 `isa` 之后动态布局并通过偏移量访问的。​`objc_object` 只盖住「所有对象都有的公共头」（isa），而每个类各不相同的 ivar，记在类的只读数据里（`objc-runtime-new.h`）：
+答案是：**ivar 不是 `objc_object` 的 C 结构体字段，而是 `alloc` 时拼在 isa 之后的尾巴**，它的位置由元数据描述、靠偏移量寻址。源码里 `objc_object` 只写了 `isa_t isa`，是因为成员变量并非写死在结构体里，而是编译器根据类的 `ivar_list` 在 `isa` 之后动态布局并通过偏移量访问的。`objc_object` 只盖住「所有对象都有的公共头」（isa），而每个类各不相同的 ivar，记在类的只读数据里（`objc-runtime-new.h`）：
 
 ```objc
 struct ivar_t {
@@ -1091,7 +1091,7 @@ struct class_ro_t {
 ```
 
 `§2` 里反复提到的 `instanceSize`、`instanceStart`，源头就在这里。
-`class_rw_t` 由 `objc_class::bits.data()` 取得,它内部再指向 `class_ro_t`。但这里有个关键时间点问题:类在编译产物里**最初只有 `ro`​**,`bits` 里一开始存的其实是 `ro` 指针而非 `rw`（注意：此时还**不能**调用 `data()`——它内部 `ASSERT(has_rw_pointer())` 会失败；要取只读数据得走 `safe_ro()`）。只有当这个类第一次被使用(消息发送、`+alloc` 等)触发 `realizeClassWithoutSwift` 时,runtime 才会分配一个 `class_rw_t`,把 `ro` 塞进去,并回写 `bits`。所以 `class_rw_t` 是"类被实现(realize)"的产物,而 `class_ro_t` 是"类被编译"的产物。
+`class_rw_t` 由 `objc_class::bits.data()` 取得,它内部再指向 `class_ro_t`。但这里有个关键时间点问题:类在编译产物里**最初只有 `ro`**,`bits` 里一开始存的其实是 `ro` 指针而非 `rw`（注意：此时还**不能**调用 `data()`——它内部 `ASSERT(has_rw_pointer())` 会失败；要取只读数据得走 `safe_ro()`）。只有当这个类第一次被使用(消息发送、`+alloc` 等)触发 `realizeClassWithoutSwift` 时,runtime 才会分配一个 `class_rw_t`,把 `ro` 塞进去,并回写 `bits`。所以 `class_rw_t` 是"类被实现(realize)"的产物,而 `class_ro_t` 是"类被编译"的产物。
 
 ```objc
 // objc-runtime-new.h:2212 —— class_rw_t（运行期可写）
@@ -1317,7 +1317,7 @@ Animal 元类.superclass      0x1f6e35bb0   → 根元类
 
 ## isKindOfClass / isMemberOfClass
 
-这张走位图不只是理论。我们天天用的 `isKindOfClass:` / `isMemberOfClass:`，底层就是顺着 `superclass` 链、isa 和元类链在走。源码只有几行（`NSObject.mm:2450`）：
+`isKindOfClass:` / `isMemberOfClass:`，底层就是顺着 `superclass` 链、isa 和元类链在走。源码只有几行（`NSObject.mm:2450`）：
 
 ```objc
 + (BOOL)isMemberOfClass:(Class)cls { return self->ISA() == cls; }   // 类方法版：比 isa（元类）
@@ -1335,8 +1335,62 @@ Animal 元类.superclass      0x1f6e35bb0   → 根元类
 }
 ```
 
+- `[self class]`：`self` 是**实例**时，拿到它的类。`Person *p` 的 `[p class]` 就是 `Person` 类。
+- `self->ISA()`：类方法里的 `self` 是**类对象**，它的 `isa` 指向**元类**。所以 `Person` 调 `self->ISA()` 拿到的是 `Person 元类`，不是 `Person` 类——这就是 `+` 版和 `-` 版结果分叉的根。
+- `getSuperclass()`：往上走一层父类。注意元类也有自己的继承链，和类的继承链平行：`Person 元类 → NSObject 元类 → NSObject 类`（根元类的 superclass 拐回根类）。
 
-`[obj isKindOfClass:]` 在运行时**多数情况根本不发消息**。编译器有个优化入口 `objc_opt_isKindOfClass`（`NSObject.mm:2185`）：
+四个方法逐个看。
+
+**① `- isMemberOfClass:`（实例版）** 就一次全等 `[self class] == cls`，不找父类。问的是「你是不是*正好*这个类的实例」。
+
+- `[p isMemberOfClass:[Person class]]` → YES
+- `[p isMemberOfClass:[NSObject class]]` → NO（p 的类是 Person，虽然继承自 NSObject，但不"正好"是它）
+
+**② `- isKindOfClass:`（实例版）** 从 `[self class]` 起步，沿 `superclass` 往上爬（`Person → NSObject → nil`），任一层命中就 YES。问的是「你是不是这个类、或它子类的实例」。
+
+- `[p isKindOfClass:[Person class]]` → YES（第一轮命中）
+- `[p isKindOfClass:[NSObject class]]` → YES（爬到 NSObject 命中）
+
+这两个实例版符合直觉，日常就用它们，没坑。坑在下面两个类方法版。
+
+**③ `+ isMemberOfClass:`（类方法版）** `self->ISA() == cls`，比的是**元类**。`[Person isMemberOfClass:[Person class]]` → NO，因为左边是 Person 元类、右边是 Person 类。想让它 YES 得把元类传进去，可元类平时既拿不到也不会去传，所以这方法实际上几乎永远返回 NO。
+
+**④ `+ isKindOfClass:`（类方法版）** 从 `self->ISA()`（元类）起步，沿**元类的 superclass 链**往上爬。对 Person 来说是：`Person 元类 → NSObject 元类 → NSObject 类 → nil`。注意倒数第二站是 **NSObject 类**——根元类的 superclass 指回根类。就是这条特殊连线，埋下了下面那个"灵异"结论。
+
+### 一道经典陷阱：`[NSObject isKindOfClass:[NSObject class]]` 是 YES，`[Person isKindOfClass:[Person class]]` 却是 NO
+
+都用方法 ④ 的循环逐站走一遍就清楚了。
+
+`[Person isKindOfClass:[Person class]]`，`cls` = Person 类：
+
+| 轮次 | tcls | == Person 类？ |
+|---|---|---|
+| 1 | Person 元类 | 否 |
+| 2 | NSObject 元类 | 否 |
+| 3 | NSObject 类 | 否 |
+| 4 | nil（结束） | 否 |
+
+全程没有「Person 类」这一站——它在 isa 横线的另一侧，不在元类的纵向继承链上，所以返回 **NO**。
+
+`[NSObject isKindOfClass:[NSObject class]]`，`cls` = NSObject 类：
+
+| 轮次 | tcls | == NSObject 类？ |
+|---|---|---|
+| 1 | NSObject 元类 | 否 |
+| 2 | NSObject 类（根元类 superclass 拐回根类） | **是 → YES** |
+
+第二站就撞上了。所以结论是：**只有 NSObject 这一个类，对自己调 `+isKindOfClass:` 返回 YES；其它任何类 `[XXX isKindOfClass:[XXX class]]` 都是 NO**。根源就是"根元类的 superclass 指回根类"这条连线，让元类链最后绕回了 NSObject 类。
+
+### 四个方法横向对比
+
+| 方法 | self 是 | 比较起点 | 遍历继承链 | 走哪条链 |
+|---|---|---|---|---|
+| `- isMemberOfClass:` | 实例 | `[self class]`（类） | 否，精确比一层 | — |
+| `- isKindOfClass:` | 实例 | `[self class]`（类） | 是 | 类的 superclass 链 |
+| `+ isMemberOfClass:` | 类 | `self->ISA()`（元类） | 否，精确比一层 | — |
+| `+ isKindOfClass:` | 类 | `self->ISA()`（元类） | 是 | 元类的 superclass 链 |
+
+最后补一句运行时的实情：`[obj isKindOfClass:]` 多半根本走不到上面这个方法。编译器有个快路径 `objc_opt_isKindOfClass`（`NSObject.mm:2185`）：
 
 ```objc
 BOOL objc_opt_isKindOfClass(id obj, Class otherClass) {
@@ -1351,7 +1405,7 @@ BOOL objc_opt_isKindOfClass(id obj, Class otherClass) {
 }
 ```
 
-只要这个类没重写过 NSObject 的核心方法（`hasCustomCore()` 为假，背后正是 cache 讲的 `FAST_CACHE_HAS_DEFAULT_CORE` 那类标志位在兜底），判定会被**内联成一段裸 C 循环**直接走完 `superclass` 链——和前面讲 cache 时「热路径省一层」是同一套省事哲学。
+只要这个类没重写过 NSObject 的核心方法（`hasCustomCore()` 为假），判定就被内联成一段裸 C 循环直接爬完 `superclass` 链，连消息都不发——和前面 cache 那套「热路径少绕一层」是一个意思。
 
 
 # At Last
