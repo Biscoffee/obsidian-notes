@@ -199,7 +199,7 @@ public:
 
 如上代码为 isa_t 联合体本体，**union 里所有成员，起始地址相同，共享同一块内存。bits、cls、ISA_BITFIELD struct 都是这块内存的**成员。
 
-bits ：整块 8 字节当作一个 64 位无符号整数。Runtime 内部大量用它做位运算，比如用 mask 提取 Class 地址：(Class)(bits & ISA_MASK)
+bits ：整块 8 字节当作一个 64 位无符号整数。
 
 cls ：同一块 8 字节当作一个 Class 指针来解读。之所以 private，是因为 arm64e 上指针带 PAC 签名，不能直接读，必须走 `setClass` / `getClass` 做签名和验证。
 
@@ -208,10 +208,9 @@ ISA_BITFIELD struct ：见下文
 >用一个例子来解释这个union： 假设这块 8 字节内存里存的是 0x011d800100000001
 >用bits 读：isa.bits == 0x011d800100000001 就是一个普通的64位整数，没有任何结构 拿来做位运算；用cls读 isa.cls == 0x011d800100000001 把同一个数字当成一个内存地址，认为它指向某个 Class 对象。用 匿名 struct 解读：把同一个数字按 bit 切开，每段单独看；
 
-> 也就是说，内存本身没有类型，字节本身从来没有bi a
+> 也就是说，内存本身没有类型，字节本身从来没有变过，变的只是你怎么解读他
 
 <iframe src="/posts/ios-runtime-part-1-object-class/isa-t-three-views.html" title="isa_t 的三种视角" loading="lazy" style="width:100%;min-height:620px;border:1px solid var(--line-divider);border-radius:18px;background:#07110f;overflow:hidden;"></iframe>
-
 
 ### ISA_BITFIELD：isa 的位布局
 
@@ -270,6 +269,59 @@ uintptr_t extra_rc          : 7;    // bit25-31 内联引用计数
 ```
 
 ![[isa_t-四套架构位布局对照（可切换）.html]]
+
+### arm64e 的 PAC 指针签名（Pointer Authentication）
+
+上面 ① arm64e 那段 `shiftcls_and_sig : 52` 里的 **`_and_sig`**，就是这一节的主角——**PAC 签名**。它是理解「为什么 arm64e 的 isa 和别的架构长得不一样」的最后一块拼图。
+
+**它要解决什么**：攻击者拿到内存写权限后，最爱**篡改指针**（把 isa、函数指针、返回地址改成自己布置的地址）来劫持控制流。CPU 解引用时分不清「这指针是程序写的，还是被人改的」。PAC 是 **ARMv8.3-A 的硬件特性**（苹果 A12 / arm64e 起启用），思路一句话：**给指针盖一个"防伪钢印"，用之前先验章，章不对就崩。**
+
+**原理**：64 位指针其实没用满（用户态地址只用低 ~40 位），PAC 就把空闲的高位拿来存一段签名：
+
+```
+未签名:  0x0000_0001_0008_00e8   高位全 0（浪费）
+已签名:  0x8a3f_0001_0008_00e8   高位塞进 PAC 签名
+         └签名┘└────真实地址────┘
+```
+
+这段签名 = `f(密钥 key, 修饰子 modifier, 指针本身的值)`，过一遍硬件加密算法（QARMA）算出。三者任一不同，签名就不同。配套三个硬件动作：
+
+| 动作 | objc 里的写法 | 干什么 |
+|---|---|---|
+| **签名 sign** | `ptrauth_sign_unauthenticated` | 算出签名盖到高位 |
+| **验证 auth** | `ptrauth_auth_data` | 重算比对：**对**→还原干净地址；**错**→返回一个故意做坏的指针，等你解引用它时才 trap 崩溃 |
+| **抹掉 strip** | `ptrauth_strip` | 只抹签名拿地址，**不验证**（图快/不安全场景） |
+
+**两个料**——密钥和修饰子，objc 给 isa 用的是（`objc-config.h`）：
+
+```objc
+#define ISA_SIGNING_KEY            ptrauth_key_process_independent_data  // :239 数据密钥
+#define ISA_SIGNING_DISCRIMINATOR  0x6AE1   // :232  = ptrauth_string_discriminator("isa")
+```
+
+密钥存在特殊寄存器、用户态读不到；**修饰子**相当于"加盐"，让同一地址在不同用途下签出不同的章。关键在于签 isa 时这样混盐（`objc-object.h` `setClass`）：
+
+```objc
+ptrauth_blend_discriminator(obj, ISA_SIGNING_DISCRIMINATOR)  // 把 0x6AE1 和「对象自己的地址 obj」混在一起
+```
+
+→ **签名同时绑定了"isa 这个用途"和"这个对象的地址"**。所以攻击者**没法把 A 对象的合法签名 isa 整段拷到 B 对象头上**——地址变了，验签必败。
+
+**和 Runtime 的联系**：PAC 不只用在 isa，Runtime 把同一套机制盖在了一批关键指针上，每处用**不同的盐**做用途隔离：
+
+| 被签名的指针 | 修饰子（用途盐） | 在本文哪出现过 |
+|---|---|---|
+| 对象的 `isa`（类指针） | `"isa"` → `0x6AE1` | 本节 / `shiftcls_and_sig` |
+| 类的 `superclass` | `"objc_class:superclass"` → `0xB5AB`（objc-config.h:233） | 「四大件」superclass 那段也带验签 |
+| 方法 `IMP` / 缓存 `bucket_t` | 方法/缓存各自的盐 | `cache_t` / `bucket_t::encodeImp` |
+| 类数据 `class_rw_t *`（`bits` 里） | `CLASS_DATA_BITS_RW_DISCRIMINATOR` | `## bits` 的 `data()` 验签 |
+
+> 🔗 **回到"三幅眼镜"**：PAC 正好把前面那三副眼镜的取舍讲透了——
+> ① **`cls` 眼镜为什么是 `private`**：因为 arm64e 上 isa 里的类指针**带签名**，直接 `isa.cls` 读出来是"带章的乱码"，不能当地址用，只能走 `getClass`/`setClass` 让访问器去验签/签名。
+> ② **签名存在哪**：就压在**位域眼镜**的 `shiftcls_and_sig` 高位里（类指针在低位、签名在高位，合成一段 52 位）。这也是 818 起 `shiftcls` 必须扩成 52 位、`ISA_MASK` 加宽到 `0x007ffffffffffff8` 的根因。
+> ③ **不验签时怎么取类**：用 **`bits` 眼镜** `& ISA_MASK`（或 `objc_debug_isa_class_mask`）把签名位直接 strip 掉拿地址——快，但不防篡改。
+
+而**下一节的 `getClass`，就是 PAC 验签的第一现场**：它那个 `if (authenticated) { …auth… } else { …strip… }` 分叉，正是在"安全验签"和"图快 strip"之间做选择。
 
 ### isa 位域的历史演进（2015 → 至今）
 
