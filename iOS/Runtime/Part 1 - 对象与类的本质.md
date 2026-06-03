@@ -52,85 +52,37 @@ struct objc_object {
 
 ```objc
 struct objc_object {
-
 private:
-
     char isa_storage[sizeof(isa_t)];
-
-  
-
     isa_t &isa() { return *reinterpret_cast<isa_t *>(isa_storage); }
-
     const isa_t &isa() const { return *reinterpret_cast<const isa_t *>(isa_storage); }
-
-  
-
 public:
-
-  
-
     // ISA() assumes this is NOT a tagged pointer object
-
     Class ISA(bool authenticated = false) const;
-
-  
-
     // rawISA() assumes this is NOT a tagged pointer object or a non pointer ISA
-
     Class rawISA() const;
-
-  
-
     // getIsa() allows this to be a tagged pointer object
-
     Class getIsa() const;
-
     uintptr_t isaBits() const;
-
-  
-
     // initIsa() should be used to init the isa of new objects only.
-
     // If this object already has an isa, use changeIsa() for correctness.
-
     // initInstanceIsa(): objects with no custom RR/AWZ
-
     // initClassIsa(): class objects
-
     // initProtocolIsa(): protocol objects
-
     // initIsa(): other objects
-
     void initIsa(Class cls /*nonpointer=false*/);
-
     void initClassIsa(Class cls /*nonpointer=maybe*/);
-
     void initProtocolIsa(Class cls /*nonpointer=maybe*/);
-
     void initInstanceIsa(Class cls, bool hasCxxDtor);
-
-  
-
     // changeIsa() should be used to change the isa of existing objects.
-
     // If this is a new object, use initIsa() for performance.
-
     Class changeIsa(Class newCls);
-
-  
-
     bool hasNonpointerIsa() const;
-
     bool isTaggedPointer() const;
-
     bool isBasicTaggedPointer() const;
-
     bool isExtTaggedPointer() const;
-
     bool isClass() const;
-
     bool hasCxxDtor() const;        // 类/父类有无 C++ 析构（dealloc 时要不要走 .cxx_destruct）
-
     // —— 以下省略一大簇方法 ——
     // hasAssociatedObjects / isWeaklyReferenced / retain / release /
     // rootRetain / rootRelease / sidetable_* …… 全是引用计数、关联对象、
@@ -203,78 +155,43 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 
 ```objc
 union isa_t {
-
     isa_t() { } //默认构造函数
-
     isa_t(uintptr_t value) : bits(value) { }  // 带参数的构造函数
-
     uintptr_t bits;   //isa_t 里面真正存的是一个和指针一样大的无符号整数(64)。
-
-  
-
 private:
-
     // Accessing the class requires custom ptrauth operations, so
-
     // force clients to go through setClass/getClass by making this
-
     // private.
-    
-
     Class cls;
     // 这段放在 private 中，让你不能从外部通过isa.cls直接访问，注释的意思是说：访问 `Class` 指针时，可能需要做 **ptrauth 指针认证**。在 Apple 的 arm64e 架构上，指针可能带有签名，不能像普通地址一样随便读出来用。Runtime 需要通过专门逻辑去认证、解码、还原。
-
-  
-
 public:
-
 #if defined(ISA_BITFIELD)
 // 如果当前平台定义了 ISA_BITFIELD，就启用 isa 位域结构。
     struct {
         ISA_BITFIELD;  // defined in isa.h
     };
-
-  
 // 当前平台的 isa 是否支持把一部分引用计数直接存在 isa 里面。
 #if ISA_HAS_INLINE_RC
-
     bool isDeallocating() const {
-
         return extra_rc == 0 && has_sidetable_rc == 0;
-
 	//extra_rc：存在 isa 里的额外引用计数
 	//has_sidetable_rc：是否还有引用计数存在 SideTable 里
     }
-
     void setDeallocating() {
-
         extra_rc = 0;
-
         has_sidetable_rc = 0;
-
     }
-
 #endif // ISA_HAS_INLINE_RC
-
-  
-
 #endif // defined(ISA_BITFIELD)
-
-  
-
     void setClass(Class cls, objc_object *obj);
-
     Class getClass(bool authenticated) const;
-
     Class getDecodedClass(bool authenticated) const;
-
 };
 ```
 
 如上代码为 isa_t 联合体本体，**union 里所有成员，起始地址相同，共享同一块内存。bits、cls、ISA_BITFIELD struct 都是这块内存的**成员
 
 ![[isa_t_three_views.html]]
-
 
 ### ISA_BITFIELD：isa 的位布局
 
@@ -335,7 +252,7 @@ uintptr_t extra_rc          : 7;    // bit25-31 内联引用计数
 
 ### isa 位域的历史演进（2015 → 至今）
 
-上面那张 arm64e 的图，和你在很多老博客里看到的「`shiftcls:33` + `magic` + `deallocating`」并不一样。这不是谁画错了，而是 isa 的位布局本身改过——而且关键的一次改动就发生在 iOS 14→15 之间。把几个节点版本的 objc4 源码摆在一起看就清楚了（以下均为各版本 `isa.h` / `objc-private.h` 实际源码）：
+上面那张 arm64e 的图，和在很多老博客里看到的「`shiftcls:33` + `magic` + `deallocating`」并不一样。这不是谁画错了，而是 isa 的位布局本身改过——而且关键的一次改动就发生在 iOS 14→15 之间。把几个节点版本的 objc4 源码摆在一起看就清楚了（以下均为各版本 `isa.h` / `objc-private.h` 实际源码）：
 
 ```objc
 // ===== objc4-680（2015，iOS 9）：位域还内联在 objc-private.h，没有 isa.h =====
@@ -880,6 +797,19 @@ objc_class.bits
      ▼
  class_ro_t   （编译期只读，read-only）
 ```
+
+> ⚠️ **此 `bits` 非彼 `bits`**：前面讲对象时，`isa_t` 里也有个 `uintptr_t bits`（isa 那 8 字节本身）。这里类对象的 `bits` 是 `class_data_bits_t`，和它**同名、套路相同（都是"指针+标志位塞进一个字"）、但管的事完全不同**。一路从 isa 看下来到这儿容易卡住，单独拎出来对比一下：
+
+| 维度 | `isa_t.bits`（每个对象都有） | `class_data_bits_t.bits`（只有类对象有） |
+|---|---|---|
+| 位置 | 对象头那 8 字节 | `objc_class` 第 4 个字段（isa/super/cache 之后，偏移 0x20） |
+| 高位存 | **类指针**（arm64e 为 `shiftcls_and_sig`，类指针+PAC签名） | **`class_rw_t *`**（realize 前是 `class_ro_t *`） |
+| 其余位存 | 引用计数 `extra_rc` + `nonpointer`/`has_assoc`/`weakly_referenced` 等标志 | 低 3 位 `FAST_FLAGS`：`FAST_IS_SWIFT_LEGACY/STABLE`、`FAST_IS_RW_POINTER` |
+| 取真身的掩码 | `ISA_MASK` = `0x007ffffffffffff8`（arm64e） | `FAST_DATA_MASK` = `0x0f007ffffffffff8`（arm64） |
+| 抠出来是 | `isa.bits & ISA_MASK` → **Class / 元类** | `bits & FAST_DATA_MASK` → **`class_rw_t`** |
+| 回答的问题 | 这个对象**属于哪个类** | 这个类**有哪些方法/属性/协议** |
+
+一句话记：**`isa.bits` 指向"类型"**（对象→类→元类，纵向的类型归属）；**`class.bits` 指向"内容"**（类→rw→ro，横向的成员数据）。运行时先靠 `isa.bits` 找到"我是哪个类"，再用那个类的 `class.bits` 找到"这个类装了什么"，一个接力一个。注意两者掩码高位形态不同（`0x0f00…` vs `0x007f…`）——因为 `class.bits` 还要在高位留 Swift 标志，两个 `bits` 不能共用同一个 mask。
 
 先看旧版（objc4-750~781 那代）这三件套长什么样，再逐个看新版：
 
