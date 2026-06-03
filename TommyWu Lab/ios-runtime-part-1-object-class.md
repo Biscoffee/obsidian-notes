@@ -159,8 +159,6 @@ Class ISA(bool authenticated = false) const;                     // 对外取类
 <iframe src="/posts/ios-runtime-part-1-object-class/isa-storage-to-isa-t-steps.html" title="isa_storage 到 isa_t 的解读过程" loading="lazy" style="width:100%;min-height:520px;border:1px solid var(--line-divider);border-radius:18px;background:#07110f;overflow:hidden;"></iframe>
 
 所以「对象的本质是什么」这个问题，到这里就收敛成了：`isa_t` 里到底装了什么？
-
-
 ## isa_t
 
 ```objc
@@ -258,8 +256,6 @@ uintptr_t unused            : 1;    // bit23
 uintptr_t has_sidetable_rc  : 1;    // bit24
 uintptr_t extra_rc          : 7;    // bit25-31 内联引用计数
 ```
-
-
 ### isa 位域的历史演进（2015 → 至今）
 
 上面那张 arm64e 的图，和在很多老博客里看到的「`shiftcls:33` + `magic` + `deallocating`」并不一样。这不是谁画错了，而是 isa 的位布局本身改过——而且关键的一次改动就发生在 iOS 14→15 之间。把几个节点版本的 objc4 源码摆在一起看就清楚了（以下均为各版本 `isa.h` / `objc-private.h` 实际源码）：
