@@ -994,9 +994,6 @@ struct class_ro_t {
 | 取只读数据                    | `data()->ro`（`ro` 是字段，直接 `.`）                                                                                                   | `data()->ro()`（`ro()` 是方法，从联合指针里取；realize 后才有 `data()`，未 realize 走 `safe_ro()`） |
 | 内存代价                     | 每个 realize 的类都摊一份完整 rw                                                                                                          | 多数类只指向 ro，不分配 rw_ext，**省 dirty memory**                                         |
 
-
-下面来看看新版，这段代码讲的是 **Objective-C 类对象里** **`bits`** **这个字段怎么存 class 数据**。它不是单纯存一个指针，而是把：class_ro_t * 或 class_rw_t *和一些快速标志位 `FAST_XXX` **塞在同一个 uintptr_t 里**。
-即：指针地址 + 低位/高位标志位混合存储。
 `bits` 的真身 `class_data_bits_t`（它用到的 `FAST_*` 掩码先列出）：
 
 ```objc
