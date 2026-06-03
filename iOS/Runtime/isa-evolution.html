@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>isa 位域多版本演化</title>
+</head>
+<body>
+<style>
+:root{
+  --accent:#E58522;--card-bg:#fff;
+  --text-primary:rgba(0,0,0,.8);--text-secondary:rgba(0,0,0,.5);--text-tertiary:rgba(0,0,0,.35);
+  --intensity-6:rgba(0,0,0,.06);--intensity-8:rgba(0,0,0,.08);--intensity-12:rgba(0,0,0,.12);
+  font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --card-bg:#2E2E2E;
+    --text-primary:rgba(255,255,255,.8);--text-secondary:rgba(255,255,255,.5);--text-tertiary:rgba(255,255,255,.35);
+    --intensity-6:rgba(255,255,255,.06);--intensity-8:rgba(255,255,255,.08);--intensity-12:rgba(255,255,255,.12);
+  }
+}
+*{box-sizing:border-box}
+.wrap{display:block;width:100%;max-width:100%;color:var(--text-primary);overflow-x:hidden}
+.ver-btn{flex:1 1 92px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:1px;
+  padding:7px 6px;border:.5px solid var(--intensity-8);border-radius:10px;background:var(--intensity-6);
+  color:var(--text-secondary);cursor:pointer;transition:.15s;white-space:nowrap}
+.ver-btn .v{font-size:12px;font-weight:700}
+.ver-btn .s{font-size:9.5px;color:var(--text-tertiary)}
+.ver-btn.on{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 26%,transparent)}
+.ver-btn.on .s{color:color-mix(in srgb,var(--accent) 70%,var(--text-tertiary))}
+.ver-btn.big::after{content:"⚡";font-size:9px;position:absolute;margin-top:-22px;margin-left:48px}
+.isa-bit{transition:.15s;cursor:default}
+.isa-bit.chg{box-shadow:inset 0 0 0 2px #fff,0 0 0 2px var(--accent);z-index:1}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;border-radius:999px;padding:2px 9px;border:.5px solid var(--intensity-8)}
+.chip.rm{color:#d33;border-color:rgba(220,51,51,.4);text-decoration:line-through;background:rgba(220,51,51,.07)}
+code{background:var(--intensity-6);border-radius:5px;padding:1px 5px;font-size:11.5px}
+</style>
+<div class="wrap">
+
+  <div style="font-size:15px;font-weight:600;margin-bottom:3px;">isa 位域的多版本演化（arm64）</div>
+  <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:14px;">点版本节点看那一版的 64-bit 位带与「相比上一版变了什么」。⚡ = 真正的位布局拐点。</div>
+
+  <div id="vtabs" style="display:flex;gap:6px;margin-bottom:14px;"></div>
+
+  <div id="isaBar" style="display:flex;width:100%;max-width:100%;height:56px;border-radius:10px;overflow:hidden;border:.5px solid var(--intensity-12);margin-bottom:6px;"></div>
+  <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-tertiary);margin-bottom:14px;">
+    <span id="maskCap"></span><span>bit 63（高位）</span>
+  </div>
+
+  <div style="border:.5px solid var(--intensity-8);border-radius:14px;background:var(--card-bg);padding:13px 16px;">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px;flex-wrap:wrap;">
+      <span id="dTag" style="font-size:14px;font-weight:700;"></span>
+      <span id="dSub" style="font-size:11px;color:var(--text-tertiary);"></span>
+    </div>
+    <div id="dNote" style="font-size:13px;color:var(--text-secondary);line-height:1.65;"></div>
+    <div id="dRemoved" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;"></div>
+  </div>
+</div>
+<script>
+const C={indexed:"#B9887D",nonpointer:"#B9887D",has_assoc:"#E98B2A",has_cxx_dtor:"#00AA90",
+  weakly_referenced:"#B481BB",shiftcls:"#E58522",shiftcls_and_sig:"#E58522",magic:"#86C166",
+  deallocating:"#E8718D",has_sidetable_rc:"#FFB11B",extra_rc:"#58B2DC"};
+
+const CLASSIC=[["indexed",1],["has_assoc",1],["has_cxx_dtor",1],["shiftcls",33],["magic",6],
+  ["weakly_referenced",1],["deallocating",1],["has_sidetable_rc",1],["extra_rc",19]];
+const CLASSIC_NP=CLASSIC.map(x=>x[0]==="indexed"?["nonpointer",1]:x);
+const ARM64E=[["nonpointer",1],["has_assoc",1],["weakly_referenced",1],["shiftcls_and_sig",52],
+  ["has_sidetable_rc",1],["extra_rc",8]];
+
+const V=[
+ {id:"680",tag:"objc4-680",sub:"2015 · iOS 9",mask:"0x0000000ffffffff8",f:CLASSIC,chg:[],rm:[],
+  note:"<b>追溯起点。</b>nonpointer isa 机制已就位，但首位字段当年叫 <code>indexed</code>；整段位域直接内联在 <code>objc-private.h</code>，还没拆出 isa.h。"},
+ {id:"750",tag:"objc4-750.1",sub:"2018 · iOS 12",mask:"0x0000000ffffffff8",f:CLASSIC_NP,chg:["nonpointer"],rm:[],
+  note:"两处非位布局改动：① 首位 <code>indexed</code> → <code>nonpointer</code>（改名）；② 位域从 objc-private.h 抽到独立的 <code>isa.h</code>（<code>ISA_BITFIELD</code> 宏）。<b>位布局本身一字未动。</b>"},
+ {id:"781",tag:"objc4-781.2",sub:"2020 · iOS 14",mask:"0x0000000ffffffff8",f:CLASSIC_NP,chg:[],rm:[],
+  note:"<b>和 750 逐字相同</b>，arm64 仍是经典布局、没有 arm64e 分支。680→781 这五年位布局几乎没动——这正是老博客那张图能一直沿用的原因。"},
+ {id:"818",tag:"objc4-818.2",sub:"2021 · iOS 15",mask:"0x007ffffffffffff8",big:true,f:ARM64E,
+  chg:["shiftcls_and_sig","extra_rc"],rm:["has_cxx_dtor","magic","deallocating"],
+  note:"<b>分水岭——arm64e 大改：</b><code>shiftcls:33</code> 并入 PAC 签名扩成 <code>shiftcls_and_sig:52</code>；删 <code>magic</code>、删 <code>deallocating</code>（改由 <code>extra_rc==0 && has_sidetable_rc==0</code> 算出）；<code>has_cxx_dtor</code> 移到 cache flags；<code>extra_rc</code> 19→8（位让给签名）；ISA_MASK 加宽。"},
+ {id:"951",tag:"objc4-951.1",sub:"当前",mask:"0x007ffffffffffff8 (+ ISA_MASK_NOSIG)",f:ARM64E,chg:[],rm:[],
+  note:"<b>位域和 818 完全一致。</b>变的是封装：<code>objc_object</code> 改用 <code>char isa_storage[]</code> + <code>isa()</code> 访问器、方法批量加 <code>const</code>、RC 宏改为派生、新增分平台 <code>ISA_MASK_NOSIG</code>。"}
+];
+
+const tabs=document.getElementById('vtabs'),bar=document.getElementById('isaBar');
+const maskCap=document.getElementById('maskCap'),dTag=document.getElementById('dTag');
+const dSub=document.getElementById('dSub'),dNote=document.getElementById('dNote'),dRemoved=document.getElementById('dRemoved');
+let cur="818";
+
+function sel(id){
+  cur=id;
+  const v=V.find(x=>x.id===id);
+  [...tabs.children].forEach(b=>b.classList.toggle('on',b.dataset.id===id));
+  bar.innerHTML="";
+  v.f.forEach(([key,bits])=>{
+    const seg=document.createElement('div');
+    seg.className='isa-bit'+(v.chg.includes(key)?' chg':'');
+    seg.title=key+" · "+bits+" bit";
+    seg.style.cssText="flex:"+bits+" 1 0;min-width:0;background:"+C[key]+";display:flex;align-items:center;justify-content:center;text-align:center;color:#fff;font-size:10px;font-weight:600;line-height:1.1;padding:0 2px;border-right:1px solid rgba(255,255,255,.28);overflow:hidden;word-break:break-all;";
+    seg.textContent=bits>=5?key:"";
+    bar.appendChild(seg);
+  });
+  maskCap.innerHTML="bit 0 · <code>ISA_MASK "+v.mask+"</code>";
+  dTag.textContent=v.tag;dTag.style.color=v.big?"var(--accent)":"var(--text-primary)";
+  dSub.textContent=v.sub;dNote.innerHTML=v.note;
+  dRemoved.innerHTML="";
+  if(v.rm.length){
+    const lab=document.createElement('span');
+    lab.style.cssText="font-size:11px;color:var(--text-tertiary);align-self:center;";
+    lab.textContent="本版移除：";dRemoved.appendChild(lab);
+    v.rm.forEach(k=>{const c=document.createElement('span');c.className='chip rm';c.textContent=k;dRemoved.appendChild(c);});
+  }
+}
+V.forEach(v=>{
+  const b=document.createElement('button');
+  b.className='ver-btn'+(v.big?' big':'')+(v.id===cur?' on':'');
+  b.dataset.id=v.id;b.style.position='relative';
+  b.innerHTML="<span class='v'>"+v.id+"</span><span class='s'>"+v.sub.split(' · ')[0]+"</span>";
+  b.addEventListener('click',()=>sel(v.id));
+  tabs.appendChild(b);
+});
+sel(cur);
+</script>
+</body>
+</html>
