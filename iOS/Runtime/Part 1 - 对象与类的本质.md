@@ -333,6 +333,50 @@ uintptr_t extra_rc          : 7;    // bit25-31 内联引用计数
 ```
 
 
+### isa 位域的历史演进（2015 → 至今）
+
+上面那张 arm64e 的图，和你在很多老博客里看到的「`shiftcls:33` + `magic` + `deallocating`」并不一样。这不是谁画错了，而是 isa 的位布局本身改过——而且关键的一次改动就发生在 iOS 14→15 之间。把几个节点版本的 objc4 源码摆在一起看就清楚了（以下均为各版本 `isa.h` / `objc-private.h` 实际源码）：
+
+```objc
+// ===== objc4-680（2015，iOS 9）：位域还内联在 objc-private.h，没有 isa.h =====
+uintptr_t indexed           : 1;    // ← 当年首位字段叫 indexed，不是 nonpointer
+uintptr_t has_assoc         : 1;
+uintptr_t has_cxx_dtor      : 1;
+uintptr_t shiftcls          : 33;
+uintptr_t magic             : 6;
+uintptr_t weakly_referenced : 1;
+uintptr_t deallocating      : 1;    // ← 独立的「正在析构」位
+uintptr_t has_sidetable_rc  : 1;
+uintptr_t extra_rc          : 19;
+// ISA_MASK 0x0000000ffffffff8
+
+// ===== objc4-750.1（2018，iOS 12）：位域搬进 isa.h（ISA_BITFIELD 宏），仅改名 =====
+uintptr_t nonpointer        : 1;    // ← indexed 改名 nonpointer，其余一字未动
+uintptr_t has_assoc:1; has_cxx_dtor:1; shiftcls:33; magic:6;
+uintptr_t weakly_referenced:1; deallocating:1; has_sidetable_rc:1; extra_rc:19;
+
+// ===== objc4-781.2（2020，iOS 14）：和 750 逐字相同，arm64 仍无 arm64e 分支 =====
+// （略，与上一段完全一致）
+
+// ===== objc4-818.2（2021，iOS 15）：arm64e 大改，即本文开头那张图 =====
+uintptr_t nonpointer:1; has_assoc:1; weakly_referenced:1;
+uintptr_t shiftcls_and_sig  : 52;   // 🆕 类指针 + PAC 签名合并
+uintptr_t has_sidetable_rc:1; extra_rc:8;
+// ISA_MASK 0x007ffffffffffff8；magic / deallocating / has_cxx_dtor 三个老字段全部消失
+```
+
+把演进归一下，真正的拐点只有三个：
+
+| 拐点 | 版本 | 变了什么 |
+|---|---|---|
+| 命名 + 拆文件 | 680 → 750 | 首位 `indexed` 改名 `nonpointer`；位域从 objc-private.h 抽到独立的 `isa.h`（`ISA_BITFIELD` 宏） |
+| **arm64e 签名合并** | **781 → 818** | `shiftcls:33` → `shiftcls_and_sig:52`（类指针并入 PAC 签名）；**砍掉 `magic`**、**砍掉 `deallocating`**（改由 `extra_rc==0 && has_sidetable_rc==0` 算出）、`has_cxx_dtor` 移出位域到 cache flags；`ISA_MASK` 由 `0x...0ffffffff8` 加宽到 `0x007ffffffffffff8`；`extra_rc` 从 19 位缩到 8 位（位都让给 52 位签名了） |
+| 封装收口 | 818 → 951 | `objc_object` 不再直接放 `isa_t`，改成 `char isa_storage[]` + `isa()` 访问器；成员方法批量加 `const`；RC 宏改为从 `RC_HAS_SIDETABLE_BIT` 派生；新增分平台的 `ISA_MASK_NOSIG`（位域本身不变） |
+
+一句话记忆：**老博客那张 isa 图（`shiftcls:33`/`magic`/`deallocating`）一直用到 781；分水岭是 781↔818，arm64e 上为了塞进 PAC 签名，一口气合并了 `shiftcls` 并删掉了 `magic`、`deallocating` 两个字段。** 而 781 之前五年（680→781）arm64 布局几乎没动过，这也是它被无数博客沿用的原因。
+
+> 注意：上面的对照只针对 **arm64e**。同一份 818/951 源码里，arm64（非 e）、x86_64 分支仍保留着 `magic` / `has_cxx_dtor`（见前一节的 ②③），所以「老字段消失」只发生在开了指针签名的 arm64e 上。
+
 ### getClass：从 isa 里取出 Class
 
 刚才我们了解了，isa_t 长什么样、位怎么分布，接下来我们看看 Runtime是怎么从isa_t 里拿到 Class 的？
