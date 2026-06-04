@@ -42,6 +42,4 @@
 - **15. 收尾**：一条消息的命运 + 与 Part 1 的呼应 + 承接下一篇
 
 
-```html-embed
-objc_msgSend_full_pipeline.html
-```
+![[objc_msgSend_full_pipeline.html]]

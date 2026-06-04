@@ -845,4 +845,25 @@ function selectNode(id) {
 }
 
 selectNode('entry');
+
+/* ===== 自适应高度：把内容真实高度同步给外层 iframe，消除滚动条 ===== */
+(function(){
+  function fit(){
+    try{
+      var fe = window.frameElement; if(!fe) return;
+      var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      if(h < 50) return;
+      var cur = parseInt(fe.style.height) || 0;
+      if(Math.abs(cur - h) < 2) return;          // 防抖：高度没变就不动，避免循环
+      fe.style.height = h + 'px';
+      var p = fe.parentElement;                   // 外层容器默认被锁在 400px，一并撑开
+      if(p){ p.style.height = h + 'px'; p.style.maxHeight = 'none'; }
+    }catch(e){}
+  }
+  window.addEventListener('load', fit);
+  document.addEventListener('DOMContentLoaded', fit);
+  if(window.ResizeObserver){ new ResizeObserver(fit).observe(document.body); }
+  document.addEventListener('click', function(){ setTimeout(fit, 60); });  // 点击展开后重算
+  setTimeout(fit, 100);
+})();
 </script>
