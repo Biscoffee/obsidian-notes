@@ -309,7 +309,7 @@ uintptr_t has_sidetable_rc  : 1;    // bit24
 uintptr_t extra_rc          : 7;    // bit25-31 内联引用计数
 ```
 
-![[isa_t-四套架构位布局对照（可切换）.html]]
+<iframe src="/posts/ios-runtime-part-1-object-class/isa-t-arch-layouts.html" title="isa_t 四套架构位布局对照（可切换）" loading="lazy" style="width:100%;min-height:560px;border:1px solid var(--line-divider);border-radius:18px;background:#07110f;overflow:hidden;"></iframe>
 
 ### arm64e 的 PAC 指针签名（Pointer Authentication）
 
@@ -402,7 +402,7 @@ uintptr_t has_sidetable_rc:1; extra_rc:8;
 
 一句话记忆：**老博客那张 isa 图（`shiftcls:33`/`magic`/`deallocating`）一直用到 781；分水岭是 781↔818，arm64e 上为了塞进 PAC 签名，一口气合并了 `shiftcls` 并删掉了 `magic`、`deallocating` 两个字段。** 而 781 之前五年（680→781）arm64 布局几乎没动过
 
-![[isa-evolution.html]]
+<iframe src="/posts/ios-runtime-part-1-object-class/isa-evolution.html" title="isa 位域历史演进" loading="lazy" style="width:100%;min-height:560px;border:1px solid var(--line-divider);border-radius:18px;background:#07110f;overflow:hidden;"></iframe>
 
 > 注意：上面的对照只针对 **arm64e**。同一份 818/951 源码里，arm64（非 e）、x86_64 分支仍保留着 `magic` / `has_cxx_dtor`（见前一节的 ②③），所以「老字段消失」只发生在开了指针签名的 arm64e 上。
 
@@ -1187,7 +1187,7 @@ struct class_rw_ext_t {
 };
 ```
 
-![[rw_ro_ext_layout.html]]
+<iframe src="/posts/ios-runtime-part-1-object-class/rw-ro-ext-layout.html" title="class_rw_t / class_rw_ext_t / class_ro_t 布局" loading="lazy" style="width:100%;min-height:640px;border:1px solid var(--line-divider);border-radius:18px;background:#0b0b0f;overflow:hidden;"></iframe>
 
 #### 还有两块「不弄脏内存」的优化（同属 WWDC2020）
 
@@ -1205,7 +1205,7 @@ clean / dirty 这条思路在 951.1 里不止用在 `ro`，还有两处也值得
 
 前面 `cache_t` 那个 union 里的 `_originalPreoptCache`，指向的就是 **dyld 共享缓存里预先算好的方法缓存**：`NSObject`、`UIView` 这类系统类的高频 `SEL → IMP` 在构建共享缓存时就填好了，App 启动时它们的缓存**不必从空冷启动**，同样以 clean memory 形式被各进程共享。`cache_t::initializeToEmptyOrPreoptimizedInDisguise()` 就是在「空缓存」与「预优化缓存」之间做选择。
 
-![[objc_runtime_three_era_html.html]]
+<iframe src="/posts/ios-runtime-part-1-object-class/objc-runtime-three-era.html" title="objc runtime 三个时代对照" loading="lazy" style="width:100%;min-height:560px;border:1px solid var(--line-divider);border-radius:18px;background:#0b0b0f;overflow:hidden;"></iframe>
 
 # 元类 metaclass
 
@@ -1427,7 +1427,7 @@ objc_msgSendSuper2(struct objc_super *super, SEL op, ...);
 
 它返回的是 `object_getClass(self)`，而这里的 `self` 就是传进来的 `receiver`，也就是 son 实例。所以两次调用，`object_getClass(self)` 拿到的都是 son 的类——`Son`。
 
-一句话：`super` 只换了**方法查找的起点**，没换 **receiver**；而 `class` 又只认 `object_getClass(self)`，所以 `[self class]` 和 `[super class]` 殊途同归，都打印 `Son`。
+总而言之：`super` 只换了**方法查找的起点**，没换 **receiver**；而 `class` 又只认 `object_getClass(self)`，所以 `[self class]` 和 `[super class]` 殊途同归，都打印 `Son`。
 
 
 # At Last
