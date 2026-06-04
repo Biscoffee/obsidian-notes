@@ -491,5 +491,9 @@ hr.dim{border:none;border-top:1px solid var(--border);margin:20px 0}
   鼠标悬停内存格查看说明。
 </div>
 
+<script>
+/* 自适应高度：内容多高 iframe 就多高，消除滚动条 */
+(function(){function fit(){try{var fe=window.frameElement;if(!fe)return;var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);if(h<50)return;var c=parseInt(fe.style.height)||0;if(Math.abs(c-h)<2)return;fe.style.height=h+'px';var p=fe.parentElement;if(p){p.style.height=h+'px';p.style.maxHeight='none';}}catch(e){}}window.addEventListener('load',fit);document.addEventListener('DOMContentLoaded',fit);if(window.ResizeObserver){new ResizeObserver(fit).observe(document.body);}document.addEventListener('click',function(){setTimeout(fit,60);});setTimeout(fit,100);})();
+</script>
 </body>
 </html>

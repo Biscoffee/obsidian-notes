@@ -1,5 +1,12 @@
 
 <style>
+/* ===== 离开 Obsidian 后的深色 fallback（#0b0b0f 基调）===== */
+:root{
+  --color-background-primary:#0b0b0f;--color-background-secondary:#13131a;--color-background-info:#15293b;
+  --color-text-primary:#dddae8;--color-text-secondary:#8e8ba3;--color-text-tertiary:#5b5870;
+  --color-border-secondary:rgba(255,255,255,0.13);--color-border-tertiary:rgba(255,255,255,0.07);
+  --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--font-sans:-apple-system,system-ui,sans-serif;
+}
 .step-btn{padding:6px 18px;border-radius:6px;border:1px solid var(--color-border-secondary);background:var(--color-background-secondary);color:var(--color-text-primary);cursor:pointer;font-size:13px}
 .step-btn:disabled{opacity:.35;cursor:default}
 .step-btn.active{background:var(--color-background-info);border-color:var(--color-border-secondary)}
@@ -8,14 +15,14 @@
 .hl{color:#1D9E75;font-weight:500}
 .label-row{display:flex;gap:0;margin:8px 0}
 .byte-box{width:52px;height:40px;border:1px solid var(--color-border-secondary);display:flex;align-items:center;justify-content:center;font-size:12px;font-family:var(--font-mono);background:var(--color-background-secondary);color:var(--color-text-secondary)}
-.byte-box.active{background:#E1F5EE;border-color:#1D9E75;color:#085041}
-.byte-box.cast{background:#EEEDFE;border-color:#534AB7;color:#26215C}
+.byte-box.active{background:#04342C;border-color:#1D9E75;color:#9FE1CB}
+.byte-box.cast{background:#26215C;border-color:#6B61D6;color:#CECBF6}
 .addr{font-family:var(--font-mono);font-size:11px;color:var(--color-text-tertiary);margin-top:2px}
 .arrow-row{display:flex;align-items:center;gap:6px;margin:8px 0;font-size:13px;color:var(--color-text-secondary)}
 .type-tag{display:inline-block;padding:2px 10px;border-radius:4px;font-family:var(--font-mono);font-size:12px;font-weight:500}
-.t-char{background:#E1F5EE;color:#085041}
-.t-isap{background:#EEEDFE;color:#26215C}
-.t-isa{background:#E6F1FB;color:#0C447C}
+.t-char{background:#04342C;color:#9FE1CB}
+.t-isap{background:#26215C;color:#CECBF6}
+.t-isa{background:#042C53;color:#B5D4F4}
 .note{font-size:13px;color:var(--color-text-secondary);line-height:1.7;padding:8px 0}
 .dots{display:flex;gap:8px;justify-content:center;margin-bottom:14px}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--color-border-secondary)}
@@ -126,4 +133,8 @@ function go(d){
   document.getElementById('btn-prev').disabled=cur===0;
   document.getElementById('btn-next').disabled=cur===total-1;
 }
+</script>
+<script>
+/* 自适应高度：内容多高 iframe 就多高，消除滚动条 */
+(function(){function fit(){try{var fe=window.frameElement;if(!fe)return;var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);if(h<50)return;var c=parseInt(fe.style.height)||0;if(Math.abs(c-h)<2)return;fe.style.height=h+'px';var p=fe.parentElement;if(p){p.style.height=h+'px';p.style.maxHeight='none';}}catch(e){}}window.addEventListener('load',fit);document.addEventListener('DOMContentLoaded',fit);if(window.ResizeObserver){new ResizeObserver(fit).observe(document.body);}document.addEventListener('click',function(){setTimeout(fit,60);});setTimeout(fit,100);})();
 </script>
