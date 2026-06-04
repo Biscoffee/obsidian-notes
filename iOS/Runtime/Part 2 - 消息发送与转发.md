@@ -41,3 +41,5 @@
 - **14. LLDB 实战**：cache 从空到有 / 命中对比 / 慢速断点 / 转发链逐站拦截
 - **15. 收尾**：一条消息的命运 + 与 Part 1 的呼应 + 承接下一篇
 
+
+![[objc_msgSend_full_pipeline.html]]
