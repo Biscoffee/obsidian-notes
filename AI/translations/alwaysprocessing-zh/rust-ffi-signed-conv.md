@@ -6,8 +6,6 @@
 
 ---
 
-**无缝桥接方法**
-
 处理 `CFIndex`/`usize`（有符号/无符号）的转换，对于创建符合 Rust 风格的 API 绑定至关重要。我研究了 Apple 在 Core Foundation 与 Foundation 之间，以及 Foundation 与 Swift 之间处理此转换的方式，以帮助我为自己的 Core Foundation crate 确定方向。
 
 Core Foundation 的典型索引类型和大小类型 `CFIndex` 是有符号的。Foundation 的典型索引类型和大小类型 `NSUInteger` 是无符号的，而 Rust 的典型类型 `usize` 同样也是无符号的。

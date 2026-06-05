@@ -6,8 +6,6 @@
 
 ---
 
-**Objective-C 内部原理：Retain（保留）**
-
 Objective-C 的内存管理依赖于一种引用计数（reference counting）机制，它从一个相对简单的 API 演进为复杂且高度优化的实现，同时保持了源代码和 ABI 的兼容性。
 
 **背景**

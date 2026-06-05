@@ -6,8 +6,6 @@
 
 ---
 
-**Rust API 绑定：CFStringGetBytes 为何如此困难，第一部分**
-
 为 `CFStringGetBytes` 设计一个“默认正确”的接口出奇地复杂，因为它的许多行为都依赖于编码方式。
 
 当我开始为 Core Foundation 构建 Rust API 绑定时，我认为使用 `CFCopyDescription` 实现 `Debug` trait（特征）将是一个很好的起点，它将有助于验证实现该 crate 时的增量进展。

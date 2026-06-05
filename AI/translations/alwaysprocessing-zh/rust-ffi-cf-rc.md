@@ -6,8 +6,6 @@
 
 ---
 
-**Rust API 绑定：Core Foundation 的内存管理与可变性**
-
 Core Foundation 在内存管理和可变性方面所使用的设计模式，与 Rust 的惯用风格竟有着惊人的契合。本文将分享我如何通过艰难的方式得出这一结论的概要。
 
 在我为 Core Foundation 设计 Rust API 绑定时，我希望面向用户的 API 能尽可能贴近 Rust 标准库。内存管理是设计中的关键领域，其设计会极大地影响 API 的表面。Core Foundation 与 Rust 标准库在内存管理方法上存在（至少）两个关键差异：

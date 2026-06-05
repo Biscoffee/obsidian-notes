@@ -6,8 +6,6 @@
 
 ---
 
-**Objective-C 内部：关联引用**
-
 本文对苹果公司的关联引用（Associated References）实现与我为历史背景编写的实现进行了比较，并附带了关于与标记指针（tagged pointer）对象配合使用以及赋值关联策略实际作用的说明。
 
 我记得当时热切期盼着，我们将 Mac 版 Microsoft Office 2016（当时名称还未确定）的最低部署目标改为 Mac OS X 10.6[1] 的那一天到来。雪豹系统引入了许多新的 API，包括 Grand Central Dispatch 和块（blocks）。但我最兴奋的是能够开始使用 Objective-C 的关联引用功能，以替代一些糟糕的代码。

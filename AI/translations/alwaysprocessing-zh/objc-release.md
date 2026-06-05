@@ -6,8 +6,6 @@
 
 ---
 
-**Objective-C 内部机制：Release**
-
 尽管 release "仅仅"是 retain（保留）的逻辑逆操作，但它的实现要复杂得多，这主要是因为 ARM（精简指令集架构）同步模型。本文将探讨 release 实现相对于 retain 的独特之处，重点关注 ARM 上的内存顺序要求。
 
 Objective-C 使用引用计数（reference counting）方法来管理内存。本文将关注 release 操作，该操作移除对象实例上的一个引用计数。上一篇文章介绍了 retain 的实现，该操作向对象实例添加一个引用计数。retain 和 release 的实现是相似的，因为它们是逆操作。我会参考之前的 retain 帧文章，其中的讨论是类似的，因此本文可以专注于 release 的独特方面。
