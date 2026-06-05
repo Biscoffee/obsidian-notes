@@ -51,6 +51,10 @@
 ---
 # objc_msgSend简介
 
+`objc_msgSend` 是 OC **所有方法调用的统一入口**——编译器把每一句 `[obj msg]` 都翻译成对它的调用，再由它在运行期找到方法实现（IMP）并跳过去。在正式拆「快速路径 → 慢速查找 → 转发」这三条路之前，这一节先把两件「会影响后文怎么读」的事讲清楚：一是它的**声明**为什么长得那么怪（`void objc_msgSend(void)`）、为什么调用前必须 cast；二是它其实**不是一个函数，而是一整个家族**。
+
+## 0.1 声明：为什么是 `void objc_msgSend(void)`、为什么必须 cast
+
 `objc_msgSend` 在公开头文件里有**两种声明**，由 `OBJC_OLD_DISPATCH_PROTOTYPES` 切换：
 
 ```objc
@@ -77,32 +81,40 @@ objc_msgSend(id _Nullable self, SEL _Nonnull op, ...)
 #endif
 ```
 
-默认（新）声明成 `void objc_msgSend(void)`，**没有原型**——因为它要透传任意参数/返回值，硬给原型反而会让编译器按错误的调用约定生成代码。故意逼迫开发者在调用前按真实方法签名做一次函数指针 cast，从根源上保证寄存器传参的正确性。​
+默认（新）声明成 `void objc_msgSend(void)`，**没有原型**——因为它要透传任意参数/返回值，硬给原型反而会让编译器按错误的调用约定生成代码。故意逼迫开发者在调用前按真实方法签名做一次函数指针 cast，从根源上保证寄存器传参的正确性。
 
 很难理解对么，我们用人话讲一讲：
-先看C语言，我们要调用一个这样的函数```
+
+先看 C 语言，我们要调用一个这样的函数：
+
 ```C
 double add(double a, double b) {
     return a + b;
 }
 // 声明说它接收 int
-void add(int a, int b);  
-// 但实际实现接收 double,取到的是垃圾，程序崩溃或计算出错。
+void add(int a, int b);
+// 但实际实现接收 double，取到的是垃圾，程序崩溃或计算出错。
 double add(double a, double b) { ... }
 ```
-因此，编译器生成调用代码，完全依赖它看到的那个声明，跟函数真正长什么样无关。回到oc，`void objc_msgSend(void)` 要能调用任意OC方法，这些方法签名千变万化，每个方法的参数/返回值类型都不相同，所以苹果把他声明为空原型 `void objc_msgSend(void);`  Cast 的作用是：**在这一次调用之前，临时告诉编译器正确的原型是什么。**
 
-`double result =
-((double (*)(id, SEL, CGFloat, CGFloat))objc_msgSend)(obj, sel, 1.0, 2.0);`  
+因此，编译器生成调用代码，完全依赖它看到的那个声明，跟函数真正长什么样无关。（补一句「为什么会取到垃圾」：arm64 上整型参数走 `x0/x1…`、浮点参数走 `d0/d1…`，是两组不同的寄存器；声明把类型写错，参数就被放进错误的那一组，真身自然取不到。）
 
-以msgSend)为节点分成两部分
-- 第一部分的意思是把objc_msgSend当作一个临时指针，指向一个`double xxx(id self, SEL _cmd, CGFloat a, CGFloat b);`这样的函数
-- 第二部分：`(...)(obj, sel, 1.0, 2.0)`才是真正调用，意思就是把 objc_msgSend 临时当成：double 函数(id, SEL, CGFloat, CGFloat)，然后调用它：(obj, sel, 1.0, 2.0)
+回到 oc，`void objc_msgSend(void)` 要能调用任意 OC 方法，这些方法签名千变万化，每个方法的参数/返回值类型都不相同，所以苹果把他声明为空原型 `void objc_msgSend(void);`。Cast 的作用是：**在这一次调用之前，临时告诉编译器正确的原型是什么。**
+
+```objc
+double result =
+    ((double (*)(id, SEL, CGFloat, CGFloat))objc_msgSend)(obj, sel, 1.0, 2.0);
+```
+
+以 `msgSend)` 为节点分成两部分：
+
+- 第一部分的意思是把 objc_msgSend 当作一个临时指针，指向一个 `double xxx(id self, SEL _cmd, CGFloat a, CGFloat b);` 这样的函数。（关键：cast 只是给这个地址临时贴个类型标签，**不生成任何指令、不改 objc_msgSend 一个字节**，它改变的只是「编译器这一次怎么看待它」。）
+- 第二部分：`(...)(obj, sel, 1.0, 2.0)` 才是真正调用，意思就是把 objc_msgSend 临时当成：double 函数(id, SEL, CGFloat, CGFloat)，然后调用它：(obj, sel, 1.0, 2.0)。这下编译器就按这张签名，把 `obj→x0`、`sel→x1`、`1.0→d0`、`2.0→d1` 摆进正确的寄存器。
 
 
 ## 0.2 它不是一个函数，是一个「家族」
 
-编译器按「是否 super 调用 / 返回值类型」选不同入口（`message.h:77` 文档注释）：
+上面一直盯着 `objc_msgSend` 一个讲，其实它只是这族 dispatch 函数里最常用的那个——编译器按「是否 super 调用 / 返回值类型」选不同入口（`message.h:77` 文档注释）：
 
 ```objc
 // message.h:77  —— 编译器如何选 messenger
