@@ -597,6 +597,34 @@ private:
 
 要点：arm64（`CACHE_MASK_STORAGE_HIGH_16`）上**没有独立 `_mask` 字段**——mask 编码在 `_bucketsAndMaybeMask` 高 16 位，这正是 3.2 里「一条 `ldr` 取出 `mask|buckets`，再 `lsr #48` 拆 mask、`and` 低 48 位拆 buckets」的来源。`maskZeroBits = 4` 让 msgSend 单条指令就能从该字段构造 `mask << 4`。
 
+> ### 🔄 旧→新对照（objc4-756.2 → 951.1）：cache_t 三字段 → 融合字段【经典大改造】
+>
+> 缓存结构最有名的一次重构。旧版三个独立字段，新版融合成一个 `_bucketsAndMaybeMask`。
+>
+> 旧（756.2，`objc-runtime-new.h:82`）：
+> ```cpp
+> struct cache_t {
+>     struct bucket_t *_buckets;   // 桶数组指针（独立字段）
+>     mask_t _mask;                // 容量掩码（独立字段）
+>     mask_t _occupied;            // 已用槽数（独立字段）
+>     ...
+>     void expand();
+>     struct bucket_t * find(SEL sel, id receiver);
+> };
+> ```
+> 新（951.1，`:337`，arm64 走 HIGH_16）：
+> ```cpp
+> struct cache_t {
+>     explicit_atomic<uintptr_t> _bucketsAndMaybeMask;  // 高16位=mask，低48位=buckets，一字双用
+>     union {
+>         struct { uint32_t _disguisedPreoptCacheSignature; uint16_t _occupied; uint16_t _flags; };
+>         explicit_atomic<preopt_cache_t *> _originalPreoptCache;
+>     };
+>     ...
+> };
+> ```
+> 三字段 → 一字段：`_mask` 不再单独存，挤进 `_bucketsAndMaybeMask` 的高 16 位（每个类省 8 字节，且第 3.2 节那条「一条 `ldr` 同时取出 mask 和 buckets」正因此成立）；新增的 union 是给 dyld 共享缓存「预优化缓存」让位。`_occupied` 保留。
+
 ### 4.2 `bucket_t`：`{IMP, SEL}` 与 ptrauth（:214）
 
 逐字全文（含编码/解码/签名全部成员）：
@@ -692,6 +720,30 @@ public:
 
 arm64 上 IMP 在前、SEL 在后，所以 3.2 的 `ldp p17, p9`（先 imp 后 sel）顺序与此一致；命中时用 `modifierForSEL`（`&_imp ^ sel ^ cls`）重算修饰子解签，正是 3.3 实测的两条 `eor`。
 
+> ### 🔄 旧→新对照（756.2 → 951.1）：IMP 签名修饰子从 2 项到 3 项
+>
+> 旧（756.2，`objc-runtime-new.h:51`）—— 裸字段，修饰子只有 `&_imp ^ sel` 两项：
+> ```cpp
+> #if __arm64__
+>     uintptr_t _imp;          // 非 atomic 裸字段
+>     SEL _sel;
+> #endif
+>     uintptr_t modifierForSEL(SEL newSel) const {
+>         return (uintptr_t)&_imp ^ (uintptr_t)newSel;       // 仅 2 项
+>     }
+> ```
+> 新（951.1，`:219` / `:227`）—— 原子字段，修饰子加入 `cls` 成 3 项：
+> ```cpp
+> #if __arm64__
+>     explicit_atomic<uintptr_t> _imp;     // 改为原子字段
+>     explicit_atomic<SEL> _sel;
+> #endif
+>     uintptr_t modifierForSEL(bucket_t *base, SEL newSel, Class cls) const {
+>         return (uintptr_t)base ^ (uintptr_t)newSel ^ (uintptr_t)cls;   // 加入 cls，3 项
+>     }
+> ```
+> 把 `cls` 拌进 ptrauth 修饰子，让同一个 IMP 在不同类的缓存里签名不同，跨类伪造更难——这也是第 3.3 节命中时汇编要算**两条** `eor`（`^sel`、`^cls`）的原因；756.2 时只需异或 `sel` 一项。字段也从裸 `uintptr_t` 升级为 `explicit_atomic` 配合无锁读。下面这条（818.2 → 951.1）则是同一行更晚的一次细化：
+>
 > ### 🔄 旧→新对照（818.2 → 951.1）：IMP 签名加入「类型判别子」
 >
 > 旧（818.2，`objc-runtime-new.h:234`）—— 判别子恒为 `0`：
@@ -853,6 +905,21 @@ void cache_t::reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld)
     }
 }
 ```
+
+> ### 🔄 旧→新对照（756.2 → 951.1）：缓存写入从「三个自由函数」到「一个 insert 方法」
+>
+> 旧（756.2）把写入拆成多块：`cache_fill_nolock()`（自由函数，`objc-cache.mm:556`）判 3/4 装填 → 满了调 `cache_t::expand()`（`:539`，`oldCapacity*2` 翻倍）→ 再 `cache_t::find()`（`:519`，开放寻址找空槽 / 同 sel）落位。
+> ```cpp
+> // 756.2：expand() —— 翻倍扩容
+> uint32_t newCapacity = oldCapacity ? oldCapacity*2 : INIT_CACHE_SIZE;
+> // 756.2：find() —— 独立的开放寻址探测
+> do {
+>     if (b[i].sel() == 0 || b[i].sel() == s) return &b[i];
+> } while ((i = cache_next(i, m)) != begin);
+> ```
+> 新（951.1）把「判装填 + 扩容 + 探测落位」**合并进一个 `cache_t::insert()`**（见 5.1 全文），`reallocate` 还多了 `freeOld` 参数管旧表回收。
+>
+> 一处**没变**的设计（756.2 `:476` 与 951.1 `:814` 注释一字不差）：`// Cache's old contents are not propagated.`——扩容即丢弃旧表、不迁移，从那时起就是如此，并非新近退化。
 
 ### 5.3 装填因子与留空策略
 
@@ -1052,6 +1119,35 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
 }
 ```
 
+> ### 🔄 旧→新对照（756.2 → 951.1）：查找函数的签名与「乐观缓存查找」
+>
+> 旧（756.2，`objc-runtime-new.mm:5264`）—— Class 在前、三个 bool 参数；函数**开头自带一次乐观缓存查找**；对外入口是包装函数 `_class_lookupMethodAndLoadCache3`：
+> ```cpp
+> IMP _class_lookupMethodAndLoadCache3(id obj, SEL sel, Class cls) {      // :5245 旧对外入口
+>     return lookUpImpOrForward(cls, sel, obj, YES/*initialize*/, NO/*cache*/, YES/*resolver*/);
+> }
+> IMP lookUpImpOrForward(Class cls, SEL sel, id inst,
+>                        bool initialize, bool cache, bool resolver)      // :5264 旧签名（3 个 bool）
+> {
+>     IMP imp = nil;
+>     bool triedResolver = NO;
+>     runtimeLock.assertUnlocked();
+>     // Optimistic cache lookup
+>     if (cache) {                          // ← 进锁前先查一次缓存
+>         imp = cache_getImp(cls, sel);
+>         if (imp) return imp;
+>     }
+>     runtimeLock.lock();
+>     ...
+> }
+> ```
+> 新（951.1，`:7624`）—— `inst` 在前、三个 bool 合并成一个 `int behavior` 位掩码；并**删掉了开头那次乐观缓存查找**：
+> ```cpp
+> IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)       // :7624 新签名（位掩码）
+> // 注释（:7673）：进锁后这里曾经会再查一次缓存，但实测「绝大多数是 miss」反而费时，故移除
+> ```
+> 三个 bool → 一个 `behavior` 位掩码（`LOOKUP_INITIALIZE | LOOKUP_RESOLVER | LOOKUP_NIL | LOOKUP_NOCACHE`，更易扩展）；旧的 `triedResolver` 布尔也被 `behavior ^= LOOKUP_RESOLVER` 取代。下面这条（818.2 → 951.1）是更晚的一处增量：
+>
 > ### 🔄 旧→新对照（818.2 → 951.1）：`lookUpImpOrForward` 新增「禁用类」短路
 >
 > 951 在取锁、realize 之后、进入查找主循环之前，**多了一段**把「被禁用的类」按 nil 处理的短路（818.2 此处直接进 `for` 主循环）：
