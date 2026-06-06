@@ -741,6 +741,7 @@ do {
 未命中: b _objc_msgSend_uncached                        // 转入 lookUpImpOrForward（第二部分）
 ```
 
+
 ### 3.3 命中 `br IMP` / 未命中转入慢速查找（`CacheHit` :316）
 
 逐字全文（含 NORMAL / GETIMP / LOOKUP 三种模式）：
@@ -772,17 +773,8 @@ do {
 .endmacro
 ```
 
-LLDB 实测：`NORMAL` 模式 `TailCallCachedImp` 落地为两条 `eor`（重算 ptrauth 修饰子）+ `brab x17`（带 PAC 校验尾跳）；未命中则 `cbz x9 → _objc_msgSend_uncached`：
 
-```text
-  <+64>: b.ne   <+80>
-  <+68>: eor    x10, x10, x1                 ; 修饰子 ^= sel
-  <+72>: eor    x10, x10, x16                ; 修饰子 ^= cls
-  <+76>: brab   x17, x10                     ; 命中：带 PAC 尾跳 IMP
-  <+80>: cbz    x9, 0x...b40                  ; _objc_msgSend_uncached（miss）
-```
-
-> ### 🔄 旧→新对照（objc4-818.2 → 951.1）：预优化缓存条目的位布局
+> ### 旧→新对照（objc4-818.2 → 951.1）：预优化缓存条目的位布局
 >
 > 共享缓存「预优化缓存」里每个条目把 sel 偏移与 imp 偏移打包进一个 64 位字，**两版位划分不同**。
 >
