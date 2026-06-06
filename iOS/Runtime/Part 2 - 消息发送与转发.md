@@ -283,8 +283,6 @@ objc_msgSendSuper2(&superInfo, @selector(class));
 结论：**`[super foo]` 改变的只是方法查找的起点，receiver 从始至终都是 `self`**。`[super class]` 和 `[self class]` 最终执行的是同一份 `NSObject -class` 实现，拿到的是同一个 receiver，自然输出同一个结果。
 
 
-
-
 # 第一部分 · 快速路径（缓存命中）
 
 ## 1. 方法调用的本质：`[obj foo]` → `objc_msgSend(obj, sel)`
