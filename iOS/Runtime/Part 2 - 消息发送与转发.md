@@ -27,10 +27,10 @@
   - 7.2 已排序表二分查找 `findMethodInSortedMethodList`（:7062）
 - **8. 沿 superclass 链逐层上溯**（每层先查父类 cache）
 - **9. 找到了**：`log_and_fill_cache` 回填缓存，闭环回快速路径（:7513）
-- **10. 没找到**：动态方法解析（`resolveInstanceMethod`，:7480 / :7430）
+- **10. 没找到**：动态方法解析（`resolveMethod_locked` :7480 → `resolveInstanceMethod` :7435）
 
 ### 第三部分 · 消息转发
-- **11. 转发入口**：`_objc_msgForward_impcache`（:7626 / 汇编 :779）
+- **11. 转发入口**：`_objc_msgForward_impcache`（:7626 / 汇编 :788）
 - **12. 转发三部曲**
   - 12.1 快速转发 `forwardingTargetForSelector:`（换 receiver 重发）
   - 12.2 完整转发 `methodSignatureForSelector:` + `forwardInvocation:`
@@ -81,40 +81,82 @@ objc_msgSend(id _Nullable self, SEL _Nonnull op, ...)
 #endif
 ```
 
-默认（新）声明成 `void objc_msgSend(void)`，因为它要透传任意参数/返回值，硬给原型反而会让编译器按错误的调用约定生成代码。故意逼迫开发者在调用前按真实方法签名做一次函数指针 cast，从根源上保证寄存器传参的正确性。
+默认（新）声明成 `void objc_msgSend(void)`，是苹果刻意为之——它要透传任意 OC 方法的参数，硬给一个固定原型反而会让编译器按错误的调用约定生成代码。理解这件事的钥匙，是先搞清楚 cast 是什么。
 
-很难理解对么，我们用人话讲一讲：
+### **Cast 是什么**
+Cast 写法是在值前加括号里的目标类型：
 
-先看 C 语言，我们要调用一个这样的函数：
-
-```C
-double add(double a, double b) {
-    return a + b;
-}
-// 声明说它接收 int
-void add(int a, int b);
-// 但实际实现接收 double，取到的是垃圾，程序崩溃或计算出错。
-double add(double a, double b) { ... }
+```c
+double x = 3.14;
+int y = (int)x;   // 把 double 转成 int，y = 3
 ```
 
-因此，编译器生成调用代码，完全依赖它看到的那个声明，跟函数真正长什么样无关。（补一句「为什么会取到垃圾」：arm64 上整型参数走 `x0/x1…`、浮点参数走 `d0/d1…`，是两组不同的寄存器；声明把类型写错，参数就被放进错误的那一组，真身自然取不到。）
+这种「值 cast」会真正转换数值。但**函数指针的 cast 不一样**——它不改变任何值，只改变编译器对这个指针的理解方式：
 
-回到 oc，`void objc_msgSend(void)` 要能调用任意 OC 方法，这些方法签名千变万化，每个方法的参数/返回值类型都不相同，所以苹果把他声明为空原型 `void objc_msgSend(void);`。Cast 的作用是：**在这一次调用之前，临时告诉编译器正确的原型是什么。**
+```c
+void foo(void);   // 声明：无参数，无返回值
+// foo 本质上就是一个内存地址，比如 0x1000
+int (*fp)(int, int) = (int (*)(int, int))foo;
+// fp 里存的还是 0x1000，一个字节都没变
+// 变的是：编译器现在用 fp 的类型来决定怎么生成调用指令
+```
 
+**为什么「类型」那么重要**
+arm64 调用约定规定参数按类型走不同的寄存器：
+```
+第1个整型参数 → x0
+第2个整型参数 → x1
+第1个浮点参数 → d0
+第2个浮点参数 → d1
+```
+编译器生成调用代码时，**完全按声明的参数类型**决定往哪个寄存器放东西，跟函数体在哪里、实际长什么样无关。所以如果声明写错了：
+```c
+// 真实实现接收两个 double（浮点走 d0/d1）
+double add(double a, double b) { return a + b; }
+
+// 但声明说接收两个 int（整型走 x0/x1）
+double add(int a, int b);
+
+// 编译器按声明生成调用代码，把参数放进 x0/x1
+// 函数体去 d0/d1 取浮点参数，取到的是空的或随机值 → 计算出错
+```
+**回到 objc_msgSend**
+
+`objc_msgSend` 要能处理世界上所有 OC 方法，每个方法参数类型都不同，根本没法给一个固定原型。苹果把它声明成 `void objc_msgSend(void)`——逼迫每个调用点都显式 cast，从根源上防止「按错误签名生成调用代码」。
+
+直接调用（不 cast）会发生什么：
+
+```c
+// 编译器看到「没有参数」的声明，不往任何寄存器放东西，直接跳过去
+// objc_msgSend 去 x0 找 receiver，取到的是空值或残留
+objc_msgSend(obj, sel, 1.0, 2.0);   //「错误」
+```
+
+cast 后：
 ```objc
 double result =
     ((double (*)(id, SEL, CGFloat, CGFloat))objc_msgSend)(obj, sel, 1.0, 2.0);
 ```
 
-以 `msgSend)` 为节点分成两部分：
+以 `objc_msgSend)` 为界拆成两部分：
 
-- 第一部分的意思是把 objc_msgSend 当作一个临时指针，指向一个 `double xxx(id self, SEL _cmd, CGFloat a, CGFloat b);` 这样的函数。（关键：cast 只是给这个地址临时贴个类型标签，**不生成任何指令、不改 objc_msgSend 一个字节**，它改变的只是「编译器这一次怎么看待它」。）
-- 第二部分：`(...)(obj, sel, 1.0, 2.0)` 才是真正调用，意思就是把 objc_msgSend 临时当成：double 函数(id, SEL, CGFloat, CGFloat)，然后调用它：(obj, sel, 1.0, 2.0)。这下编译器就按这张签名，把 `obj→x0`、`sel→x1`、`1.0→d0`、`2.0→d1` 摆进正确的寄存器。
+- **前半**：`(double (*)(id, SEL, CGFloat, CGFloat))objc_msgSend`——把 `objc_msgSend` 临时标记成「接收4个参数、返回 double」的函数指针。不产生任何指令，只改变「编译器这一次怎么看待它」；
+- **后半**：`(obj, sel, 1.0, 2.0)` 才是真正调用。编译器按上面那张类型表生成汇编：
 
+```asm
+;; cast 后，编译器生成正确的参数赋值指令
+mov  x0, obj      ;「中文」receiver → x0
+mov  x1, sel      ;「中文」selector → x1
+fmov d0, 1.0      ;「中文」第一个浮点参数 → d0
+fmov d1, 2.0      ;「中文」第二个浮点参数 → d1
+bl   objc_msgSend ;「中文」跳过去（地址没变，仍是同一个函数）
+```
 
-## 0.2 它不是一个函数，是一个「家族」
+cast 改的是「跳进去之前」那几条 mov 怎么生成，不改 `objc_msgSend` 本身一个字节。
 
-上面一直盯着 `objc_msgSend` 一个讲，其实它只是这族 dispatch 函数里最常用的那个——编译器按「是否 super 调用 / 返回值类型」选不同入口（`message.h:77` 文档注释）：
+## 0.2 它不是一个函数，而是家族
+
+上面一直盯着 `objc_msgSend` 一个讲，其实它只是这族 dispatch 函数里最常用的那个。Apple 头文件里有一段**较早、较通用**的描述（`message.h:77`）——读的时候注意：它把家族说成 `objc_msgSend / _stret / Super / Super_stret` 四个，但带 `_stret` 的那两个是 **x86 时代的产物，arm64 上已经没有**（本节末尾会用源码证明）。所以这段只当「历史背景 + 家族概念」看，**真正以 arm64 当下入口表为准**：
 
 ```objc
 // message.h:77  —— 编译器如何选 messenger
@@ -127,7 +169,7 @@ double result =
 
 // 这段意思就是说，编译器看到 Objective-C 方法调用时，不是直接调用方法实现，而是先选择一个“消息发送函数 messenger”。
 
-/* messager指的就是Runtime提供的消息发送函数，例如：
+/* messenger指的就是Runtime提供的消息发送函数，例如：
 objc_msgSend
 objc_msgSendSuper
 objc_msgSend_stret
@@ -159,9 +201,87 @@ ENTRY        __objc_msgForward          // :796  转发入口
 ENTRY        _objc_msgSend_noarg        // :806  无参快路径
 ```
 
-> 注：`objc_msgSend_stret`（结构体返回）、`objc_msgSend_fpret`/`fp2ret`（浮点返回）是 **x86/旧架构**专用，**arm64 上不存在**——arm64 用 `x8` 间接返回结构体、浮点走 `d0`，统一并入 `objc_msgSend`，所以上面 arm64 入口清单里看不到 `_stret`/`_fpret`。
+回头印证开头那句「`_stret` 是历史包袱」——不用我空口断言，**头文件自己就把这些版本在 arm64 标成不可用**：
 
-下文从最常走的 `_objc_msgSend`（:587）切入，沿「快速路径 → 慢速查找 → 转发」一条链走到底。
+```objc
+// message.h:118 —— stret 版（结构体返回）
+OBJC_EXPORT void
+objc_msgSend_stret(void /* id self, SEL op, ... */ )
+    OBJC_AVAILABLE(10.0, 2.0, 9.0, 1.0, 2.0)
+    OBJC_ARM64_UNAVAILABLE;        // ←「中文」arm64 上根本没有这个符号
+
+// message.h:158 —— fpret/fp2ret（浮点返回）的注释
+// arm:    objc_msgSend_fpret not used
+// arm:    objc_msgSend_fp2ret not used
+```
+
+所以 `objc_msgSend_stret`/`_fpret`/`fp2ret` 是 **x86/旧架构**专用：arm64 改用 `x8` 间接返回结构体、浮点直接走 `d0`，全部并回 `objc_msgSend`——这正是上面 arm64 入口清单里压根看不到 `_stret`/`_fpret` 的原因。
+
+### 为什么这样设计？
+
+普通返回值的返回位置由 ABI 决定：整型、指针通常放在 x0，浮点通常放在 d0；较大的结构体不会直接塞进普通返回寄存器，而是通过调用约定使用一块由调用方准备的返回内存。
+
+这些差异不是 Runtime 在 objc_msgSend 内部临时判断出来的，而是编译器根据方法签名和目标架构的 ABI，提前生成正确的调用形式。历史上在一些架构中，结构体返回和浮点返回需要走专门入口，所以出现了 objc_msgSend_stret、objc_msgSend_fpret 这类变体。
+
+在 arm64 上，结构体返回已经按 AArch64 ABI 统一到普通调用约定中，因此没有 objc_msgSend_stret 这个专门入口。普通对象消息一般走 objc_msgSend。
+
+super 调用仍然需要单独入口，例如 objc_msgSendSuper2。原因不是接收者变成了父类对象，而是方法查找起点变了：[super foo] 的 receiver 仍然是 self，只是 Runtime 要从父类开始查找 IMP。因此传入的第一个参数不是普通 id，而是保存 receiver 和查找起点信息的 objc_super 结构体指针。
+
+### 一个问题
+
+输出什么？
+
+```objc
+@implementation Son : Father
+- (id)init
+{
+    self = [super init];
+    if (self)
+    {
+        NSLog(@"%@", NSStringFromClass([self class]));   // 输出什么？
+        NSLog(@"%@", NSStringFromClass([super class])); // 输出什么？
+    }
+    return self;
+}
+@end
+```
+
+两行都输出 `Son`。
+
+很多人第一反应是 `[super class]` 应该打印 `Father`——错误的根源就是把「查找起点」和「receiver」混为一谈。
+
+拆开来看：
+
+**`[self class]`** 没有悬念：receiver 是 Son 实例，查 `class` 方法，找到 `NSObject -class`，返回 `object_getClass(self)` = `Son`。
+
+**`[super class]`** 编译器把它翻译成：
+
+```objc
+// 编译器生成
+struct objc_super superInfo = {
+    .receiver   = self,          // receiver 仍然是 Son 实例，没有变
+    .super_class = Father.class, // 只是告诉 Runtime：查找从 Father 开始
+};
+objc_msgSendSuper2(&superInfo, @selector(class));
+```
+
+`objc_msgSendSuper2` 拿到这个结构体，从 `Father` 开始往上查 `class` 方法——`Father` 没实现，`NSObject` 有。进入 `NSObject -class`：
+
+```objc
+// NSObject -class 的实现本质上是：
+- (Class)class {
+    return object_getClass(self); // self 是谁？
+}
+```
+
+这里的 `self` 是 `objc_super.receiver`——始终是那个 Son 实例。所以 `object_getClass(self)` 返回 `Son`。
+
+结论：**`[super foo]` 改变的只是方法查找的起点，receiver 从始至终都是 `self`**。`[super class]` 和 `[self class]` 最终执行的是同一份 `NSObject -class` 实现，拿到的是同一个 receiver，自然输出同一个结果。
+
+
+
+
+
 
 
 # 第一部分 · 快速路径（缓存命中）
@@ -961,7 +1081,7 @@ arm64 上 IMP 在前、SEL 在后，所以 3.2 的 `ldp p17, p9`（先 imp 后 s
 >                         ptrauth_key_process_dependent_code,
 >                         modifierForSEL(base, newSel, cls));
 > ```
-> 新（951.1，`:234`）—— 换成 IMP 类型判别子：
+> 新（951.1，`:236`）—— 换成 IMP 类型判别子：
 > ```objc
 > bitcast_auth_and_resign(void *, newImp,
 >                         ptrauth_key_function_pointer,
@@ -1569,7 +1689,7 @@ Process exited with status = 0 (0x00000000)
 
 ## 10. 没找到：动态方法解析（`resolveMethod_locked` :7480 → `resolveInstanceMethod` :7435）
 
-> 目录原标注「:7480 / :7430」：实测 **:7480 是 `resolveMethod_locked`**（入口），真正发消息的 `resolveInstanceMethod` 在 **:7435**。
+> 易混提示：**:7480 是 `resolveMethod_locked`**（解析入口），真正给元类发 `+resolveInstanceMethod:` 的 `resolveInstanceMethod` 函数在 **:7435**——两者别混（:7430 只是 `resolveInstanceMethod` 的注释行）。
 
 两个函数逐字全文：
 
@@ -1667,7 +1787,7 @@ resolveMethod_locked(id inst, SEL sel, Class cls, int behavior)
 
 ## 11. 转发入口：`_objc_msgForward_impcache`（C++ 侧 :7626 / 汇编 :788）
 
-> 目录原标注「汇编 :779」：:779 是注释块开头，真正的 `STATIC_ENTRY __objc_msgForward_impcache` 在 **:788**。
+> 易混提示：汇编 `:779` 只是注释块开头（`* id _objc_msgForward(...)`），真正的 `STATIC_ENTRY __objc_msgForward_impcache` 在 **:788**。
 
 C++ 侧把 `_objc_msgForward_impcache` 当作「找不到」时返回的占位 IMP（第 6 节 :7626 定义、循环里 `imp = forward_imp` 返回）；汇编侧逐字全文：
 
