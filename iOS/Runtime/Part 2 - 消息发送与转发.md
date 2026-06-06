@@ -282,8 +282,6 @@ objc_msgSendSuper2(&superInfo, @selector(class));
 
 
 
-
-
 # 第一部分 · 快速路径（缓存命中）
 
 ## 1. 方法调用的本质：`[obj foo]` → `objc_msgSend(obj, sel)`
