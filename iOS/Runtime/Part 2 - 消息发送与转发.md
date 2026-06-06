@@ -303,7 +303,7 @@ objc_msgSendSuper2(&superInfo, @selector(class));
 Dog
 ```
 
-补充一个**编译器侧**的真相（objc4 源码里没有，靠 demo 反汇编看）：现代 clang（arm64）在调用点其实**不直接** `bl objc_msgSend`，而是 `bl objc_msgSend$bark`——一个**选择子 stub（selector stub）**，把「装 selector 到 x1」延后进 stub：
+补充一个**编译器侧**的事实（objc4 源码里没有，靠 demo 反汇编看）：现代 clang（arm64）在调用点其实**不直接** `bl objc_msgSend`，而是 `bl objc_msgSend$bark`——一个**选择子 stub（selector stub）**，把「装 selector 到 x1」延后进 stub：
 
 ```text
 ;; demo `main` 调用点（lldb: disassemble --name main）
@@ -510,6 +510,7 @@ objc_msgSend:
 LLookupStart\Function:
 	// p1 = SEL, p16 = isa
 #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16_BIG_ADDRS
+	//「中文」macOS(M系列)/模拟器走这里（地址空间大，objc-config.h:218）：分两步取出 mask(高16)、buckets(低48)。本文 LLDB 实测就是这条
 	ldr	p10, [x16, #CACHE]				// p10 = mask|buckets
 	lsr	p11, p10, #48			// p11 = mask
 	and	p10, p10, #0xffffffffffff	// p10 = buckets
@@ -520,7 +521,7 @@ LLookupStart\Function:
 	and	w12, w1, w11			// x12 = _cmd & mask
 #  endif
 #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16
-	//「中文」arm64 真机走这里：一条 ldr 同时取出 mask(高16) 和 buckets(低48)
+	//「中文」iOS 真机走这里（objc-config.h:218）：一条 ldr 取出 mask|buckets，后面边算哈希边移位，比 BIG_ADDRS 省一步
 	ldr	p11, [x16, #CACHE]			// p11 = mask|buckets
 #  if CONFIG_USE_PREOPT_CACHES
 #    if __has_feature(ptrauth_calls)
@@ -684,18 +685,57 @@ LLookupPreopt\Function:
 #endif // CONFIG_USE_PREOPT_CACHES
 ```
 
-对照 LLDB 实测反汇编（arm64 `HIGH_16` 路径落地，`#CACHE` 偏移 `0x10`）：
+**真机实测落在哪条分支？** 由 `objc-config.h:218` 决定：**iOS 真机 = `HIGH_16`，macOS（M 系列）/模拟器 = `HIGH_16_BIG_ADDRS`**（用户态地址空间更大，buckets 占满低 48 位）。两条逻辑几乎一样（mask 在高 16、buckets 在低 48），区别仅在 BIG_ADDRS 分两步取、且不含上面那段 preopt 共享缓存岔路（`CONFIG_USE_PREOPT_CACHES` 只对 `HIGH_16` 开）。下面这段是在 **macOS 上 LLDB 实测**，所以内联展开的正是 **BIG_ADDRS** 分支，且把命中（CacheHit）和回绕（wrap-around）也一并抓全：
 
 ```text
-  <+32>: ldr    x10, [x16, #0x10]            ; mask|buckets
-  <+36>: lsr    x11, x10, #48                ; x11 = mask
-  <+40>: and    x10, x10, #0xffffffffffff    ; x10 = buckets
-  <+44>: eor    x12, x1, x1, lsr #7          ; sel ^ (sel>>7)
-  <+48>: and    w12, w12, w11                ; & mask
-  <+52>: add    x13, x10, x12, lsl #4        ; &buckets[idx]（BUCKET_SIZE=16）
-  <+56>: ldp    x17, x9, [x13], #-0x10       ; {imp,sel}=*bucket--
-  <+60>: cmp    x9, x1
-  <+80>: cbz    x9, 0x...b40                  ; → _objc_msgSend_uncached（miss）
+;; LLDB disassemble --frame：objc_msgSend 内联展开的 CacheLookup（macOS arm64 = HIGH_16_BIG_ADDRS）
+;; 寄存器约定：x16=isa/cls  x1=_cmd(SEL)  x10=buckets基址  x11=mask  x13=当前bucket  x9=槽内SEL  x17=槽内IMP
+  <+28>: mov  x15, x16                  ; 备份 isa（转发回退父类时要用，对应宏 `mov x15,x16`）
+  <+32>: ldr  x10, [x16, #0x10]         ; x10 = cache 字段 = mask|buckets（#CACHE=0x10）
+  <+36>: lsr  x11, x10, #48             ; x11 = mask（高 16 位）
+  <+40>: and  x10, x10, #0xffffffffffff ; x10 = buckets（低 48 位）
+  <+44>: eor  x12, x1, x1, lsr #7       ; sel ^ (sel>>7)  —— 对应 cache_hash 的 SEL_HASH_SHIFT_XOR
+  <+48>: and  w12, w12, w11             ; x12 = hash & mask = 起始槽下标
+  <+52>: add  x13, x10, x12, lsl #4     ; x13 = &buckets[idx]（每格 16B = BUCKET_SIZE）
+;; ---------- do { 开放寻址探测 ----------
+  <+56>: ldp  x17, x9, [x13], #-0x10    ; {imp,sel} = *bucket；指针 -16（向低地址挪一格）
+  <+60>: cmp  x9, x1                    ; 槽里的 sel == _cmd ?
+  <+64>: b.ne <+80>                     ;   不等 → 去判空 / 继续探测
+;; ---------- CacheHit：命中 ----------
+  <+68>: eor  x10, x10, x1              ; x10 = buckets ^ sel
+  <+72>: eor  x10, x10, x16             ; x10 = buckets ^ sel ^ cls  ← modifierForSEL（3 项！呼应 4.2）
+  <+76>: brab x17, x10                  ; 用该 modifier 认证解签 IMP 并尾跳 → 直接进入方法实现（不返回）
+;; ---------- 未命中 / 是否继续 ----------
+  <+80>: cbz  x9, ...b40                ; 撞到空槽(sel==0) → _objc_msgSend_uncached（慢速查找，第二部分）
+  <+84>: cmp  x13, x10                  ; bucket 还没越过表头 buckets ?
+  <+88>: b.hs <+56>                     ;   是 → 回 <+56> 继续  } while (bucket >= buckets)
+;; ---------- wrap-around：绕到表尾再扫一圈 ----------
+  <+92>:  add x13, x10, w11, uxtw #4    ; x13 = 表尾最后一个 bucket（mask 即末尾下标）
+  <+96>:  add x12, x10, x12, lsl #4     ; x12 = 最初探测位置（绕回到这里就停）
+  <+100>: ldp x17, x9, [x13], #-0x10    ; {imp,sel} = *bucket；指针 -16
+  <+104>: cmp x9, x1                    ; sel == _cmd ?
+  <+108>: b.eq <+68>                    ;   命中 → 回 <+68> 走 CacheHit
+  <+112>: cmp x9, #0x0                  ; sel == 0 ?（空槽）
+  <+116>: ccmp x13, x12, #0x0, ne       ; 且 bucket > 最初位置 ?（两条件与）
+  <+120>: b.hi <+100>                   ;   都成立 → 继续绕
+  <+124>: b   ...b40                    ; 绕完整圈仍没有 → _objc_msgSend_uncached（未命中）
+```
+
+> 把上面那串指令抽成「人话」流程（开放寻址 + 向低地址探测 + 末尾回绕）：
+
+```text
+idx    = (sel ^ (sel >> 7)) & mask        // cache_hash：算起始槽
+bucket = &buckets[idx]
+do {
+    {imp, s} = *bucket                    // 读当前槽的 {IMP, SEL}
+    if (s == sel) goto 命中               //   SEL 对上 → 命中
+    if (s == 0)   goto 未命中             //   撞到空槽 → 缓存里压根没有
+    bucket--                              // 向低地址挪一格（开放寻址线性探测）
+} while (bucket >= buckets)               // 没越过表头就继续
+// 越过表头 → wrap 到表尾，再扫到「最初起始槽」为止；仍没有 → 未命中
+
+命中:  imp = auth(imp, buckets ^ sel ^ cls);  br imp   // 解签后尾跳，不留栈帧（§3.3 / §4.2）
+未命中: b _objc_msgSend_uncached                        // 转入 lookUpImpOrForward（第二部分）
 ```
 
 ### 3.3 命中 `br IMP` / 未命中转入慢速查找（`CacheHit` :316）
