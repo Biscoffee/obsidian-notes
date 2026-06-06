@@ -147,7 +147,7 @@ double result =
 - **前半**：`(double (*)(id, SEL, CGFloat, CGFloat))objc_msgSend`——把 `objc_msgSend` 临时标记成「接收4个参数、返回 double」的函数指针。不产生任何指令，只改变「编译器这一次怎么看待它」；
 - **后半**：`(obj, sel, 1.0, 2.0)` 才是真正调用。编译器按上面那张类型表生成汇编：
 
-```asm
+```armasm
 ;; cast 后，编译器生成正确的参数赋值指令
 mov  x0, obj      ;「中文」receiver → x0
 mov  x1, sel      ;「中文」selector → x1
@@ -192,7 +192,7 @@ struct objc_super {
 
 arm64 汇编里这一整个家族的真实入口（`objc-msg-arm64.s`）：
 
-```asm
+```armasm
 ;; objc-msg-arm64.s —— messenger 家族入口一览
 MSG_ENTRY    _objc_msgSend              // :587  普通消息（本篇主线）
 ENTRY        _objc_msgLookup            // :622  只查 IMP 不调用（返回 IMP）
@@ -301,29 +301,16 @@ objc_msgSendSuper2(&superInfo, @selector(class));
 Dog
 ```
 
-补充一个**编译器侧**的事实（objc4 源码里没有，靠 demo 反汇编看）：现代 clang（arm64）在调用点其实**不直接** `bl objc_msgSend`，而是 `bl objc_msgSend$bark`——一个**选择子 stub（selector stub）**，把「装 selector 到 x1」延后进 stub：
-
-```text
-;; demo `main` 调用点（lldb: disassemble --name main）
-<+72>: bl  0x…a20    ; objc_msgSend$bark   ← [d bark] 第一次
-<+84>: bl  0x…a20    ; objc_msgSend$bark   ← [d bark] 第二次
-
-;; objc_msgSend$bark 这个 stub 内部（disassemble --start-address 0x…a20）
-objc_msgSend$bark:
-    adrp   x1, …            ; ldr x1, [x1, #0x120]   ← 把 selector "bark" 装进 x1
-    adrp   x16, …           ; ldr x16, [x16]         ← 取 objc_msgSend 地址
-    br     x16                                       ← 尾跳进 objc_msgSend
-```
-
-所以「receiver 在 x0、selector 在 x1」最终成立，只是 selector 的装载被挪进 stub；调用点本身只剩 `x0` + 一条 `bl …$bark`，更省指令、利于去重。下文回到 objc4 本体，从 `objc_msgSend` 入口讲起。
-
 ## 2. 为什么 objc_msgSend 用汇编写
 
-三个原因：调用频率极高，手写汇编榨干每一周期；它要在**不知道目标方法参数个数/类型**的情况下原样透传所有寄存器；命中后用**尾调用**（`br`）直接跳进 IMP，自己不留栈帧。下面第 3 节的命中分支 `br x17`（实测解析成带 PAC 的 `brab`）正是「不返回、直接跳走」。
+三个原因：
+- 调用频率极高，手写汇编榨干每一周期；
+- 它要在**不知道目标方法参数个数/类型**的情况下原样透传所有寄存器；
+- 命中后用**尾调用**（`br`）直接跳进 IMP，自己不留栈帧。下面第 3 节的命中分支 `br x17`（实测解析成带 PAC 的 `brab`）正是「不返回、直接跳走」。
 
 源码佐证「透传所有参数寄存器」：快速路径命中时直接尾跳、不存任何东西；而一旦 miss 要调 C 函数做慢速查找，`SAVE_REGS` 会先把**全部参数寄存器**存下来，查完恢复再尾跳 IMP——保证 IMP 拿到的参数和最初一模一样：
 
-```asm
+```armasm
 ;; objc-msg-arm64.s:206 —— SAVE_REGS（关键部分）
 .macro SAVE_REGS kind
     SignLR
@@ -354,7 +341,7 @@ objc_msgSend$bark:
 
 入口 `_objc_msgSend`（:587），逐字全文：
 
-```asm
+```armasm
 ;; objc-msg-arm64.s:587  —— _objc_msgSend 入口（全文）
 	MSG_ENTRY _objc_msgSend
 	UNWIND _objc_msgSend, NoFrame
@@ -413,7 +400,7 @@ struct objc_class : objc_object {
 
 汇编侧把这些字段偏移写死成宏（指针 8 字节）：
 
-```asm
+```armasm
 ;; objc-msg-arm64.s:79 —— 类结构里被选用的字段偏移
 #define SUPERCLASS       __SIZEOF_POINTER__        // = 8   → [x16, #SUPERCLASS]
 #define CACHE            (2 * __SIZEOF_POINTER__)  // = 16  → [x16, #CACHE]
@@ -426,7 +413,7 @@ struct objc_class : objc_object {
 
 逐字全文（含全部架构分支）：
 
-```asm
+```armasm
 ;; objc-msg-arm64.s:115  —— GetClassFromIsa_p16 宏（全文）
 .macro GetClassFromIsa_p16 src, needs_auth, auth_address /* note: auth_address is not required if !needs_auth */
 
@@ -478,7 +465,7 @@ objc_msgSend:
 
 整段宏逐字全文（保留 `HIGH_16 / HIGH_16_BIG_ADDRS / LOW_4` 全部分支与 preopt 路径）：
 
-```asm
+```armasm
 ;; objc-msg-arm64.s:336  —— CacheLookup 宏（全文）
 .macro CacheLookup Mode, Function, MissLabelDynamic, MissLabelConstant
 	//
@@ -740,7 +727,7 @@ do {
 
 逐字全文（含 NORMAL / GETIMP / LOOKUP 三种模式）：
 
-```asm
+```armasm
 ;; objc-msg-arm64.s:315  —— CacheHit 宏（全文）
 // CacheHit: x17 = cached IMP, x10 = address of buckets, x1 = SEL, x16 = isa
 .macro CacheHit
@@ -1298,7 +1285,7 @@ void cache_t::reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld)
 
 快速路径 miss 后，`__objc_msgSend_uncached`（:737）通过 `MethodTableLookup`（:720）调进 C++ 的 `lookUpImpOrForward`。三段逐字全文：
 
-```asm
+```armasm
 ;; objc-msg-arm64.s:720  —— MethodTableLookup / uncached / msgForward（全文）
 .macro MethodTableLookup
 
@@ -1830,7 +1817,7 @@ resolveMethod_locked(id inst, SEL sel, Class cls, int behavior)
 
 C++ 侧把 `_objc_msgForward_impcache` 当作「找不到」时返回的占位 IMP（第 6 节 :7626 定义、循环里 `imp = forward_imp` 返回）；汇编侧逐字全文：
 
-```asm
+```armasm
 ;; objc-msg-arm64.s:777  —— _objc_msgForward 相关（全文）
 /********************************************************************
 *
