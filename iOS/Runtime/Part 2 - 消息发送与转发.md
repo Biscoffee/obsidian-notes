@@ -498,6 +498,7 @@ LLookupStart\Function:
 	// ════════ ① 取 mask + buckets：按目标平台三选一（你 mac 走 BIG_ADDRS）════════
 #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16_BIG_ADDRS
 	//macOS(M系列)/模拟器走这里（地址空间大，objc-config.h:218）：分两步取出 mask(高16)、buckets(低48)。本文 LLDB 实测就是这条
+	
 	ldr	p10, [x16, #CACHE]				// p10 = mask|buckets
 	lsr	p11, p10, #48			// p11 = mask
 	and	p10, p10, #0xffffffffffff	// p10 = buckets
@@ -510,6 +511,7 @@ LLookupStart\Function:
 #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16
 
 	//iOS 真机走这里（objc-config.h:218）：一条 ldr 取出 mask|buckets，后面边算哈希边移位，比 BIG_ADDRS 省一步
+	
 	ldr	p11, [x16, #CACHE]			// p11 = mask|buckets
 #  if CONFIG_USE_PREOPT_CACHES
 #    if __has_feature(ptrauth_calls)
@@ -543,6 +545,7 @@ LLookupStart\Function:
 #endif
 
 	// ════════ ② 定位起始 bucket，进入 do-while 探测循环 ════════
+	
 	add	p13, p10, p12, LSL #(1+PTRSHIFT)
 						// p13 = buckets + ((_cmd & mask) << (1+PTRSHIFT))
 					//p13 指向哈希命中的那个 bucket（每个 bucket 16 字节）
@@ -605,6 +608,7 @@ LLookupRecover\Function:
 	b	\MissLabelDynamic		//绕完整圈仍没有 → 未命中
 
 	// ════════ ④ 预优化缓存路径（仅 iOS / dyld 共享缓存里的系统类才进，你这条用不到）════════
+	
 #if CONFIG_USE_PREOPT_CACHES
 #if CACHE_MASK_STORAGE != CACHE_MASK_STORAGE_HIGH_16
 #error config unsupported
