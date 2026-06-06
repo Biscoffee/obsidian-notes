@@ -1,46 +1,49 @@
 # 实验1 · Agent 评测体系（全库）
 
-生成时间：2026-06-06 07:59　裁判模型：MiMo　评分尺度：Opus 设计
+生成时间：2026-06-06 08:58　裁判模型：MiMo　评分尺度：Opus 设计
 
 - 总题数：2391
-- 有效评分：2299
-- agent 报错：86
-- 裁判无效（空返回/解析失败）：6
-- 裁判累计 token：4,316,269
+- 有效评分：2389
+- agent 报错：1
+- 裁判无效（空返回/解析失败）：1
+- 裁判累计 token：4,477,529
 
 ## 总分
 
-**综合平均 overall：4.55 / 5**
+**综合平均 overall：4.53 / 5**
 
 | 维度 | 平均分 |
 |---|---|
-| 准确性 | 4.52 |
-| 完整性 | 4.29 |
-| 相关性 | 4.65 |
-| 清晰度 | 4.73 |
+| 准确性 | 4.50 |
+| 完整性 | 4.27 |
+| 相关性 | 4.63 |
+| 清晰度 | 4.71 |
 
 ## 按来源分布
 
 | source | 题数 | 平均分 |
 |---|---|---|
-| iosqa | 199 | 4.64 |
+| iosqa | 204 | 4.65 |
 | merged | 196 | 4.62 |
-| obsidian:1122.md | 124 | 3.59 |
-| jianshu:cc9d286a1a27 | 53 | 4.49 |
-| jianshu:693ec962b3d3 | 45 | 4.51 |
-| jianshu:90f9348b2ed6 | 39 | 4.71 |
+| obsidian:1122.md | 134 | 3.49 |
+| jianshu:cc9d286a1a27 | 55 | 4.48 |
+| jianshu:693ec962b3d3 | 51 | 4.50 |
+| jianshu:90f9348b2ed6 | 48 | 4.66 |
+| obsidian:111.md | 40 | 4.06 |
 | jianshu:4f18226705ec | 38 | 4.68 |
-| obsidian:111.md | 37 | 4.16 |
 | alwaysprocessing:objc-release.md | 37 | 4.28 |
 | agentqa | 31 | 4.81 |
+| jianshu:2953e86db051 | 31 | 4.82 |
 | jianshu:1f10795c9468 | 30 | 4.75 |
 | alwaysprocessing:objc-retain.md | 27 | 4.55 |
+| jianshu:25bcb6540045 | 26 | 4.57 |
 | jianshu:5447a66d955f | 26 | 4.65 |
-| jianshu:2953e86db051 | 25 | 4.82 |
-| jianshu:89ab04a91cbc | 24 | 4.84 |
+| jianshu:873e530a0995 | 25 | 4.76 |
+| jianshu:89ab04a91cbc | 25 | 4.85 |
 | jianshu:cb137ba5a0e7 | 24 | 4.32 |
+| jianshu:2b660ec22fe0 | 23 | 4.74 |
+| jianshu:496af9592d27 | 23 | 4.75 |
 | alwaysprocessing:objc-assoc-obj.md | 22 | 4.64 |
-| jianshu:2b660ec22fe0 | 21 | 4.71 |
 | jianshu:5ddd62fdaea9 | 21 | 4.75 |
 | jianshu:494629e92692 | 20 | 4.12 |
 | jianshu:7ca16c92ca37 | 20 | 4.72 |
@@ -48,18 +51,18 @@
 | alwaysprocessing:objc-class-isa.md | 20 | 4.75 |
 | alwaysprocessing:objc-ivar-abi.md | 20 | 4.84 |
 | alwaysprocessing:rust-ffi-signed-conv.md | 20 | 4.44 |
-| jianshu:25bcb6540045 | 19 | 4.68 |
 | jianshu:d488b0bf3aaf | 19 | 4.86 |
-| jianshu:873e530a0995 | 18 | 4.68 |
+| memory:user_learning_path_llm_to_agent.md | 19 | 2.07 |
 | jianshu:2f7a1fb420d3 | 18 | 4.76 |
 | alwaysprocessing:hl-accidental-system.md | 18 | 1.35 |
-| jianshu:496af9592d27 | 17 | 4.68 |
+| jianshu:b72018e88a97 | 17 | 4.51 |
 | jianshu:5c83da126b48 | 17 | 4.75 |
 | alwaysprocessing:objc-unrealized-classes.md | 17 | 4.47 |
 | jianshu:f306adf3480d | 16 | 4.86 |
 | jianshu:358ea0945978 | 16 | 4.62 |
 | jianshu:cb2b9e2b68d1 | 16 | 4.83 |
 | memory:user_knowledge_tier_awareness.md | 16 | 4.73 |
+| memory:user_learning_resources_llm_agent.md | 16 | 3.81 |
 | alwaysprocessing:objc-tagged-ptr.md | 16 | 4.95 |
 | alwaysprocessing:rust-ffi-cfstr-getbytes-2.md | 16 | 4.03 |
 | alwaysprocessing:size-matters.md | 16 | 4.55 |
@@ -67,30 +70,27 @@
 | jianshu:d4baff644ce5 | 15 | 4.73 |
 | jianshu:92a581bd9fdb | 15 | 4.10 |
 | alwaysprocessing:rust-ffi-cfstr-getbytes-1.md | 15 | 3.62 |
-| jianshu:b72018e88a97 | 14 | 4.64 |
 | jianshu:2fae148f015f | 14 | 4.27 |
 | jianshu:f7d9f6d86145 | 14 | 4.93 |
+| jianshu:b838f04a9249 | 14 | 4.82 |
 | jianshu:853ca8318a15 | 14 | 4.98 |
 | jianshu:fe30ef8bd411 | 14 | 4.91 |
 | jianshu:188b089d2617 | 14 | 4.98 |
 | jianshu:a63fb211f7ac | 14 | 4.59 |
 | memory:user_knowledge_tier_practice.md | 14 | 4.27 |
+| jianshu:8bfd70a9d1ac | 13 | 4.27 |
 | jianshu:5d35a384574d | 13 | 4.58 |
-| memory:user_learning_path_llm_to_agent.md | 13 | 2.56 |
 | alwaysprocessing:objc-class-arch.md | 13 | 4.98 |
 | jianshu:94b6998c6038 | 12 | 4.92 |
+| memory:user_knowledge_tier_understanding.md | 12 | 4.92 |
 | alwaysprocessing:rust-ffi-cf-rc.md | 12 | 4.12 |
-| jianshu:8bfd70a9d1ac | 11 | 4.32 |
-| jianshu:b838f04a9249 | 11 | 4.91 |
 | jianshu:e5a54813b93d | 11 | 4.93 |
-| memory:user_knowledge_tier_understanding.md | 11 | 4.91 |
 | alwaysprocessing:site-refresh.md | 11 | 1.75 |
 | jianshu:db765ff4e36a | 10 | 4.62 |
-| memory:user_learning_resources_llm_agent.md | 10 | 4.22 |
 | alwaysprocessing:objc-class-graph-impl.md | 10 | 4.92 |
+| jianshu:bc16a644784d | 9 | 4.94 |
 | jianshu:3a3e75af36a7 | 9 | 4.81 |
 | jianshu:6b5ef101cf66 | 9 | 4.94 |
-| jianshu:bc16a644784d | 8 | 4.94 |
 | jianshu:e0ececa61e8e | 7 | 4.96 |
 | jianshu:3ad9166c02e5 | 7 | 4.86 |
 | jianshu:ab8c754761bf | 7 | 4.39 |
@@ -138,6 +138,7 @@
 | mikeash/2009-09-11-intro-to-grand-central-dispatch-part-iii-dispatch-sources | 3 | 5.00 |
 | mikeash/2009-09-18-intro-to-grand-central-dispatch-part-iv-odds-and-ends | 3 | 5.00 |
 | mikeash/2011-03-04-a-tour-of-osatomic | 3 | 4.92 |
+| mikeash/2009-09-25-gcd-practicum | 3 | 5.00 |
 | mikeash/2011-10-14-whats-new-in-gcd | 3 | 5.00 |
 | mikeash/2012-01-20-fork-safety | 3 | 4.75 |
 | mikeash/2013-08-16-lets-build-dispatch-groups | 3 | 5.00 |
@@ -183,6 +184,7 @@
 | mikeash/2009-04-17-code-generation-with-llvm-part-1-basics | 3 | 4.83 |
 | mikeash/2009-04-24-code-generation-with-llvm-part-2-fast-objective-c-forwarding | 3 | 4.67 |
 | mikeash/2009-06-05-introduction-to-valgrind | 3 | 3.58 |
+| mikeash/2009-06-19-mac-os-x-process-memory-statistics | 3 | 4.83 |
 | mikeash/2009-07-03-type-specifiers-in-c-part-2 | 3 | 5.00 |
 | mikeash/2009-07-17-format-strings-tips-and-tricks | 3 | 5.00 |
 | mikeash/2009-07-10-type-specifiers-in-c-part-3 | 3 | 4.83 |
@@ -199,6 +201,7 @@
 | mikeash/2009-11-27-using-accessors-in-init-and-dealloc | 3 | 4.17 |
 | mikeash/2009-12-11-a-gcd-case-study-building-an-http-server | 3 | 4.92 |
 | mikeash/2010-01-01-nsrunloop-internals | 3 | 5.00 |
+| mikeash/2009-12-18-highlights-from-a-year-of-friday-qa | 3 | 4.92 |
 | mikeash/2010-01-08-nsnotificationqueue | 3 | 5.00 |
 | mikeash/2010-01-22-toll-free-bridging-internals | 3 | 5.00 |
 | mikeash/2010-02-12-trampolining-blocks-with-mutable-code | 3 | 5.00 |
@@ -250,6 +253,7 @@
 | blog/onevcat-2012-04-objective-c-runtime | 3 | 4.92 |
 | blog/developer-library-archive-documentation-Cocoa-Conceptual-ProgrammingWithObjectiveC-Introduction-Introductionhtml | 3 | 5.00 |
 | blog/onevcat-2012-06-modern-objective-c | 3 | 4.50 |
+| blog/developer-library-archive-documentation-General-Conceptual-ConcurrencyProgrammingGuide-Introduction-Introductionhtml | 3 | 5.00 |
 | blog/developer-library-archive-documentation-UserExperience-Conceptual-AutolayoutPG-indexhtml | 3 | 5.00 |
 | blog/developer-library-archive-documentation-Cocoa-Conceptual-CoreAnimation_guide-Introduction-Introductionhtml | 3 | 4.92 |
 | blog/developer-library-archive-documentation-GraphicsImaging-Conceptual-drawingwithquartz2d-Introduction-Introductionhtml | 3 | 4.92 |
@@ -268,22 +272,18 @@
 | blog/developer-library-archive-documentation-GraphicsImaging-Conceptual-drawingwithquartz2d-dq_overview-dq_overviewhtml | 3 | 5.00 |
 | blog/developer-library-archive-documentation-Performance-Conceptual-PerformanceOverview-DevelopingForPerf-DevelopingForPerfhtml | 3 | 5.00 |
 | mikeash/2010-11-6-creating-classes-at-runtime-in-objective-c | 2 | 5.00 |
-| mikeash/2009-09-25-gcd-practicum | 2 | 5.00 |
-| mikeash/2009-06-19-mac-os-x-process-memory-statistics | 2 | 5.00 |
-| mikeash/2009-12-18-highlights-from-a-year-of-friday-qa | 2 | 4.88 |
-| blog/developer-library-archive-documentation-General-Conceptual-ConcurrencyProgrammingGuide-Introduction-Introductionhtml | 2 | 5.00 |
 
 ## 分数档分布
 
 | 档位 | 题数 |
 |---|---|
-| 5 分档 | 1802 |
-| 4 分档 | 289 |
-| 3 分档 | 29 |
-| 2 分档 | 26 |
-| 1 分档 | 153 |
+| 5 分档 | 1856 |
+| 4 分档 | 303 |
+| 3 分档 | 30 |
+| 2 分档 | 29 |
+| 1 分档 | 171 |
 
-## 失败清单（overall < 3，共 187 条，列前 60）
+## 失败清单（overall < 3，共 208 条，列前 60）
 
 - [iosqa] **调度组：用 dispatch_group_async () 把要先做的任务塞进这个组里，让它们自己跑，最后用 dispatch_group_notify () 告诉系统：&quot;等组里所有任务都跑完了，就执行后面这个新任务&quot;。2. 信号量：先调 create (0) 弄个信号量（初始状态是没钥匙），让前一个任务先运行，运行完的时候调用signal ()，后一个任务开始前，先调 wait ()。**（1.00）　回答未覆盖参考要点，内容为评论而非解答，类似拒答。
 - [iosqa] **QOS_CLASS_USER_INTERACTIVE（用户交互级）最高优先级，直接影响用户界面响应（比如滑动列表、动画渲染），必须快速完成（通常毫秒级）。2. QOS_CLASS_USER_INITIATED（用户发起级）用户主动触发的任务（比如点击按钮后的网络请求），需要尽快完成（通常秒级内），用户会等待结果。3. QOS_CLASS_DEFAULT（默认级）没指定时的默认值，系统会根据上下文自动调整（建议显式指定其他等级，避免依赖默认值）。4. QOS_CLASS_UTILITY（工具级）耗时较长但用户不急需结果的任务（比如下载文件、数据解析），可以显示进度条，系统可能限制其 CPU 占用以节省电量。5. QOS_CLASS_BACKGROUND（后台级）完全不影响用户的任务（比如备份数据、同步日志），系统会在空闲时执行，优先级最低。**（1.00）　待评回答未回答问题，仅表示内容已归档并提议出题，属于拒答。
@@ -346,38 +346,9 @@
 - [alwaysprocessing:hl-accidental-system.md] **网络1.0版问题**（1.00）　待评回答未回答问题，属于拒答，要求提供上下文。
 - [alwaysprocessing:hl-accidental-system.md] **购买NAS的三大动机**（1.00）　待评回答拒答，未提供任何答案。
 
-## agent 报错（86 条）
+## agent 报错（1 条）
 
-- [iosqa] 响应优先级：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [iosqa] 手势冲突，怎么让一个view响应多个手势：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:b72018e88a97] fastInstanceSize中的16字节对齐计算：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:2b660ec22fe0] 内存大小三种方式总结：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:2b660ec22fe0] 苹果内存对齐思想：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:2b660ec22fe0] class_getInstanceSize 对齐源码：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:873e530a0995] objc_class结构体的属性组成：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:873e530a0995] class_rw_t中存储类信息：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:873e530a0995] 验证NSObject唯一性的两种方式：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:873e530a0995] 对象与类都拥有isa属性的原因：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [jianshu:873e530a0995] property_list_t 是指针类型：__AGENT_ERROR__ APIConnectionError: Connection error.
-- [jianshu:bc16a644784d] weak属性在底层的调用函数：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:89ab04a91cbc] runtime三种使用方式：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:b838f04a9249] 解决类方法未实现崩溃：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:25bcb6540045] _objc_terminate异常处理：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:25bcb6540045] static_init功能：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:25bcb6540045] OBJC_PRINT_DEPRECATION_WARNINGS环境变量：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:25bcb6540045] OBJC_DEBUG_NIL_SYNC环境变量：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:25bcb6540045] OBJC_DISABLE_NONPOINTER_ISA环境变量：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:90f9348b2ed6] 修复 @selector 混乱问题的流程：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:90f9348b2ed6] 获取Mach-O协议列表：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:90f9348b2ed6] 非懒加载类的加载：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:90f9348b2ed6] headerIsPreoptimized与类加载判断：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:2953e86db051] NSOperation 与 GCD 关系：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:2953e86db051] NSOperationQueue 并发数控制：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:693ec962b3d3] GCD队列创建底层入口：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:693ec962b3d3] dispatch_sync 死锁检测原理：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:693ec962b3d3] 同步与异步栅栏函数区别：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:693ec962b3d3] dispatch_semaphore_wait加锁：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
-- [jianshu:cc9d286a1a27] RunLoop 与 Mode 的关系：__AGENT_ERROR__ RateLimitError: Error code: 429 - {'error': {'code': '429', 'message': 'Too many requests', 'type': 'lim
+- [jianshu:853ca8318a15] 8字节对齐算法：__AGENT_ERROR__ RuntimeError: Could not determine home directory.
 
 ## 怎么读这份报告
 
