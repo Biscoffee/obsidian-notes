@@ -149,11 +149,11 @@ double result =
 
 ```armasm
 ;; cast 后，编译器生成正确的参数赋值指令
-mov  x0, obj      ;「中文」receiver → x0
-mov  x1, sel      ;「中文」selector → x1
-fmov d0, 1.0      ;「中文」第一个浮点参数 → d0
-fmov d1, 2.0      ;「中文」第二个浮点参数 → d1
-bl   objc_msgSend ;「中文」跳过去（地址没变，仍是同一个函数）
+mov  x0, obj      ;receiver → x0
+mov  x1, sel      ;selector → x1
+fmov d0, 1.0      ;第一个浮点参数 → d0
+fmov d1, 2.0      ;第二个浮点参数 → d1
+bl   objc_msgSend ;跳过去（地址没变，仍是同一个函数）
 ```
 
 cast 改的是「跳进去之前」那几条 mov 怎么生成，不改 `objc_msgSend` 本身一个字节。
@@ -212,7 +212,7 @@ ENTRY        _objc_msgSend_noarg        // :806  无参快路径
 OBJC_EXPORT void
 objc_msgSend_stret(void /* id self, SEL op, ... */ )
     OBJC_AVAILABLE(10.0, 2.0, 9.0, 1.0, 2.0)
-    OBJC_ARM64_UNAVAILABLE;        // ←「中文」arm64 上根本没有这个符号
+    OBJC_ARM64_UNAVAILABLE;        // ←arm64 上根本没有这个符号
 
 // message.h:158 —— fpret/fp2ret（浮点返回）的注释
 // arm:    objc_msgSend_fpret not used
@@ -318,16 +318,16 @@ Dog
     mov    fp, sp
     // save parameter registers: x0..x8, q0..q7
     sub    sp, sp,  #(10*8 + 8*16)
-    stp    q0, q1,  [sp, #(0*16)]        //「中文」q0..q7：浮点/向量参数全保存
+    stp    q0, q1,  [sp, #(0*16)]        //q0..q7：浮点/向量参数全保存
     stp    q2, q3,  [sp, #(2*16)]
     stp    q4, q5,  [sp, #(4*16)]
     stp    q6, q7,  [sp, #(6*16)]
-    stp    x0, x1,  [sp, #(8*16+0*8)]    //「中文」x0..x7：整型参数（含 self/_cmd）
+    stp    x0, x1,  [sp, #(8*16+0*8)]    //x0..x7：整型参数（含 self/_cmd）
     stp    x2, x3,  [sp, #(8*16+2*8)]
     stp    x4, x5,  [sp, #(8*16+4*8)]
     stp    x6, x7,  [sp, #(8*16+6*8)]
 .if \kind == MSGSEND
-    stp    x8, x15, [sp, #(8*16+8*8)]    //「中文」x8：结构体返回的间接结果地址；x15：CacheLookup 暂存的 isa
+    stp    x8, x15, [sp, #(8*16+8*8)]    //x8：结构体返回的间接结果地址；x15：CacheLookup 暂存的 isa
     mov    x16, x15 // stashed by CacheLookup, restore to x16
 .elseif \kind == METHOD_INVOKE
     str    x8,      [sp, #(8*16+8*8)]
@@ -341,40 +341,40 @@ Dog
 
 入口 `_objc_msgSend`（:587），逐字全文：
 
-```armasm
+```arm-asm
 ;; objc-msg-arm64.s:587  —— _objc_msgSend 入口（全文）
 	MSG_ENTRY _objc_msgSend
 	UNWIND _objc_msgSend, NoFrame
 
 	cmp	p0, #0			// nil check and tagged pointer check
-					//「中文」receiver 是否为 0 / 是否 tagged pointer
+					//receiver 是否为 0 / 是否 tagged pointer
 #if SUPPORT_TAGGED_POINTERS
 	b.le	LNilOrTagged		//  (MSB tagged pointer looks negative)
-					//「中文」tagged 指针最高位为 1，看起来像负数 → 走特殊分支
+					//tagged 指针最高位为 1，看起来像负数 → 走特殊分支
 #else
 	b.eq	LReturnZero
 #endif
 	ldr	p14, [x0]		// p14 = raw isa
-					//「中文」取对象首 8 字节 = 原始 isa（含标志位）
+					//取对象首 8 字节 = 原始 isa（含标志位）
 	GetClassFromIsa_p16 p14, 1, x0	// p16 = class
-					//「中文」抹标志位 + ptrauth 解签 → 真正的 Class（见 3.1）
+					//抹标志位 + ptrauth 解签 → 真正的 Class（见 3.1）
 LGetIsaDone:
 	// calls imp or objc_msgSend_uncached
 	CacheLookup NORMAL, _objc_msgSend, __objc_msgSend_uncached
-					//「中文」查缓存：命中尾跳 IMP，未命中跳 uncached（见 3.2/3.3）
+					//查缓存：命中尾跳 IMP，未命中跳 uncached（见 3.2/3.3）
 
 #if SUPPORT_TAGGED_POINTERS
 LNilOrTagged:
 	b.eq	LReturnZero		// nil check
-					//「中文」上面 cmp 若 ==0 即 nil，返回零值
+					//上面 cmp 若 ==0 即 nil，返回零值
 	GetTaggedClass
-	b	LGetIsaDone		//「中文」tagged pointer 从专表取 class，再回主流程
+	b	LGetIsaDone		//tagged pointer 从专表取 class，再回主流程
 // SUPPORT_TAGGED_POINTERS
 #endif
 
 LReturnZero:
 	// x0 is already zero
-	mov	x1, #0			//「中文」给 nil 发消息：返回值寄存器全部清零
+	mov	x1, #0			//给 nil 发消息：返回值寄存器全部清零
 	movi	d0, #0
 	movi	d1, #0
 	movi	d2, #0
@@ -384,6 +384,8 @@ LReturnZero:
 	END_ENTRY _objc_msgSend
 ```
 
+> **旁注：判空两架构都做，但 x86_64 抽成宏、arm64 直接内联。** 你若翻 x86_64 资料，会看到判空被抽成一个 `NilTest` 宏（`objc-msg-x86_64.s:641`，`testq %a1,%a1; jz LNilTestSlow`），而且要按返回类型 `NORMAL / FPRET / FP2RET / STRET` **分流**——因为 x86 上结构体返回、浮点返回各有专门的 messenger（`objc_msgSend_stret / _fpret / _fp2ret`）。**arm64 没有这些变体**（见 §0.2 的 `OBJC_ARM64_UNAVAILABLE`），所以既不需要分流、也不抽宏，判空就是上面入口那两条内联指令：`:590 cmp p0,#0` 把「nil（==0）」和「tagged pointer（最高位=1，补码看像负数）」一次比掉，`:592 b.le` 同时兜住两种情况，nil 最终走 `LReturnZero`（:610）清零返回。一句话：**x86_64 因为背着 stret/fpret 家族才搞出带分流的 `NilTest` 宏；arm64 精简到入口一条 `cmp`。**
+
 ### 3.0 先看类对象布局：`#CACHE` / `#SUPERCLASS` 偏移哪来的
 
 上面入口里 `[x0]` 取 isa、后面 3.2 的 `[x16, #CACHE]`、第 8 节的 `[x16, #SUPERCLASS]`，这些偏移都来自 `objc_class` 的内存布局：
@@ -391,10 +393,10 @@ LReturnZero:
 ```objc
 // objc-runtime-new.h:2635 —— 类对象本身就是一个 objc_class
 struct objc_class : objc_object {
-    // Class ISA;          //「中文」偏移 0：继承自 objc_object（3.1 节 ldr [x0] 取的就是它）
-    Class superclass;      //「中文」偏移 8
-    cache_t cache;         //「中文」偏移 16
-    class_data_bits_t bits;//「中文」偏移 16+sizeof(cache_t)：class_rw_t* + rr/alloc 标志
+    // Class ISA;          //偏移 0：继承自 objc_object（3.1 节 ldr [x0] 取的就是它）
+    Class superclass;      //偏移 8
+    cache_t cache;         //偏移 16
+    class_data_bits_t bits;//偏移 16+sizeof(cache_t)：class_rw_t* + rr/alloc 标志
 };
 ```
 
@@ -411,15 +413,13 @@ struct objc_class : objc_object {
 
 ### 3.1 取 isa → class（`GetClassFromIsa_p16`，:115，呼应 Part 1 的 ISA_MASK）
 
-逐字全文（含全部架构分支）：
-
-```armasm
+```objc
 ;; objc-msg-arm64.s:115  —— GetClassFromIsa_p16 宏（全文）
 .macro GetClassFromIsa_p16 src, needs_auth, auth_address /* note: auth_address is not required if !needs_auth */
 
 #if SUPPORT_INDEXED_ISA
 	// Indexed isa
-	//「中文」watchOS 等：isa 存的是类表下标，不是指针
+	//watchOS 等：isa 存的是类表下标，不是指针
 	mov	p16, \src			// optimistically set dst = src
 	tbz	p16, #ISA_INDEX_IS_NPI_BIT, 1f	// done if not non-pointer isa
 	// isa in p16 is indexed
@@ -430,17 +430,17 @@ struct objc_class : objc_object {
 1:
 
 #elif __LP64__
-	//「中文」arm64 真机走这里
+	//arm64 真机走这里
 .if \needs_auth == 0 // _cache_getImp takes an authed class already
 	mov	p16, \src
 .else
 	// 64-bit packed isa
 	ExtractISA p16, \src, \auth_address
-	//「中文」ExtractISA = 用 ISA_MASK(0x7ffffffffffff8) 抹低位 + autda 解 ptrauth 签名
+	//ExtractISA = 用 ISA_MASK(0x7ffffffffffff8) 抹低位 + autda 解 ptrauth 签名
 .endif
 #else
 	// 32-bit raw isa
-	mov	p16, \src			//「中文」32 位：isa 就是裸指针，直接用
+	mov	p16, \src			//32 位：isa 就是裸指针，直接用
 
 #endif
 
@@ -491,11 +491,11 @@ objc_msgSend:
 	//
 
 	mov	x15, x16			// stash the original isa
-					//「中文」备份 isa，转发指令里要用它判断是否回退到父类
+					//备份 isa，转发指令里要用它判断是否回退到父类
 LLookupStart\Function:
 	// p1 = SEL, p16 = isa
 #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16_BIG_ADDRS
-	//「中文」macOS(M系列)/模拟器走这里（地址空间大，objc-config.h:218）：分两步取出 mask(高16)、buckets(低48)。本文 LLDB 实测就是这条
+	//macOS(M系列)/模拟器走这里（地址空间大，objc-config.h:218）：分两步取出 mask(高16)、buckets(低48)。本文 LLDB 实测就是这条
 	ldr	p10, [x16, #CACHE]				// p10 = mask|buckets
 	lsr	p11, p10, #48			// p11 = mask
 	and	p10, p10, #0xffffffffffff	// p10 = buckets
@@ -506,11 +506,12 @@ LLookupStart\Function:
 	and	w12, w1, w11			// x12 = _cmd & mask
 #  endif
 #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16
-	//「中文」iOS 真机走这里（objc-config.h:218）：一条 ldr 取出 mask|buckets，后面边算哈希边移位，比 BIG_ADDRS 省一步
+
+	//iOS 真机走这里（objc-config.h:218）：一条 ldr 取出 mask|buckets，后面边算哈希边移位，比 BIG_ADDRS 省一步
 	ldr	p11, [x16, #CACHE]			// p11 = mask|buckets
 #  if CONFIG_USE_PREOPT_CACHES
 #    if __has_feature(ptrauth_calls)
-	tbnz	p11, #0, LLookupPreopt\Function	//「中文」最低位=1 → 这是共享缓存预优化表，跳专门路径
+	tbnz	p11, #0, LLookupPreopt\Function	//最低位=1 → 这是共享缓存预优化表，跳专门路径
 	and	p10, p11, #0x0000ffffffffffff	// p10 = buckets
 #    else
 	and	p10, p11, #0x0000fffffffffffe	// p10 = buckets
@@ -519,7 +520,7 @@ LLookupStart\Function:
 #  endif
 
 #  if SEL_HASH_SHIFT_XOR
-	eor	p12, p1, p1, LSR #7		//「中文」sel ^ (sel>>7)，对应 cache_hash
+	eor	p12, p1, p1, LSR #7		//sel ^ (sel>>7)，对应 cache_hash
 	and	p12, p12, p11, LSR #48		// x12 = (_cmd ^ (_cmd >> 7)) & mask
 #  else
 	and	p10, p11, #0x0000ffffffffffff	// p10 = buckets
@@ -541,18 +542,18 @@ LLookupStart\Function:
 
 	add	p13, p10, p12, LSL #(1+PTRSHIFT)
 						// p13 = buckets + ((_cmd & mask) << (1+PTRSHIFT))
-					//「中文」p13 指向哈希命中的那个 bucket（每个 bucket 16 字节）
+					//p13 指向哈希命中的那个 bucket（每个 bucket 16 字节）
 
 						// do {
 1:	ldp	p17, p9, [x13], #-BUCKET_SIZE	//     {imp, sel} = *bucket--
-					//「中文」取出 {imp,sel}，并让指针向低地址移一格（探测方向）
+					//取出 {imp,sel}，并让指针向低地址移一格（探测方向）
 	cmp	p9, p1				//     if (sel != _cmd) {
 	b.ne	3f				//         scan more
 						//     } else {
 2:	CacheHit \Mode				// hit:    call or return imp
 						//     }
 3:	cbz	p9, \MissLabelDynamic		//     if (sel == 0) goto Miss;
-					//「中文」撞到空槽(sel==0) → 缓存未命中，跳慢速查找
+					//撞到空槽(sel==0) → 缓存未命中，跳慢速查找
 	cmp	p13, p10			// } while (bucket >= buckets)
 	b.hs	1b
 
@@ -576,7 +577,7 @@ LLookupStart\Function:
 	add	p13, p10, p11, LSR #(48 - (1+PTRSHIFT))
 						// p13 = buckets + (mask << 1+PTRSHIFT)
 						// see comment about maskZeroBits
-					//「中文」回绕：跳到表尾（最后一个 bucket）从尾部继续探测
+					//回绕：跳到表尾（最后一个 bucket）从尾部继续探测
 #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_LOW_4
 	add	p13, p10, p11, LSL #(1+PTRSHIFT)
 						// p13 = buckets + (mask << 1+PTRSHIFT)
@@ -585,7 +586,7 @@ LLookupStart\Function:
 #endif
 	add	p12, p10, p12, LSL #(1+PTRSHIFT)
 						// p12 = first probed bucket
-					//「中文」记下最初探测的位置，绕一圈回到这里就停
+					//记下最初探测的位置，绕一圈回到这里就停
 
 						// do {
 4:	ldp	p17, p9, [x13], #-BUCKET_SIZE	//     {imp, sel} = *bucket--
@@ -597,14 +598,14 @@ LLookupStart\Function:
 
 LLookupEnd\Function:
 LLookupRecover\Function:
-	b	\MissLabelDynamic		//「中文」绕完整圈仍没有 → 未命中
+	b	\MissLabelDynamic		//绕完整圈仍没有 → 未命中
 
 #if CONFIG_USE_PREOPT_CACHES
 #if CACHE_MASK_STORAGE != CACHE_MASK_STORAGE_HIGH_16
 #error config unsupported
 #endif
 LLookupPreopt\Function:
-	//「中文」以下整段是 dyld 共享缓存「预优化缓存」专用查找，普通动态类不会进
+	//以下整段是 dyld 共享缓存「预优化缓存」专用查找，普通动态类不会进
 #if __has_feature(ptrauth_calls)
 	and	p10, p11, #0x007ffffffffffffe	// p10 = buckets
 	autdb	x10, x16			// auth as early as possible
@@ -670,7 +671,15 @@ LLookupPreopt\Function:
 #endif // CONFIG_USE_PREOPT_CACHES
 ```
 
-**真机实测落在哪条分支？** 由 `objc-config.h:218` 决定：**iOS 真机 = `HIGH_16`，macOS（M 系列）/模拟器 = `HIGH_16_BIG_ADDRS`**（用户态地址空间更大，buckets 占满低 48 位）。两条逻辑几乎一样（mask 在高 16、buckets 在低 48），区别仅在 BIG_ADDRS 分两步取、且不含上面那段 preopt 共享缓存岔路（`CONFIG_USE_PREOPT_CACHES` 只对 `HIGH_16` 开）。下面这段是在 **macOS 上 LLDB 实测**，所以内联展开的正是 **BIG_ADDRS** 分支，且把命中（CacheHit）和回绕（wrap-around）也一并抓全：
+**真机实测落在哪条分支？** 由 `objc-config.h:218` 决定：**iOS 真机 = `HIGH_16`，macOS（M 系列）/模拟器 = `HIGH_16_BIG_ADDRS`**（用户态地址空间更大，buckets 占满低 48 位）。两条逻辑几乎一样（mask 在高 16、buckets 在低 48），区别仅在 BIG_ADDRS 分两步取、且不含上面那段 preopt 共享缓存岔路（`CONFIG_USE_PREOPT_CACHES` 只对 `HIGH_16` 开）。
+![[cachelookup_walkthrough.html]]
+
+
+
+
+
+
+下面这段是在 **macOS 上 LLDB 实测**，所以内联展开的正是 **BIG_ADDRS** 分支，且把命中（CacheHit）和回绕（wrap-around）也一并抓全：
 
 ```text
 ;; LLDB disassemble --frame：objc_msgSend 内联展开的 CacheLookup（macOS arm64 = HIGH_16_BIG_ADDRS）
@@ -733,13 +742,13 @@ do {
 .macro CacheHit
 .if $0 == NORMAL
 	TailCallCachedImp x17, x10, x1, x16	// authenticate and call imp
-					//「中文」objc_msgSend 走这条：解签 IMP 后 br 尾跳，不返回
+					//objc_msgSend 走这条：解签 IMP 后 br 尾跳，不返回
 .elseif $0 == GETIMP
 	mov	p0, p17
 	cbz	p0, 9f					// don't ptrauth a nil imp
 	AuthAndResignAsIMP x0, x10, x1, x16, x17	// authenticate imp and re-sign as IMP
 9:	ret						// return IMP
-					//「中文」cache_getImp 走这条：把 IMP 当返回值给出，不调用
+					//cache_getImp 走这条：把 IMP 当返回值给出，不调用
 .elseif $0 == LOOKUP
 	// No nil check for ptrauth: the caller would crash anyway when they
 	// jump to a nil IMP. We don't care if that jump also fails ptrauth.
@@ -747,7 +756,7 @@ do {
 	cmp	x16, x15
 	cinc	x16, x16, ne			// x16 += 1 when x15 != x16 (for instrumentation ; fallback to the parent class)
 	ret				// return imp via x17
-					//「中文」objc_msgLookup 走这条：返回 IMP 但不跳（super 调用用）
+					//objc_msgLookup 走这条：返回 IMP 但不跳（super 调用用）
 .else
 .abort oops
 .endif
@@ -800,7 +809,7 @@ LLDB 实测：`NORMAL` 模式 `TailCallCachedImp` 落地为两条 `eor`（重算
 struct cache_t {
 private:
     explicit_atomic<uintptr_t> _bucketsAndMaybeMask;
-    //「中文」核心字段：arm64 上高 16 位 = mask，低 48 位 = buckets 指针（一字双用）
+    //核心字段：arm64 上高 16 位 = mask，低 48 位 = buckets 指针（一字双用）
     union {
         // Note: _flags on ARM64 needs to line up with the unused bits of
         // _originalPreoptCache because we access some flags (specifically
@@ -819,7 +828,7 @@ private:
             uint16_t                   _flags;
 #   define CACHE_T_HAS_FLAGS 1
 #elif __LP64__
-            //「中文」arm64 真机走这里（HIGH_16）：注意没有独立 _mask！mask 在 _bucketsAndMaybeMask 高位
+            //arm64 真机走这里（HIGH_16）：注意没有独立 _mask！mask 在 _bucketsAndMaybeMask 高位
             // Inline cache mask storage, 64-bit, we have occupied, flags, and
             // empty space to line up flags with originalPreoptCache.
             //
@@ -840,7 +849,7 @@ private:
 
         };
         explicit_atomic<preopt_cache_t *, PTRAUTH_STR(originalPreoptCache, ptrauth_key_process_independent_data)> _originalPreoptCache;
-        //「中文」与上面 struct 共用内存：预优化缓存时这里是 preopt_cache_t*
+        //与上面 struct 共用内存：预优化缓存时这里是 preopt_cache_t*
     };
 
     // Simple constructor for testing purposes only.
@@ -862,16 +871,16 @@ private:
     static constexpr uintptr_t preoptBucketsMask = bucketsMask & ~preoptBucketsMarker;
 #endif
 #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16
-    //「中文」arm64 真机的 mask 存储常量定义
+    //arm64 真机的 mask 存储常量定义
     // _bucketsAndMaybeMask is a buckets_t pointer in the low 48 bits
 
     // How much the mask is shifted by.
-    static constexpr uintptr_t maskShift = 48;		//「中文」mask 放在第 48 位起的高 16 位
+    static constexpr uintptr_t maskShift = 48;		//mask 放在第 48 位起的高 16 位
 
     // Additional bits after the mask which must be zero. msgSend
     // takes advantage of these additional bits to construct the value
     // `mask << 4` from `_maskAndBuckets` in a single instruction.
-    static constexpr uintptr_t maskZeroBits = 4;	//「中文」紧邻 mask 的 4 位必须为 0，
+    static constexpr uintptr_t maskZeroBits = 4;	//紧邻 mask 的 4 位必须为 0，
 							// 让 msgSend 一条指令算出 mask<<4（见 3.2 的 LSR #(48-(1+PTRSHIFT))）
 
     // The largest mask value we can store.
@@ -940,12 +949,12 @@ void cache_t::setBucketsAndMask(struct bucket_t *newBuckets, mask_t newMask) {  
 
 mask_t cache_t::mask() const {                                                   // :637 取 mask（拆高位）
     uintptr_t maskAndBuckets = _bucketsAndMaybeMask.load(memory_order_relaxed);
-    return maskAndBuckets >> maskShift;             //「中文」>>48，对应汇编 lsr p11,#48
+    return maskAndBuckets >> maskShift;             //>>48，对应汇编 lsr p11,#48
 }
 
 struct bucket_t *cache_t::buckets() const {                                      // :671 取 buckets（拆低位）
     uintptr_t addr = _bucketsAndMaybeMask.load(memory_order_relaxed);
-    return (bucket_t *)(addr & bucketsMask);        //「中文」& 低位掩码，对应汇编 and p10,…
+    return (bucket_t *)(addr & bucketsMask);        //& 低位掩码，对应汇编 and p10,…
 }
 ```
 
@@ -990,7 +999,7 @@ private:
     // IMP-first is better for arm64e ptrauth and no worse for arm64.
     // SEL-first is better for armv7* and i386 and x86_64.
 #if __arm64__
-    explicit_atomic<uintptr_t> _imp;	//「中文」arm64：IMP 在前（利于 ptrauth）
+    explicit_atomic<uintptr_t> _imp;	//arm64：IMP 在前（利于 ptrauth）
     explicit_atomic<SEL> _sel;
 #else
     explicit_atomic<SEL> _sel;
@@ -1000,7 +1009,7 @@ private:
     // Compute the ptrauth signing modifier from &_imp, newSel, and cls.
     uintptr_t modifierForSEL(bucket_t *base, SEL newSel, Class cls) const {
         return (uintptr_t)base ^ (uintptr_t)newSel ^ (uintptr_t)cls;
-        //「中文」IMP 的签名修饰子 = &_imp ^ sel ^ cls（命中时汇编里两条 eor 就是在重算它）
+        //IMP 的签名修饰子 = &_imp ^ sel ^ cls（命中时汇编里两条 eor 就是在重算它）
     }
 
     // Sign newImp, with &_imp, newSel, and cls as modifiers.
@@ -1014,7 +1023,7 @@ private:
                                 ptrauth_key_process_dependent_code,
                                 modifierForSEL(base, newSel, cls));
 #elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
-        return (uintptr_t)newImp ^ (uintptr_t)cls;	//「中文」非 ptrauth 设备：IMP ^ cls 简单混淆
+        return (uintptr_t)newImp ^ (uintptr_t)cls;	//非 ptrauth 设备：IMP ^ cls 简单混淆
 #elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_NONE
         return (uintptr_t)newImp;
 #else
@@ -1125,11 +1134,11 @@ arm64 上 IMP 在前、SEL 在后，所以 3.2 的 `ldp p17, p9`（先 imp 后 s
 // objc-cache.mm:240  —— cache_next（全文，含两种配置）
 #if CACHE_END_MARKER
 static inline mask_t cache_next(mask_t i, mask_t mask) {
-    return (i+1) & mask;			//「中文」带哨兵：向高地址探测，回绕到 0
+    return (i+1) & mask;			//带哨兵：向高地址探测，回绕到 0
 }
 #elif __arm64__
 static inline mask_t cache_next(mask_t i, mask_t mask) {
-    return i ? i-1 : mask;			//「中文」arm64：向低地址探测，到 0 则回绕到 mask（表尾）
+    return i ? i-1 : mask;			//arm64：向低地址探测，到 0 则回绕到 mask（表尾）
 }
 #else
 #error unexpected configuration
@@ -1144,7 +1153,7 @@ static inline mask_t cache_hash(SEL sel, mask_t mask)
 {
     uintptr_t value = (uintptr_t)sel;
 #if SEL_HASH_SHIFT_XOR
-    value ^= value >> 7;			//「中文」与汇编 eor p12,p1,p1,LSR #7 一一对应
+    value ^= value >> 7;			//与汇编 eor p12,p1,p1,LSR #7 一一对应
 #endif
     return (mask_t)(value & mask);
 }
@@ -1164,7 +1173,7 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
 
     // Never cache before +initialize is done
     if (slowpath(!cls()->isInitialized())) {
-        return;					//「中文」+initialize 没跑完不缓存
+        return;					//+initialize 没跑完不缓存
     }
 
     if (isConstantOptimizedCache()) {
@@ -1186,12 +1195,12 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
     unsigned oldCapacity = capacity(), capacity = oldCapacity;
     if (slowpath(isConstantEmptyCache())) {
         // Cache is read-only. Replace it.
-        if (!capacity) capacity = INIT_CACHE_SIZE;	//「中文」空表首次分配，INIT_CACHE_SIZE = 4
+        if (!capacity) capacity = INIT_CACHE_SIZE;	//空表首次分配，INIT_CACHE_SIZE = 4
         reallocate(oldCapacity, capacity, /* freeOld */false);
     }
     else if (fastpath(newOccupied + CACHE_END_MARKER <= cache_fill_ratio(capacity))) {
         // Cache is less than 3/4 or 7/8 full. Use it as-is.
-        //「中文」装填率没到上限：原表直接用
+        //装填率没到上限：原表直接用
     }
 #if CACHE_ALLOW_FULL_UTILIZATION
     else if (capacity <= FULL_UTILIZATION_CACHE_SIZE && newOccupied + CACHE_END_MARKER <= capacity) {
@@ -1199,11 +1208,11 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
     }
 #endif
     else {
-        capacity = capacity ? capacity * 2 : INIT_CACHE_SIZE;	//「中文」超阈值 → 容量翻倍
+        capacity = capacity ? capacity * 2 : INIT_CACHE_SIZE;	//超阈值 → 容量翻倍
         if (capacity > MAX_CACHE_SIZE) {
             capacity = MAX_CACHE_SIZE;
         }
-        reallocate(oldCapacity, capacity, true);		//「中文」扩容并释放旧表
+        reallocate(oldCapacity, capacity, true);		//扩容并释放旧表
     }
 
     bucket_t *b = buckets();
@@ -1216,15 +1225,15 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
     do {
         if (fastpath(b[i].sel() == 0)) {
             incrementOccupied();
-            b[i].set<Atomic, Encoded>(b, sel, imp, cls());	//「中文」空槽：落位 + 按 4.2 签名
+            b[i].set<Atomic, Encoded>(b, sel, imp, cls());	//空槽：落位 + 按 4.2 签名
             return;
         }
         if (b[i].sel() == sel) {
             // The entry was added to the cache by some other thread
             // before we grabbed the cacheUpdateLock.
-            return;						//「中文」别的线程已填同一 sel
+            return;						//别的线程已填同一 sel
         }
-    } while (fastpath((i = cache_next(i, m)) != begin));	//「中文」开放寻址，绕一圈回起点才停
+    } while (fastpath((i = cache_next(i, m)) != begin));	//开放寻址，绕一圈回起点才停
 
     bad_cache(receiver, (SEL)sel);
 #endif // !DEBUG_TASK_THREADS
@@ -1246,7 +1255,7 @@ void cache_t::reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld)
     // Cache's old contents are not propagated.
     // This is thought to save cache memory at the cost of extra cache fills.
     // fixme re-measure this
-    //「中文」关键：扩容时旧缓存内容整张丢弃、不迁移，靠后续 miss 重新填
+    //关键：扩容时旧缓存内容整张丢弃、不迁移，靠后续 miss 重新填
     //         —— 用「几次额外慢速查找」换「省内存 + 实现简单」
 
     ASSERT(newCapacity > 0);
@@ -1255,7 +1264,7 @@ void cache_t::reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld)
     setBucketsAndMask(newBuckets, newCapacity - 1);
 
     if (freeOld) {
-        collect_free(oldBuckets, oldCapacity);		//「中文」延迟回收旧表（可能有线程在读）
+        collect_free(oldBuckets, oldCapacity);		//延迟回收旧表（可能有线程在读）
     }
 }
 ```
@@ -1289,16 +1298,16 @@ void cache_t::reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld)
 ;; objc-msg-arm64.s:720  —— MethodTableLookup / uncached / msgForward（全文）
 .macro MethodTableLookup
 
-	SAVE_REGS MSGSEND			//「中文」保存参数寄存器（要调 C 函数，得守约定）
+	SAVE_REGS MSGSEND			//保存参数寄存器（要调 C 函数，得守约定）
 
 	// lookUpImpOrForward(obj, sel, cls, LOOKUP_INITIALIZE | LOOKUP_RESOLVER)
 	// receiver and selector already in x0 and x1
-	mov	x2, x16				//「中文」arg2 = cls
-	mov	x3, #3				//「中文」arg3 = 3 = INITIALIZE|RESOLVER
+	mov	x2, x16				//arg2 = cls
+	mov	x3, #3				//arg3 = 3 = INITIALIZE|RESOLVER
 	bl	_lookUpImpOrForward
 
 	// IMP in x0
-	mov	x17, x0				//「中文」慢速查找结果 IMP 回到 x17
+	mov	x17, x0				//慢速查找结果 IMP 回到 x17
 
 	RESTORE_REGS MSGSEND
 
@@ -1311,7 +1320,7 @@ void cache_t::reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld)
 	// Out-of-band p15 is the class to search
 
 	MethodTableLookup
-	TailCallFunctionPointer x17		//「中文」拿到 IMP 后尾跳过去（含转发占位 IMP）
+	TailCallFunctionPointer x17		//拿到 IMP 后尾跳过去（含转发占位 IMP）
 
 	END_ENTRY __objc_msgSend_uncached
 ```
@@ -1324,7 +1333,7 @@ void cache_t::reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld)
 // objc-runtime-new.mm:7624  —— lookUpImpOrForward（全文）
 IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
 {
-    const IMP forward_imp = (IMP)_objc_msgForward_impcache;	//「中文」转发占位 IMP（见第 11 节）
+    const IMP forward_imp = (IMP)_objc_msgForward_impcache;	//转发占位 IMP（见第 11 节）
     IMP imp = nil;
     Class curClass;
 
@@ -1344,7 +1353,7 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
         // Note that this check is racy as several threads might try to
         // message a given class for the first time at the same time,
         // in which case we might cache anyway.
-        behavior |= LOOKUP_NOCACHE;		//「中文」类还没初始化完，先别缓存
+        behavior |= LOOKUP_NOCACHE;		//类还没初始化完，先别缓存
     }
 
     // runtimeLock is held during isRealized and isInitialized checking
@@ -1356,7 +1365,7 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
     // the cache was re-filled with the old value after the cache flush on
     // behalf of the category.
 
-    runtimeLock.lock();				//「中文」全程持锁：查找+回填 对 方法增删 保持原子
+    runtimeLock.lock();				//全程持锁：查找+回填 对 方法增删 保持原子
 
     // We don't want people to be able to craft a binary blob that looks like
     // a class but really isn't one and do a CFI attack.
@@ -1364,10 +1373,10 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
     // To make these harder we want to make sure this is a class that was
     // either built into the binary or legitimately registered through
     // objc_duplicateClass, objc_initializeClassPair or objc_allocateClassPair.
-    checkIsKnownClass(cls);			//「中文」防伪造 class 的 CFI 攻击
+    checkIsKnownClass(cls);			//防伪造 class 的 CFI 攻击
 
     cls = realizeAndInitializeIfNeeded_locked(inst, cls, behavior & LOOKUP_INITIALIZE);
-    //「中文」必要时 realize（铺开 ro/rw、方法表排序）并触发 +initialize
+    //必要时 realize（铺开 ro/rw、方法表排序）并触发 +initialize
     // runtimeLock may have been dropped but is now locked again
     lockdebug::assert_locked(&runtimeLock.get());
     curClass = cls;
@@ -1407,22 +1416,22 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
     for (unsigned attempts = unreasonableClassCount();;) {
         if (curClass->cache.isConstantOptimizedCache(/* strict */true)) {
 #if CONFIG_USE_PREOPT_CACHES
-            imp = cache_getImp(curClass, sel);		//「中文」预优化缓存分支
+            imp = cache_getImp(curClass, sel);		//预优化缓存分支
             if (imp) goto done_unlock;
             curClass = curClass->cache.preoptFallbackClass();
 #endif
         } else {
             // curClass method list.
-            method_t *meth = getMethodNoSuper_nolock(curClass, sel);	//「中文」7.1：查当前类方法表
+            method_t *meth = getMethodNoSuper_nolock(curClass, sel);	//7.1：查当前类方法表
             if (meth) {
                 imp = meth->imp(false);
-                goto done;				//「中文」找到 → 去回填缓存
+                goto done;				//找到 → 去回填缓存
             }
 
             if (slowpath((curClass = curClass->getSuperclass()) == nil)) {
                 // No implementation found, and method resolver didn't help.
                 // Use forwarding.
-                imp = forward_imp;			//「中文」到顶(NSObject 之上=nil)还没有 → 转发
+                imp = forward_imp;			//到顶(NSObject 之上=nil)还没有 → 转发
                 break;
             }
         }
@@ -1433,7 +1442,7 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
         }
 
         // Superclass cache.
-        imp = cache_getImp(curClass, sel);		//「中文」第 8 节：上溯一层先查父类缓存
+        imp = cache_getImp(curClass, sel);		//第 8 节：上溯一层先查父类缓存
         if (slowpath(imp == forward_imp)) {
             // Found a forward:: entry in a superclass.
             // Stop searching, but don't cache yet; call method
@@ -1442,14 +1451,14 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
         }
         if (fastpath(imp)) {
             // Found the method in a superclass. Cache it in this class.
-            goto done;					//「中文」父类缓存命中 → 回填本类
+            goto done;					//父类缓存命中 → 回填本类
         }
     }
 
     // No implementation found. Try method resolver once.
 
     if (slowpath(behavior & LOOKUP_RESOLVER)) {
-        behavior ^= LOOKUP_RESOLVER;			//「中文」第 10 节：只给一次动态解析机会
+        behavior ^= LOOKUP_RESOLVER;			//第 10 节：只给一次动态解析机会
         return resolveMethod_locked(inst, sel, cls, behavior);
     }
 
@@ -1460,7 +1469,7 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
             cls = cls->cache.preoptFallbackClass();
         }
 #endif
-        log_and_fill_cache(cls, imp, sel, inst, curClass);	//「中文」第 9 节：回填缓存，闭环
+        log_and_fill_cache(cls, imp, sel, inst, curClass);	//第 9 节：回填缓存，闭环
     }
 #if CONFIG_USE_PREOPT_CACHES
  done_unlock:
@@ -1538,13 +1547,13 @@ getMethodNoSuper_nolock(Class cls, SEL sel)
     // fixme nil sel?
 
     auto alternates = cls->data()->methodAlternates();
-    //「中文」取该类的方法列表形态（可能是单表 / 多表数组 / 相对偏移表）
+    //取该类的方法列表形态（可能是单表 / 多表数组 / 相对偏移表）
 
     if (auto *relativeList = alternates.relativeList)
         return getMethodFromRelativeList(relativeList, sel);
 
     if (alternates.list)
-        return getMethodFromListArray(&alternates.list, 1, sel);	//「中文」单个方法表
+        return getMethodFromListArray(&alternates.list, 1, sel);	//单个方法表
 
     if (auto *array = alternates.array) {
         auto listAlternates = array->listAlternates();
@@ -1576,7 +1585,7 @@ findMethodInSortedMethodList(SEL key, const method_list_t *list, const compareFu
     uint32_t count;
 
     // When to stop the binary search and move to a linear search.
-    const uint32_t threshold = 4;			//「中文」区间缩到 ≤4 改线性扫更快
+    const uint32_t threshold = 4;			//区间缩到 ≤4 改线性扫更快
 
     for (count = list->count; count > threshold; count >>= 1) {
         auto probe = base + (count >> 1);
@@ -1587,7 +1596,7 @@ findMethodInSortedMethodList(SEL key, const method_list_t *list, const compareFu
             // Rewind looking for the *first* occurrence of this value.
             // This is required for correct category overrides.
             while (probe > first && compare(probe - 1) == 0) {
-                probe--;				//「中文」回退到首个相等项，保证分类覆盖取到后者
+                probe--;				//回退到首个相等项，保证分类覆盖取到后者
             }
             return &*probe;
         }
@@ -1627,7 +1636,7 @@ findMethodInSortedMethodList(SEL key, const method_list_t *list)
 {
     switch (list->listKind()) {
         case method_t::Kind::small:
-            //「中文」small method：名字以相对偏移存储（省内存、可放只读段）
+            //small method：名字以相对偏移存储（省内存、可放只读段）
             if (CONFIG_SHARED_CACHE_RELATIVE_DIRECT_SELECTORS && objc::inSharedCache((uintptr_t)list)) {
                 if (!objc::inSharedCache((uintptr_t)key))
                     return nil;
@@ -1686,7 +1695,7 @@ findMethodInSortedMethodList(SEL key, const method_list_t *list)
 log_and_fill_cache(Class cls, IMP imp, SEL sel, id receiver, Class implementer)
 {
 #if SUPPORT_MESSAGE_LOGGING
-    if (slowpath(objcMsgLogEnabled && implementer)) {	//「中文」instrumentObjcMessageSends 开关打开才记日志
+    if (slowpath(objcMsgLogEnabled && implementer)) {	//instrumentObjcMessageSends 开关打开才记日志
         bool cacheIt = logMessageSend(implementer->isMetaClass(),
                                       cls->nameForLogging(),
                                       implementer->nameForLogging(),
@@ -1699,7 +1708,7 @@ log_and_fill_cache(Class cls, IMP imp, SEL sel, id receiver, Class implementer)
         hook(cls, receiver, sel, imp);
     }
 
-    cls->cache.insert(sel, imp, receiver);		//「中文」→ 第 5 节 insert，落进本类缓存
+    cls->cache.insert(sel, imp, receiver);		//→ 第 5 节 insert，落进本类缓存
 }
 ```
 
@@ -1729,15 +1738,15 @@ static void resolveInstanceMethod(id inst, SEL sel, Class cls)
 
     if (!lookUpImpOrNilTryCache(cls, resolve_sel, cls->ISA(/*authenticated*/true))) {
         // Resolver not implemented.
-        return;					//「中文」类没实现 +resolveInstanceMethod: 就直接跳过
+        return;					//类没实现 +resolveInstanceMethod: 就直接跳过
     }
 
     BOOL (*msg)(Class, SEL, SEL) = (typeof(msg))objc_msgSend;
-    bool resolved = msg(cls, resolve_sel, sel);	//「中文」给元类发 +resolveInstanceMethod:（一次机会）
+    bool resolved = msg(cls, resolve_sel, sel);	//给元类发 +resolveInstanceMethod:（一次机会）
 
     // Cache the result (good or bad) so the resolver doesn't fire next time.
     // +resolveInstanceMethod adds to self a.k.a. cls
-    IMP imp = lookUpImpOrNilTryCache(inst, sel, cls);	//「中文」解析后看是否真的加上了 sel
+    IMP imp = lookUpImpOrNilTryCache(inst, sel, cls);	//解析后看是否真的加上了 sel
 
     if (resolved  &&  PrintResolving) {
         if (imp) {
@@ -1764,11 +1773,11 @@ resolveMethod_locked(id inst, SEL sel, Class cls, int behavior)
     lockdebug::assert_locked(&runtimeLock.get());
     ASSERT(cls->isRealized());
 
-    runtimeLock.unlock();			//「中文」发 OC 消息前先解锁（避免重入死锁）
+    runtimeLock.unlock();			//发 OC 消息前先解锁（避免重入死锁）
 
     if (! cls->isMetaClass()) {
         // try [cls resolveInstanceMethod:sel]
-        resolveInstanceMethod(inst, sel, cls);	//「中文」实例方法走这里
+        resolveInstanceMethod(inst, sel, cls);	//实例方法走这里
     }
     else {
         // try [nonMetaClass resolveClassMethod:sel]
@@ -1782,7 +1791,7 @@ resolveMethod_locked(id inst, SEL sel, Class cls, int behavior)
     // chances are that calling the resolver have populated the cache
     // so attempt using it
     return lookUpImpOrForwardTryCache(inst, sel, cls, behavior);
-    //「中文」解析后再查一遍；这次 behavior 已去掉 RESOLVER 位 → 仍无则返回 forward_imp 转发
+    //解析后再查一遍；这次 behavior 已去掉 RESOLVER 位 → 仍无则返回 forward_imp 转发
 }
 ```
 
@@ -1831,7 +1840,7 @@ C++ 侧把 `_objc_msgForward_impcache` 当作「找不到」时返回的占位 I
 ********************************************************************/
 
 	STATIC_ENTRY __objc_msgForward_impcache
-	//「中文」真正存进方法缓存的转发占位 IMP
+	//真正存进方法缓存的转发占位 IMP
 
 	// No stret specialization.
 	b	__objc_msgForward
@@ -1843,9 +1852,9 @@ C++ 侧把 `_objc_msgForward_impcache` 当作「找不到」时返回的占位 I
 
 	adrp	x17, __objc_forward_handler@PAGE
 	add		x17, x17, __objc_forward_handler@PAGEOFF
-	ldr		p16, [x17]			//「中文」取全局转发处理器指针
+	ldr		p16, [x17]			//取全局转发处理器指针
 	TailCallSignedFunctionPointer x16, x17, 0x1c18
-	//「中文」尾跳进 _objc_forward_handler；带 CF 的进程里它被换成 CF 的转发实现（见第 13 节）
+	//尾跳进 _objc_forward_handler；带 CF 的进程里它被换成 CF 的转发实现（见第 13 节）
 
 	END_ENTRY __objc_msgForward
 ```

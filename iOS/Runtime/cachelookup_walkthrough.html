@@ -1,0 +1,162 @@
+<h2 class="sr-only">CacheLookup 宏逐步解析</h2>
+
+<style>
+.asm-block { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7; background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem 1.25rem; overflow-x: auto; white-space: pre; }
+.asm-line { display: block; padding: 1px 4px; border-radius: 3px; transition: background 0.15s; }
+.asm-line.dim { opacity: 0.25; }
+.asm-line.hl { background: #FAC775; color: #412402; opacity: 1 !important; }
+.step-btn { cursor: pointer; padding: 6px 14px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-primary); color: var(--color-text-primary); font-size: 13px; }
+.step-btn.active { background: var(--color-background-secondary); border-color: var(--color-border-primary); font-weight: 500; }
+.step-btn:hover { background: var(--color-background-secondary); }
+.explain-card { border-left: 2.5px solid #EF9F27; padding: 12px 16px; background: var(--color-background-secondary); border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0; font-size: 14px; line-height: 1.7; color: var(--color-text-primary); }
+.explain-card code { font-family: var(--font-mono); font-size: 12px; background: var(--color-background-primary); padding: 1px 5px; border-radius: 3px; }
+.tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: var(--border-radius-md); font-weight: 500; margin-bottom: 6px; }
+.tag-isa  { background: #E6F1FB; color: #0C447C; }
+.tag-hash { background: #EAF3DE; color: #27500A; }
+.tag-loop { background: #FAEEDA; color: #633806; }
+.tag-miss { background: #FCEBEB; color: #791F1F; }
+.tag-wrap { background: #EEEDFE; color: #3C3489; }
+.tag-pre  { background: #FAECE7; color: #712B13; }
+</style>
+
+<div style="padding: 1rem 0 0.5rem;">
+
+<div id="step-nav" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1.25rem;"></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start;">
+  <div id="asm-view" class="asm-block"></div>
+  <div id="explain-view"></div>
+</div>
+
+<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:1rem;">
+  <button class="step-btn" onclick="go(-1)">← 上一步</button>
+  <button class="step-btn" onclick="go(1)">下一步 →</button>
+</div>
+
+</div>
+
+<script>
+const lines = [
+  {id:'L_comment', t:'.macro CacheLookup Mode, Function, MissLabelDynamic, MissLabelConstant'},
+  {id:'L_c1', t:'    // Restart protocol: when task_restartable_ranges_synchronize()'},
+  {id:'L_c2', t:'    // is called between LLookupStart and LLookupEnd, PC resets to'},
+  {id:'L_c3', t:'    // LLookupRecover → forcefully jumps to cache-miss codepath'},
+  {id:'L_backup', t:'    mov x15, x16                    // stash the original isa'},
+  {id:'L_start', t:'LLookupStart\\Function:'},
+  {id:'L_ldr_big', t:'#if HIGH_16_BIG_ADDRS'},
+  {id:'L_ldr_big2', t:'    ldr  p10, [x16, #CACHE]        // p10 = mask|buckets'},
+  {id:'L_ldr_big3', t:'    lsr  p11, p10, #48             // p11 = mask'},
+  {id:'L_ldr_big4', t:'    and  p10, p10, #0xffffffffffff // p10 = buckets'},
+  {id:'L_ldr_ios', t:'#elif HIGH_16  (iOS 真机)'},
+  {id:'L_ldr_ios2', t:'    ldr  p11, [x16, #CACHE]        // p11 = mask|buckets (一字双用)'},
+  {id:'L_hash1', t:'    eor  p12, p1, p1, LSR #7         // p12 = sel ^ (sel >> 7)'},
+  {id:'L_hash2', t:'    and  p12, p12, p11, LSR #48      // p12 = hash & mask  → bucket idx'},
+  {id:'L_addr',  t:'    add  p13, p10, p12, LSL #(1+PTRSHIFT)  // p13 = &buckets[idx]'},
+  {id:'L_loop1', t:'1:  ldp  p17, p9, [x13], #-BUCKET_SIZE    // {imp,sel}=*bucket--'},
+  {id:'L_cmp',   t:'    cmp  p9, p1                       // sel == _cmd ?'},
+  {id:'L_bne',   t:'    b.ne 3f                           // 不等 → 继续探测'},
+  {id:'L_hit',   t:'2:  CacheHit \\Mode                   // 命中 → br IMP'},
+  {id:'L_cbz',   t:'3:  cbz  p9, \\MissLabelDynamic       // sel==0 空槽 → Miss'},
+  {id:'L_guard', t:'    cmp  p13, p10                     // bucket >= buckets 起始?'},
+  {id:'L_hs',    t:'    b.hs 1b                           // 是 → 继续向低地址探测'},
+  {id:'L_wrap1', t:'    // --- wrap-around: 越过起点，跳到表尾继续 ---'},
+  {id:'L_wrap2', t:'    add  p13, p10, p11, LSR #(48-(1+PTRSHIFT))  // p13 = 表尾 bucket'},
+  {id:'L_wrap3', t:'    add  p12, p10, p12, LSL #(1+PTRSHIFT)       // p12 = 首次探测位置'},
+  {id:'L_loop2', t:'4:  ldp  p17, p9, [x13], #-BUCKET_SIZE    // {imp,sel}=*bucket--'},
+  {id:'L_loop2b',t:'    cmp  p9, p1 / b.eq 2b            // 命中 → CacheHit'},
+  {id:'L_loop2c',t:'    cmp  p9, #0 / ccmp p13,p12,#0,ne // sel!=0 && bucket>first'},
+  {id:'L_loop2d',t:'    b.hi 4b'},
+  {id:'L_end',   t:'LLookupEnd\\Function:'},
+  {id:'L_recover',t:'LLookupRecover\\Function:'},
+  {id:'L_miss',  t:'    b \\MissLabelDynamic              // 绕完整圈 → 未命中'},
+  {id:'L_preopt',t:'#if CONFIG_USE_PREOPT_CACHES'},
+  {id:'L_pre1',  t:'LLookupPreopt\\Function:             // dyld 共享缓存专用路径'},
+  {id:'L_pre2',  t:'    // 用 sel 偏移量直接索引预构建缓存表，不走哈希探测'},
+  {id:'L_pre3',  t:'    ldr  x17, [x10, x9, LSL #3]     // x17=(sel_offs<<38)|imp_offs'},
+  {id:'L_pre4',  t:'    cmp  x12, x17, LSR #38          // sel 匹配?'},
+  {id:'L_pre5',  t:'    sbfiz x17, x17, #2, #38         // imp_offs 提取并 <<2'},
+  {id:'L_pre6',  t:'    sub  x17, x16, x17              // imp = isa - imp_offs → br'},
+  {id:'L_pre7',  t:'#endif'},
+];
+
+const steps = [
+  {
+    label: '① 参数与重启协议',
+    tag: 'tag-isa', tagText: '宏签名',
+    hl: ['L_comment','L_c1','L_c2','L_c3'],
+    text: `<div class="tag tag-isa">宏签名</div><p><code>CacheLookup</code> 接收 4 个参数：<code>Mode</code>（NORMAL / GETIMP / LOOKUP）、<code>Function</code>（用于生成唯一标签名）、<code>MissLabelDynamic / Constant</code>（未命中时跳转目标）。</p><p>重启协议（Restart protocol）：系统调用 <code>task_restartable_ranges_synchronize()</code> 或收到信号时，若 PC 落在 <code>LLookupStart</code>→<code>LLookupEnd</code> 之间，会被强制重置到 <code>LLookupRecover</code>，从而安全跳入 miss 路径，避免读到半途的脏缓存状态。`
+  },
+  {
+    label: '② 备份 isa',
+    tag: 'tag-isa', tagText: 'isa 备份',
+    hl: ['L_backup','L_start'],
+    text: `<div class="tag tag-isa">isa 备份</div><p><code>mov x15, x16</code> 把 isa 备份到 x15。后续如果进了共享缓存 fallback 分支，x16 会被修改（换成父类 isa）；而转发路径需要原始 isa 来判断是否需要回退，所以提前存一份。</p>`
+  },
+  {
+    label: '③ 加载缓存字',
+    tag: 'tag-hash', tagText: '取 buckets',
+    hl: ['L_ldr_big','L_ldr_big2','L_ldr_big3','L_ldr_big4','L_ldr_ios','L_ldr_ios2'],
+    text: `<div class="tag tag-hash">取 buckets + mask</div><p><code>_bucketsAndMaybeMask</code> 是一个「一字双用」的融合字段，位于 <code>[x16, #CACHE]</code>（偏移 16）：</p><ul style="padding-left:1.2rem;font-size:13px;"><li><b>HIGH_16_BIG_ADDRS</b>（macOS M 系列 / 模拟器）：先 <code>ldr</code> 取整字，再 <code>lsr #48</code> 拆出高 16 位作 mask，<code>and</code> 低 48 位作 buckets 指针。</li><li><b>HIGH_16</b>（iOS 真机）：同样一次 <code>ldr</code>，但 mask 的拆分和哈希计算合并在后一条指令里完成，少一步。</li></ul>`
+  },
+  {
+    label: '④ 哈希 → bucket 地址',
+    tag: 'tag-hash', tagText: '哈希定位',
+    hl: ['L_hash1','L_hash2','L_addr'],
+    text: `<div class="tag tag-hash">哈希定位</div><p>① <code>eor p12, p1, p1, LSR #7</code>：对 selector 地址做 <code>sel ^ (sel >> 7)</code> 散列，让地址低位的规律性更分散（对应 C++ 的 <code>cache_hash()</code>）。</p><p>② <code>and p12, p12, p11, LSR #48</code>：与 mask 取余，得到桶数组下标。</p><p>③ <code>add p13, p10, p12, LSL #4</code>：<code>buckets + idx × 16</code>（每个 bucket 16 字节 = IMP 8 + SEL 8）→ p13 指向第一个要探测的 bucket。`
+  },
+  {
+    label: '⑤ 探测循环',
+    tag: 'tag-loop', tagText: '主循环',
+    hl: ['L_loop1','L_cmp','L_bne','L_hit','L_cbz','L_guard','L_hs'],
+    text: `<div class="tag tag-loop">主探测循环</div><p><code>ldp p17, p9, [x13], #-16</code>：一次取出 <code>{IMP, SEL}</code>，同时把指针向低地址移一格（arm64 探测方向向低）。</p><ul style="padding-left:1.2rem;font-size:13px;"><li><code>cmp p9, p1</code> + <code>b.ne 3f</code>：SEL 不等 → 继续探测。</li><li><code>CacheHit</code>（标签 2）：SEL 相等 → 命中，解签 IMP 后 <code>br</code> 尾跳，离开汇编。</li><li><code>cbz p9, Miss</code>：撞到 <code>sel == 0</code> 的空槽 → 确定未命中，跳慢速查找。</li><li><code>b.hs 1b</code>：bucket 指针还在桶数组范围内 → 继续向低探测。</li></ul>`
+  },
+  {
+    label: '⑥ 回绕',
+    tag: 'tag-wrap', tagText: 'wrap-around',
+    hl: ['L_wrap1','L_wrap2','L_wrap3'],
+    text: `<div class="tag tag-wrap">回绕（wrap-around）</div><p>当探测到桶数组起点还没找到时，跳到<b>表尾</b>继续向低探测，同时记下第一次探测的位置作为终止标记——绕回到该位置即停。</p><p>这是环形开放寻址的标准实现：探测顺序是 <code>hash(sel) → hash-1 → … → 0 → N → N-1 → … → hash(sel)</code>，绕完整圈则确认未命中。</p>`
+  },
+  {
+    label: '⑦ 第二段循环',
+    tag: 'tag-loop', tagText: '回绕后循环',
+    hl: ['L_loop2','L_loop2b','L_loop2c','L_loop2d','L_end','L_recover','L_miss'],
+    text: `<div class="tag tag-loop">回绕后的探测循环</div><p>逻辑与第一段相同，但终止条件换成「bucket 指针 > 首次探测位置」。绕完整圈回到起点仍未命中 → 跳 <code>MissLabelDynamic</code>（即 <code>__objc_msgSend_uncached</code>），进入慢速查找。</p><p><code>LLookupEnd / LLookupRecover</code> 是重启协议的边界标签，不产生实际指令。</p>`
+  },
+  {
+    label: '⑧ 预优化缓存',
+    tag: 'tag-pre', tagText: 'preopt',
+    hl: ['L_preopt','L_pre1','L_pre2','L_pre3','L_pre4','L_pre5','L_pre6','L_pre7'],
+    text: `<div class="tag tag-pre">共享缓存预优化路径</div><p>dyld 在构建共享缓存时，为系统类预先构建了一张「sel 偏移 → IMP 偏移」的紧凑表。进入该路径的条件是 <code>_bucketsAndMaybeMask</code> 最低位为 1（普通动态类不满足）。</p><p>查找方式：用 <code>sel - 基准sel</code> 得到偏移，直接按下标取 64 位打包值 <code>(sel_offs << 38) | imp_offs</code>，解包验证后计算 <code>imp = isa - imp_offs</code>，不需要哈希探测。</p><p>普通 App 的类<b>不走这里</b>，只有 NSObject、NSArray 等系统类在热路径上才会命中。</p>`
+  },
+];
+
+let cur = 0;
+
+function render() {
+  const s = steps[cur];
+  const hlSet = new Set(s.hl);
+  document.getElementById('asm-view').innerHTML = lines.map(l =>
+    `<span class="asm-line ${hlSet.has(l.id) ? 'hl' : 'dim'}">${esc(l.t)}</span>`
+  ).join('');
+  document.getElementById('explain-view').innerHTML = `<div class="explain-card">${s.text}</div>`;
+  document.querySelectorAll('.step-btn[data-i]').forEach(b => {
+    b.classList.toggle('active', +b.dataset.i === cur);
+  });
+}
+
+function go(d) { cur = Math.max(0, Math.min(steps.length-1, cur+d)); render(); }
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+const nav = document.getElementById('step-nav');
+steps.forEach((s,i) => {
+  const b = document.createElement('button');
+  b.className = 'step-btn';
+  b.dataset.i = i;
+  b.textContent = s.label;
+  b.onclick = () => { cur = i; render(); };
+  nav.appendChild(b);
+});
+
+render();
+</script>
