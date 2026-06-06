@@ -81,7 +81,7 @@ objc_msgSend(id _Nullable self, SEL _Nonnull op, ...)
 #endif
 ```
 
-默认（新）声明成 `void objc_msgSend(void)`，**没有原型**——因为它要透传任意参数/返回值，硬给原型反而会让编译器按错误的调用约定生成代码。故意逼迫开发者在调用前按真实方法签名做一次函数指针 cast，从根源上保证寄存器传参的正确性。
+默认（新）声明成 `void objc_msgSend(void)`，因为它要透传任意参数/返回值，硬给原型反而会让编译器按错误的调用约定生成代码。故意逼迫开发者在调用前按真实方法签名做一次函数指针 cast，从根源上保证寄存器传参的正确性。
 
 很难理解对么，我们用人话讲一讲：
 
@@ -123,6 +123,15 @@ double result =
 //  Messages sent to an object's superclass (using the super keyword) are sent using
 //  objc_msgSendSuper; other messages are sent using objc_msgSend. Methods that have data
 //  structures as return values are sent using objc_msgSendSuper_stret and objc_msgSend_stret.
+
+
+// 这段意思就是说，编译器看到 Objective-C 方法调用时，不是直接调用方法实现，而是先选择一个“消息发送函数 messenger”。
+
+/* messager指的就是Runtime提供的消息发送函数，例如：
+objc_msgSend
+objc_msgSendSuper
+objc_msgSend_stret
+objc_msgSendSuper_stret */
 ```
 
 `super` 调用走 `objc_msgSendSuper`，它吃的不是裸 receiver，而是一个 `objc_super`（`message.h:34`）——「从哪个类开始查」由 `super_class` 指定：
