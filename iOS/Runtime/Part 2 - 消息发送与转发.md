@@ -53,7 +53,7 @@
 
 `objc_msgSend` 是 OC **所有方法调用的统一入口**——编译器把每一句 `[obj msg]` 都翻译成对它的调用，再由它在运行期找到方法实现（IMP）并跳过去。在正式拆「快速路径 → 慢速查找 → 转发」这三条路之前，这一节先把两件「会影响后文怎么读」的事讲清楚：一是它的**声明**为什么长得那么怪（`void objc_msgSend(void)`）、为什么调用前必须 cast；二是它其实**不是一个函数，而是一整个家族**。
 
-## 0.1 声明：为什么是 `void objc_msgSend(void)`、为什么必须 cast
+## 0.1 声明：`void objc_msgSend(void)
 
 `objc_msgSend` 在公开头文件里有**两种声明**，由 `OBJC_OLD_DISPATCH_PROTOTYPES` 切换：
 
@@ -83,7 +83,7 @@ objc_msgSend(id _Nullable self, SEL _Nonnull op, ...)
 
 默认（新）声明成 `void objc_msgSend(void)`，是苹果刻意为之——它要透传任意 OC 方法的参数，硬给一个固定原型反而会让编译器按错误的调用约定生成代码。理解这件事的钥匙，是先搞清楚 cast 是什么。
 
-### **Cast 是什么**
+**Cast 是什么**
 Cast 写法是在值前加括号里的目标类型：
 
 ```c
@@ -120,11 +120,13 @@ double add(int a, int b);
 // 编译器按声明生成调用代码，把参数放进 x0/x1
 // 函数体去 d0/d1 取浮点参数，取到的是空的或随机值 → 计算出错
 ```
-**回到 objc_msgSend**
 
+这就是为什么 `objc_msgSend` 必须用 cast 调用——它声明成 `void(void)`，如果不 cast，编译器就不知道参数类型，寄存器就会放错，和上面那个 `add` 出错的原因一模一样。
+
+**回到 objc_msgSend**
 `objc_msgSend` 要能处理世界上所有 OC 方法，每个方法参数类型都不同，根本没法给一个固定原型。苹果把它声明成 `void objc_msgSend(void)`——逼迫每个调用点都显式 cast，从根源上防止「按错误签名生成调用代码」。
 
-直接调用（不 cast）会发生什么：
+不 cast，会发生什么：
 
 ```c
 // 编译器看到「没有参数」的声明，不往任何寄存器放东西，直接跳过去
@@ -132,8 +134,10 @@ double add(int a, int b);
 objc_msgSend(obj, sel, 1.0, 2.0);   //「错误」
 ```
 
-cast 后：
+cast 之后，该这么写：
 ```objc
+// 假设 obj 有方法： - (double)addA:(CGFloat)a b:(CGFloat)b;
+// CGFloat 在 64 位即 double，和上面一样走浮点寄存器（d0/d1）
 double result =
     ((double (*)(id, SEL, CGFloat, CGFloat))objc_msgSend)(obj, sel, 1.0, 2.0);
 ```
@@ -281,12 +285,11 @@ objc_msgSendSuper2(&superInfo, @selector(class));
 
 
 
-
 # 第一部分 · 快速路径（缓存命中）
 
 ## 1. 方法调用的本质：`[obj foo]` → `objc_msgSend(obj, sel)`
 
-编译器把每一句 `[obj foo]` 翻译成对 `objc_msgSend` 的调用，receiver 进 `x0`、selector 进 `x1`，其余实参顺延 `x2…`。下面这条 LLDB 实测的调用栈，直接显示了 `main` 里的一句 OC 调用最终是怎么落到 `objc_msgSend` → uncached → `lookUpImpOrForward` 的：
+这和简介 0.1 讲的是同一套东西：`id receiver` 是指针（整型），按 arm64 调用约定放 `x0`；`SEL` 也是指针，放 `x1`；后续参数按类型依次填入 `x2…` 或 `d0…`。简介里说「声明写错了编译器就往错误的寄存器放参数」，这里就是那套规则的直接体现——`objc_msgSend` 之所以能从 `x0` 拿到 receiver、从 `x1` 拿到 selector，正是因为编译器在调用点按这套约定摆好了寄存器。下面这条 LLDB 实测的调用栈，直接显示了 `main` 里的一句 OC 调用最终是怎么落到 `objc_msgSend` → uncached → `lookUpImpOrForward` 的：
 
 ```text
 (lldb) thread backtrace
