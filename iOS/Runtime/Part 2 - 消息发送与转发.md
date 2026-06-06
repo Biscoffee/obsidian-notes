@@ -126,7 +126,7 @@ double add(int a, int b);
 **回到 objc_msgSend**
 `objc_msgSend` 要能处理世界上所有 OC 方法，每个方法参数类型都不同，根本没法给一个固定原型。苹果把它声明成 `void objc_msgSend(void)`——逼迫每个调用点都显式 cast，从根源上防止「按错误签名生成调用代码」。
 
-不 cast，会发生什么：
+不cast：
 
 ```c
 // 编译器看到「没有参数」的声明，不往任何寄存器放东西，直接跳过去
