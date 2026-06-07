@@ -727,9 +727,75 @@ CacheLookup是`objc_msgSend`快速路径的核心，每次 `[obj msg]` 调用,ru
 
 既然不变,苹果就在**构建共享缓存时(离线)​**,把这些类的方法缓存**预先计算好、烤进只读内存**。这样你的 App 一启动,系统类的缓存就已经是"热"的了,**第一次调用就直接命中**,省掉了冷启动时大量的慢速查找。
 
-1. 如果是 A12 及以后的真机(iPhone XS 起),跑的就是 **ARM64e**,带**指针认证(PAC)​**。`autdb` 用 isa(`x16`)作为上下文对 buckets 指针做认证签名校验——"尽早认证"是安全考量,一旦指针被篡改这里就会崩,防止攻击者伪造缓存表劫持 IMP。
-2. 算selector偏移
-3. 
+**① 进门：`tbnz` 探最低位，确认这是预优化表**
+
+一次 `[obj 系统方法]` 进来后，在真机走的 `HIGH_16` 分支里先读出打包值，再用一条 `tbnz` 决定走哪条路：
+
+```armasm
+ldr  p11, [x16, #CACHE]                 // p11 = mask|buckets
+tbnz p11, #0, LLookupPreopt\Function     // 最低位=1 → 这是预优化缓存表
+```
+
+苹果借 buckets 指针天然为 0 的最低位当标志位：置 1 就代表"我挂的是 dyld 共享缓存烤好的只读预优化表"。命中这一跳，就正式进了 `LLookupPreopt`。进门第一件事（ARM64e 真机）是 `autdb x10, x16` 用 isa 做上下文认证 buckets 指针，尽早挡住被篡改的表。
+
+一句话：**① 是身份识别**——确认这个类用的是预优化缓存，并把表指针认证好。
+
+**② 定位：算 sel 相对偏移 + 专属哈希，查出那一个表项**
+
+预优化表不存绝对地址，一切都是相对偏移。所以先把 `_cmd` 转成"相对共享缓存第一个 selector 的偏移"：
+
+```armasm
+adrp x9, _MagicSelRef@PAGE
+ldr  p9, [x9, _MagicSelRef@PAGEOFF]
+sub  p12, p1, p9                  // x12 = _cmd - first_shared_cache_sel（sel 偏移）
+```
+
+然后用预优化表专属的哈希（shift 和 mask 打包在 `p11` 高位，和动态缓存的 `_cmd & mask` 完全不同）算索引，并取出表项：
+
+```armasm
+// ARM64e 真机：hash 参数打包在 x11(cache 值) 高位——bits 63..60=mask 位数、bits 59..55=hash_shift
+lsr x17, x11, #55                 // 取出 hash_shift
+lsr w9, w12, w17                  // sel_offs >> shift
+lsr x17, x11, #60                 // 取出 mask 位数(mask_bits)
+mov x11, #0x7fff
+lsr x11, x11, x17                 // mask = 0x7fff >> mask_bits
+and x9, x9, x11                   // & mask → 桶索引 w9
+ldr x17, [x10, x9, LSL #3]        // 取表项：x17 = (sel_offs<<38) | imp_offs
+```
+
+每个表项是 8 字节，**高 26 位装 sel_offs、低 38 位装 imp_offs**（sel_offs 26 位够寻址 64MB 的 selector 缓冲区，剩 38 位给 IMP 留足跨缓存的触及范围）。
+
+一句话：**② 是定位**——把 sel 化成偏移、哈希算槽、读出那个"两偏移打包"的表项。
+
+**③ 命中：比对 sel 偏移，用 `isa - imp_offs` 还原 IMP 并跳转**
+
+拿到表项后比对 sel 偏移是否相等，相等即命中：
+
+```armasm
+cmp   x12, x17, LSR #38           // 表里的 sel_offs == 我算的 sel 偏移?
+b.ne  5f                          // 不等 → 跳 ④ 的 fallback
+sbfiz x17, x17, #2, #38           // 取 imp_offs 并 <<2（对齐换更大范围）
+sub   x17, x16, x17               // imp = isa - imp_offs（减法还原绝对地址!）
+br    x17                         // NORMAL 模式：直接跳进方法体执行
+```
+
+这一步有两个必须记住的点：一是 **IMP 用减法算**——预优化里 IMP 总在比 isa 更低的地址，存差值既紧凑又位置无关（整个共享缓存随便映射到哪，相对关系不变）；二是 **三种 Mode 分流**——NORMAL 直接 `br x17` 跳转（日常每次系统消息的终点）、GETIMP 把 IMP 放 x0 返回、LOOKUP 用 `orr x16, x16, #3` 打个"命中常量缓存"的标记。ARM64e 上还会 `SignAsImp` 给算出的 IMP 重新签名。
+
+一句话：**③ 是命中执行**——sel 偏移对上，isa 减偏移得到真实 IMP，跳进去运行。
+
+**④ 扑空：取 -16 处 fallback，换父类 isa 回开头重查**
+
+如果 sel 偏移对不上（`b.ne 5f`），不代表彻底失败——方法可能在父类里：
+
+```armasm
+5:  ldur x9, [x10, #-16]              // 槽 -16 处存着 fallback 偏移
+    add  x16, x16, x9                 // 算出 fallback isa（通常是父类）
+    b    LLookupStart\Function        // 带新 isa 跳回宏开头，重走一遍完整查找
+```
+
+它在固定的 -16 偏移读出 fallback，加到当前 isa 上得到父类 isa，然后 `b LLookupStart` 从整个宏的最开头重来。这正好呼应宏入口那句 `mov x15, x16`——查找途中 `x16` 被反复改写，但 `x15` 始终留着最初的 isa，供消息转发等环节判断"从哪个类起步的"。绕完继承链仍找不到，最终才落到 `MissLabelConstant` / `MissLabelDynamic` 走慢速查找。
+
+一句话：**④ 是兜底**——没命中就换父类 isa 回到 ① 重查，沿继承链上溯。
 
 
 
