@@ -859,21 +859,29 @@ do {
 .macro CacheHit
 .if $0 == NORMAL
 	TailCallCachedImp x17, x10, x1, x16	// authenticate and call imp
-					//objc_msgSend 走这条：解签 IMP 后 br 尾跳，不返回
+					//objc_msgSend 走这条：解签 IMP 后 br 尾跳 即不是自己处理结果而是直接跳到另一个函数，另一个函数执行完直接返回调用者
+					
 .elseif $0 == GETIMP
-	mov	p0, p17
-	cbz	p0, 9f					// don't ptrauth a nil imp
+	mov	p0, p17    // 把命中的IMP挪到返回值寄存器x0
+	cbz	p0, 9f					// don't ptrauth a nil imp，- 如果 IMP 是 0(空),直接跳到 9: 返回,绝不对 nil 做指针认证(对 nil 做 PAC 会得到一个垃圾值,反而坏事);
 	AuthAndResignAsIMP x0, x10, x1, x16, x17	// authenticate imp and re-sign as IMP
 9:	ret						// return IMP
-					//cache_getImp 走这条：把 IMP 当返回值给出，不调用
+					//cache_getImp 走这条：把 IMP 当返回值给出，不调用，和 NORMAL 的本质差别就是最后是 `ret` 返回值,而不是 `br` 跳过去执行。注释"把 IMP 当返回值给出,不调用"说的就是这个。
+					
+					
 .elseif $0 == LOOKUP
 	// No nil check for ptrauth: the caller would crash anyway when they
 	// jump to a nil IMP. We don't care if that jump also fails ptrauth.
-	AuthAndResignAsIMP x17, x10, x1, x16, x10	// authenticate imp and re-sign as IMP
-	cmp	x16, x15
-	cinc	x16, x16, ne			// x16 += 1 when x15 != x16 (for instrumentation ; fallback to the parent class)
-	ret				// return imp via x17
+	AuthAndResignAsIMP x17, x10, x1, x16, x10	// authenticate imp and re-sign as IMP，先 `AuthAndResignAsIMP` 解签重签 IMP(注释说明:这里**不做 nil 检查**——因为调用方拿到 nil IMP 去跳本来就会崩,我们不在乎这个 nil 跳转顺带 PAC 失败,省一步);
+	cmp	x16, x15    //拿当前 isa(`x16`)和最初备份的原始 isa(`x15`)​ 比较。还记得 `CacheLookup` 开头 `mov x15, x16` 和预优化路径里 fallback 改写 `x16` 吗?如果查找过程中沿继承链上溯过,`x16` 就会和 `x15` 不一样;
+	
+	cinc	x16, x16, ne			// x16 += 1 when x15 != x16 (for instrumentation ; fallback to the parent class)。条件自增——当 `x15 != x16`(即确实回退到了父类)时给 `x16` 加 1。这是给上层 instrumentation/调试用的标志位,告诉它"这次命中的 IMP 不是原始类自己的,而是从父类找来的";
+	
+	ret				// return imp via x17，通过 `x17` 返回 IMP(注意是返回,不是跳转)
 					//objc_msgLookup 走这条：返回 IMP 但不跳（super 调用用）
+					
+					
+					
 .else
 .abort oops
 .endif
@@ -881,13 +889,16 @@ do {
 ```
 
 我们先来讲讲这三种模式：
+
 - NORMAL 是"找到就立刻跳进去执行"(objc_msgSend),GETIMP 是"只把函数指针交给我、不执行"(cache_getImp),LOOKUP 是"把指针交给我、由我自己决定何时跳"(objc_msgLookup,super 调用专用)​
+
 - GETIMP 服务的是 `cache_getImp`、`class_getMethodImplementation` 这类 API——它们的诉求是"**我只想拿到这个方法的函数指针,我现在不打算调用它**"。
+
 - LOOKUP 服务的是 `objc_msgLookup`,最典型的使用者是 **​`super` 调用**(`[super foo]` 会先经 `objc_msgLookupSuper2` 拿到 IMP),以及一些需要插桩/统计的场景。它的诉求介于前两者之间:"**给我指针(像 GETIMP),但我会自己跳(不像 GETIMP 那样只是拿去看),你别替我跳(不像 NORMAL)​**"。
 
 
 
-> ### 旧→新对照（objc4-818.2 → 951.1）：预优化缓存条目的位布局
+>旧→新对照（objc4-818.2 → 951.1）：预优化缓存条目的位布局
 >
 > 共享缓存「预优化缓存」里每个条目把 sel 偏移与 imp 偏移打包进一个 64 位字，**两版位划分不同**。
 >
@@ -911,6 +922,13 @@ do {
 > 5: ldur  x9, [x10, #-16]       // fallback offset 移到 -16
 > ```
 > 动机（951 新增注释自陈）：共享缓存越来越大，32 位 imp 偏移不够「够到」远处的 IMP，于是把 imp 偏移扩到 38 位（再 `<<2` 进一步增大寻址范围），sel 偏移压到 26 位（足够寻址 ~64MB 选择子表）。
+
+
+
+![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260607215758067.png)
+
+
+
 
 ## 4. cache_t 数据结构（`objc-runtime-new.h:337`）
 
