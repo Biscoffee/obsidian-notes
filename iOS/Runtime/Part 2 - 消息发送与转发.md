@@ -495,13 +495,18 @@ objc_msgSend:
 LLookupStart\Function:
 	// p1 = SEL, p16 = isa
 
-	// ════════ ① 取 mask + buckets：按目标平台三选一（你 mac 走 BIG_ADDRS）════════
+	// ════════ ① ：取 mask + buckets  ════════
 #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16_BIG_ADDRS
-	//macOS(M系列)/模拟器走这里（地址空间大，objc-config.h:218）：分两步取出 mask(高16)、buckets(低48)。本文 LLDB 实测就是这条
+
+	//macOS(M系列)/模拟器走这里（地址空间大，objc-config.h:218）
 	
 	ldr	p10, [x16, #CACHE]				// p10 = mask|buckets
 	lsr	p11, p10, #48			// p11 = mask
 	and	p10, p10, #0xffffffffffff	// p10 = buckets
+	
+	//分两步取出 mask(高16)、buckets(低48)。因为现代 64 位系统实际只用低 48 位寻址,高 16 位是空闲的,正好拿来塞 mask,省一次内存访问。
+	
+	
 #  if SEL_HASH_SHIFT_XOR
 	eor	p12, p1, p1, LSR #7
 	and	w12, w12, w11			// x12 = (_cmd ^ (_cmd >> 7)) & mask
@@ -509,6 +514,9 @@ LLookupStart\Function:
 	and	w12, w1, w11			// x12 = _cmd & mask
 #  endif
 #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16
+
+
+	//拿到mask计算哈希索引，普通版本直接 `_cmd & mask`(因为 SEL 本质是字符串地址,低位足够随机)。`SEL_HASH_SHIFT_XOR` 版本则先做一次 `sel ^ (sel >> 7)` 混淆再 `& mask`,目的是把高位信息搅进低位,**减少哈希冲突**,对应 C++ 源码里的 `cache_hash` 函数。`& mask` 这步利用了"桶数量永远是 2 的幂"这个前提,等价于对桶数取模,得到落在 `[0, mask]` 范围内的索引。
 
 	//iOS 真机走这里（objc-config.h:218）：一条 ldr 取出 mask|buckets，后面边算哈希边移位，比 BIG_ADDRS 省一步
 	
@@ -614,71 +622,116 @@ LLookupRecover\Function:
 #error config unsupported
 #endif
 LLookupPreopt\Function:
-	//以下整段是 dyld 共享缓存「预优化缓存」专用查找，普通动态类不会进
+	//以下是 dyld 共享缓存「预优化缓存」专用查找，普通动态类不会进
+	// 怎么进来的：①里 cache 字段最低位被置 1（tbnz p11,#0）就说明这是 dyld 进来的「常量缓存」，跳到这里
+	// —— 步骤 A：取 buckets 基址并尽早认证 ——
 #if __has_feature(ptrauth_calls)
-	and	p10, p11, #0x007ffffffffffffe	// p10 = buckets
-	autdb	x10, x16			// auth as early as possible
+	and	p10, p11, #0x007ffffffffffffe	// p10 = buckets　← 抹掉低位 tag，得到 buckets 指针
+	autdb	x10, x16			// auth as early as possible　← 用 isa 当 modifier 解签该指针（ptrauth），越早越好
 #endif
 
+	// —— 步骤 B：把 _cmd 换算成「相对共享缓存首个 SEL 的偏移」，再哈希定位条目 ——
 	// x12 = (_cmd - first_shared_cache_sel)
-	adrp	x9, _MagicSelRef@PAGE
-	ldr	p9, [x9, _MagicSelRef@PAGEOFF]
-	sub	p12, p1, p9
+	adrp	x9, _MagicSelRef@PAGE		// 取 first_shared_cache_sel 的地址（共享缓存里 SEL 连续排布）
+	ldr	p9, [x9, _MagicSelRef@PAGEOFF]	// p9 = first_shared_cache_sel
+	sub	p12, p1, p9			// x12 = _cmd 相对首个 SEL 的偏移（用偏移代替整指针，省位宽）
 
 	// w9  = ((_cmd - first_shared_cache_sel) >> hash_shift & hash_mask)
 #if __has_feature(ptrauth_calls)
-	// bits 63..60 of x11 are the number of bits in hash_mask
+	// bits 63..60 of x11 are the number of bits in hash_mask　← hash 参数被打包进 cache 值(x11)的高位
 	// bits 59..55 of x11 is hash_shift
 
-	lsr	x17, x11, #55			// w17 = (hash_shift, ...)
-	lsr	w9, w12, w17			// >>= shift
+	lsr	x17, x11, #55			// w17 = (hash_shift, ...)　← 取出 hash_shift
+	lsr	w9, w12, w17			// >>= shift　← 偏移先右移 hash_shift
 
-	lsr	x17, x11, #60			// w17 = mask_bits
+	lsr	x17, x11, #60			// w17 = mask_bits　← 取出「mask 占几位」
 	mov	x11, #0x7fff
-	lsr	x11, x11, x17			// p11 = mask (0x7fff >> mask_bits)
-	and	x9, x9, x11			// &= mask
+	lsr	x11, x11, x17			// p11 = mask (0x7fff >> mask_bits)　← 据此算出 hash_mask
+	and	x9, x9, x11			// &= mask　← x9 = 条目下标
 #else
-	// bits 63..53 of x11 is hash_mask
+	// bits 63..53 of x11 is hash_mask　← 非 ptrauth：打包位置不同
 	// bits 52..48 of x11 is hash_shift
 	lsr	x17, x11, #48			// w17 = (hash_shift, hash_mask)
-	lsr	w9, w12, w17			// >>= shift
-	and	x9, x9, x11, LSR #53		// &=  mask
+	lsr	w9, w12, w17			// >>= shift　← 偏移右移 hash_shift
+	and	x9, x9, x11, LSR #53		// &=  mask　← x9 = 条目下标
 #endif
 
+	// —— 步骤 C：读出打包条目，比对 SEL，命中就算出 IMP；否则按 fallback 重查 ——
 	// sel_offs is 26 bits because it needs to address a 64 MB buffer (~ 20 MB as of writing)
 	// keep the remaining 38 bits for the IMP offset, which may need to reach
 	// across the shared cache. This offset needs to be shifted << 2. We did this
 	// to give it even more reach, given the alignment of source (the class data)
 	// and destination (the IMP)
-	ldr	x17, [x10, x9, LSL #3]		// x17 == (sel_offs << 38) | imp_offs
-	cmp	x12, x17, LSR #38
+	// 一条条目 8 字节，把 SEL 偏移和 IMP 偏移压在一起：高 26 位 sel_offs、低 38 位 imp_offs
+	ldr	x17, [x10, x9, LSL #3]		// x17 == (sel_offs << 38) | imp_offs　← 取出该条目
+	cmp	x12, x17, LSR #38		// 用我们算的 sel 偏移 比对 条目里存的 sel_offs（高 26 位）
 
 .if \Mode == GETIMP
-	b.ne	\MissLabelConstant		// cache miss
-	sbfiz x17, x17, #2, #38         // imp_offs = combined_imp_and_sel[0..37] << 2
-	sub	x0, x16, x17        		// imp = isa - imp_offs
-	SignAsImp x0, x17
-	ret
+	b.ne	\MissLabelConstant		// cache miss　← 对不上：常量缓存未命中
+	sbfiz x17, x17, #2, #38         // imp_offs = combined_imp_and_sel[0..37] << 2　← 取低 38 位再 <<2 还原 IMP 偏移
+	sub	x0, x16, x17        		// imp = isa - imp_offs　← IMP = isa 基址 - 偏移
+	SignAsImp x0, x17			// 给 IMP 重新签名
+	ret					// GETIMP 模式：把 IMP 放 x0 返回
 .else
-	b.ne	5f				        // cache miss
-	sbfiz x17, x17, #2, #38         // imp_offs = combined_imp_and_sel[0..37] << 2
-	sub x17, x16, x17               // imp = isa - imp_offs
+	b.ne	5f				        // cache miss　← 对不上：跳 fallback 重查
+	sbfiz x17, x17, #2, #38         // imp_offs = combined_imp_and_sel[0..37] << 2　← 还原 IMP 偏移
+	sub x17, x16, x17               // imp = isa - imp_offs　← 算出 IMP
 .if \Mode == NORMAL
-	br	x17
+	br	x17				// NORMAL：直接尾跳进方法实现
 .elseif \Mode == LOOKUP
-	orr x16, x16, #3 // for instrumentation, note that we hit a constant cache
-	SignAsImp x17, x10
-	ret
+	orr x16, x16, #3 // for instrumentation, note that we hit a constant cache　← 在 isa 低位打标记：本次命中的是常量缓存
+	SignAsImp x17, x10			// 给 IMP 签名
+	ret					// LOOKUP：返回 IMP，不跳转
 .else
 .abort  unhandled mode \Mode
 .endif
 
-5:	ldur	x9, [x10, #-16]			// offset -16 is the fallback offset
-	add	x16, x16, x9			// compute the fallback isa
-	b	LLookupStart\Function		// lookup again with a new isa
+	// —— fallback：本类常量缓存没有 → 顺着 fallback 指向的另一个 isa 再查一遍 ——
+5:	ldur	x9, [x10, #-16]			// offset -16 is the fallback offset　← buckets 前 16B 存的是 fallback 偏移
+	add	x16, x16, x9			// compute the fallback isa　← isa += 偏移，得到 fallback 类
+	b	LLookupStart\Function		// lookup again with a new isa　← 带新 isa 回到 ① 重新走整套查找
 .endif
 #endif // CONFIG_USE_PREOPT_CACHES
 ```
+
+总的来说，这个过程就是：**用哈希定位 bucket，命中就直接跳转 IMP，扑空则回绕扫一圈、再不命中就走慢速查找**
+
+CacheLookup是`objc_msgSend`快速路径的核心，每次 `[obj msg]` 调用,runtime 都要在类的方法缓存里找 selector 对应的 IMP(函数指针),这段宏就是这个查找过程的汇编实现。它的设计目标只有一个:**让缓存命中这条"热路径"快到极致**——因为绝大多数消息发送都会命中缓存。
+
+一、取 mask + buckets
+1. 分两步取出 mask(高16)、buckets(低48)。因为现代 64 位系统实际只用低 48 位寻址,高 16 位是空闲的,正好拿来塞 mask,省一次内存访问。
+2. 拿到mask后计算索引：普通版本直接 `_cmd & mask`(因为 SEL 本质是字符串地址,低位足够随机)。`SEL_HASH_SHIFT_XOR` 版本则先做一次 `sel ^ (sel >> 7)` 混淆再 `& mask`,目的是把高位信息搅进低位,**减少哈希冲突**,对应 C++ 源码里的 `cache_hash` 函数。`& mask` 这步利用了"桶数量永远是 2 的幂"这个前提,等价于对桶数取模,得到落在 `[0, mask]` 范围内的索引。
+
+二、定位起始 bucket,进入 do-while 探测
+1. `p10` 是数组基址,`p12` 是哈希索引,左移 4 位(`1+PTRSHIFT`)就是乘以 16(每个 bucket 16 字节)。`p13` 现在指向理论上该命中的那个桶。接着进入探测循环
+2. **开放寻址 + 线性探测**:
+- `ldp` 一条指令同时加载 imp(`p17`)和 sel(`p9`),并通过 `#-BUCKET_SIZE` 让指针**向低地址移动一格**。注意 ObjC 缓存的探测方向是==**从高地址往低地址**走的。
+- **命中**(`sel == _cmd`):跳到 `CacheHit`,这个宏会根据 `\Mode` 决定行为——NORMAL 模式直接 `br x17` 跳进 IMP 执行(并带指针认证),GETIMP 模式把 IMP 放进 x0 返回,LOOKUP 模式返回 IMP 供调试/instrumentation 用。
+- **撞到空槽**(`sel == 0`):说明这个 selector 从没缓存过,`cbz` 直接跳 `MissLabelDynamic` 走慢速查找(`__objc_msgSend_uncached`),它会去类的方法列表里真正查找,找到后再填回缓存。
+- **循环条件** `cmp p13, p10` + `b.hs 1b`:只要指针还没退到数组头部(`bucket >= buckets`),就继续往前探测。这就是 `do { } while (bucket >= buckets)` 的汇编形态。
+
+三、扑空环绕：绕道表尾再扫一圈
+- 如果从哈希起点一路探测到了**数组头部**还没命中也没遇到空槽,不能就此放弃——因为目标可能由于哈希冲突被放到了数组的**尾部**(环形缓冲区语义)。于是要回绕到表尾继续
+- `mask` 正好等于"桶数 - 1",所以 `buckets + mask*16` 就是最后一个 bucket。同时把**最初的起点**算出来存到 `p12`,作为这一圈的停止边界——绕一整圈回到出发点就停。然后第二个探测循环
+- `ccmp`(条件比较)是个亮点:它把 `while (sel != 0 && bucket > first_probed)` 两个条件用一条指令优雅地串起来,避免了额外的分支。注释专门解释了为什么停止边界是"回到最初探测的桶"而非"数组第一个桶"——因为开启 `CACHE_ALLOW_FULL_UTILIZATION` 后缓存可以被填满(没有空槽),此时唯一可靠的终止条件就是"绕回出发点"。注释末尾还提醒:当起点恰好是最后一个槽时,初始桶可能被探测两次,这是可接受的边界情况。
+
+- 注意 `LLookupEnd` 和 `LLookupRecover` 标签就落在这里——前面讲的 restart 协议一旦触发,PC 就被弹到 `LLookupRecover`,而它紧接着就是 `b \MissLabelDynamic`,等于"出了任何岔子,统统走慢速查找重来",安全兜底。
+
+四、预优化缓存路径
+**只在 iOS 的 dyld 共享缓存里的系统类才会进**(入口是第①段 `HIGH_16` 分支里那个 `tbnz p11, #0` 判断最低位)
+
+普通动态类的方法缓存是**运行时**才建立的——第一次调用某个方法走慢速查找,找到后填回 `cache_t`,第二次才命中。但系统类(`NSObject`、`NSString`、`UIViewController`……)有个特殊性:
+
+- 它们被打包进 **dyld 共享缓存**(dyld shared cache),所有 App 共享同一份只读副本;
+- 它们的方法在编译期/缓存构建期就**完全确定**,不会变。
+
+既然不变,苹果就在**构建共享缓存时(离线)​**,把这些类的方法缓存**预先计算好、烤进只读内存**。这样你的 App 一启动,系统类的缓存就已经是"热"的了,**第一次调用就直接命中**,省掉了冷启动时大量的慢速查找。
+
+1. 如果是 A12 及以后的真机(iPhone XS 起),跑的就是 **ARM64e**,带**指针认证(PAC)​**。`autdb` 用 isa(`x16`)作为上下文对 buckets 指针做认证签名校验——"尽早认证"是安全考量,一旦指针被篡改这里就会崩,防止攻击者伪造缓存表劫持 IMP。
+2. 算selector偏移
+3. 
+
+
 
 **文字梳理流程**（对着上面这段宏，寄存器：`x16=isa/cls`、`x1=_cmd`、`p10=buckets`、`p11=mask`、`p13=当前 bucket`、`p9=槽内 SEL`、`p17=槽内 IMP`）：
 
