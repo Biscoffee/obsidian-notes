@@ -696,9 +696,8 @@ LLookupPreopt\Function:
 > ④ 预优化缓存（`LLookupPreopt`，:460–680）只在 `HIGH_16`（iOS 真机）且类的缓存来自 dyld 共享缓存时才进，普通类走不到，这里略过——你 mac 上更是连这分支都没编进去。
 
 **真机实测落在哪条分支？** 由 `objc-config.h:218` 决定：**iOS 真机 = `HIGH_16`，macOS（M 系列）/模拟器 = `HIGH_16_BIG_ADDRS`**（用户态地址空间更大，buckets 占满低 48 位）。两条逻辑几乎一样（mask 在高 16、buckets 在低 48），区别仅在 BIG_ADDRS 分两步取、且不含上面那段 preopt 共享缓存岔路（`CONFIG_USE_PREOPT_CACHES` 只对 `HIGH_16` 开）。
-![[cachelookup_walkthrough.html]]
 
-
+![[CacheLookup-宏逻辑梳理.html]]
 
 
 

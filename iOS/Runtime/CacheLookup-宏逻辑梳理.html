@@ -1,0 +1,248 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>show_widget</title>
+</head>
+<body>
+<style>
+:root{
+--primary:#F3A04C;--accent:#E58522;--background:#F4F4F6;--panel-bg:#FEFDFC;--card-bg:#fff;
+--success:#40B43E;--warning:#EBA400;--destructive:#E65C53;--primary-foreground:#fff;
+--text-primary:rgba(0,0,0,.8);--text-secondary:rgba(0,0,0,.5);--text-tertiary:rgba(0,0,0,.35);
+--intensity-3:rgba(0,0,0,.03);--intensity-4:rgba(0,0,0,.04);--intensity-6:rgba(0,0,0,.06);
+--intensity-8:rgba(0,0,0,.08);--intensity-12:rgba(0,0,0,.12);--intensity-16:rgba(0,0,0,.16);
+--intensity-20:rgba(0,0,0,.2);--intensity-60:rgba(0,0,0,.6);
+font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+}
+@media (prefers-color-scheme:dark){
+:root{
+--background:#232324;--panel-bg:#332D28;--card-bg:#2E2E2E;--primary-foreground:#000;
+--text-primary:rgba(255,255,255,.8);--text-secondary:rgba(255,255,255,.5);--text-tertiary:rgba(255,255,255,.35);
+--intensity-3:rgba(255,255,255,.03);--intensity-4:rgba(255,255,255,.04);--intensity-6:rgba(255,255,255,.06);
+--intensity-8:rgba(255,255,255,.08);--intensity-12:rgba(255,255,255,.12);--intensity-16:rgba(255,255,255,.16);
+--intensity-20:rgba(255,255,255,.2);--intensity-60:rgba(255,255,255,.6)
+}
+}
+*{box-sizing:border-box}
+.wrap{display:block;width:100%;color:var(--text-primary)}
+.head{margin-bottom:18px}
+.head h2{font-size:18px;font-weight:600;margin:0 0 6px}
+.head p{font-size:12.5px;color:var(--text-secondary);margin:0;line-height:1.6}
+.stages{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:18px}
+@media(max-width:620px){.stages{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.stage{background:var(--intensity-4);border:.5px solid var(--intensity-8);border-radius:10px;padding:11px 12px;transition:background .15s,border-color .15s}
+.stage .n{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent);font-size:11px;font-weight:600;margin-bottom:7px}
+.stage h3{font-size:12.5px;font-weight:600;margin:0 0 4px}
+.stage p{font-size:11px;color:var(--text-secondary);margin:0;line-height:1.5}
+.panel{background:var(--card-bg);border:.5px solid var(--intensity-8);border-radius:14px;padding:16px;margin-bottom:16px}
+.panel h3{font-size:14px;font-weight:600;margin:0 0 4px}
+.panel .sub{font-size:11.5px;color:var(--text-secondary);margin:0 0 14px;line-height:1.5}
+.regrow{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.reg{font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--intensity-6);border:.5px solid var(--intensity-8);border-radius:8px;padding:5px 9px;color:var(--text-secondary)}
+.reg b{color:var(--accent);font-weight:600}
+.buckets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.bk{flex:1;min-width:62px;border:.5px solid var(--intensity-12);border-radius:9px;background:var(--intensity-3);padding:8px 6px;text-align:center;transition:background .2s,border-color .2s,transform .2s}
+.bk .idx{font-size:10px;color:var(--text-tertiary);margin-bottom:4px}
+.bk .sel{font-size:12px;font-weight:600;font-family:ui-monospace,Menlo,monospace}
+.bk .imp{font-size:9.5px;color:var(--text-tertiary);margin-top:2px}
+.bk.probe{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);transform:translateY(-2px)}
+.bk.hit{border-color:var(--success);background:color-mix(in srgb,var(--success) 16%,transparent)}
+.bk.miss{border-color:var(--destructive);background:color-mix(in srgb,var(--destructive) 14%,transparent)}
+.bk.empty .sel{color:var(--text-tertiary)}
+.ctl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.ctl label{font-size:11.5px;color:var(--text-secondary)}
+.ctl select{height:34px;border:.5px solid var(--intensity-8);border-radius:10px;background:var(--intensity-4);color:var(--text-primary);padding:0 10px;font-size:12px;outline:none}
+.btn{height:34px;padding:0 14px;border:0;border-radius:10px;background:var(--primary);color:var(--primary-foreground);font-size:12px;font-weight:500;transition:background .15s}
+.btn:hover{background:var(--accent)}
+.btn.sec{background:var(--intensity-6);color:var(--text-primary);border:.5px solid var(--intensity-8)}
+.log{font-size:12px;line-height:1.6;color:var(--text-primary);background:var(--panel-bg);border:.5px solid var(--intensity-8);border-radius:10px;padding:11px 13px;min-height:46px;font-family:ui-monospace,Menlo,monospace}
+.log .ok{color:var(--success);font-weight:600}
+.log .bad{color:var(--destructive);font-weight:600}
+.log .ac{color:var(--accent);font-weight:600}
+.codeblk{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.65;background:var(--panel-bg);border:.5px solid var(--intensity-8);border-radius:10px;padding:12px 14px;color:var(--text-secondary);overflow-x:auto;white-space:pre}
+.codeblk .k{color:var(--accent)}
+.codeblk .c{color:var(--text-tertiary)}
+.note{font-size:11.5px;color:var(--text-secondary);line-height:1.6;margin:0}
+.tag{display:inline-flex;align-items:center;height:19px;border-radius:999px;padding:0 8px;font-size:10px;font-weight:500;border:.5px solid var(--intensity-8);background:var(--intensity-4);color:var(--intensity-60);margin-left:6px}
+</style>
+<div class="wrap">
+  <div class="head">
+    <h2>CacheLookup 宏：objc_msgSend 快路径的方法缓存探测</h2>
+    <p>入口寄存器 <b style="color:var(--accent)">p1 = SEL</b>、<b style="color:var(--accent)">p16 = isa</b>。目标：在类的方法缓存哈希表里找到 <code>{imp, sel}</code> 匹配项。命中即跳进 IMP，扑空则转慢路径。下面按你笔记的四阶段拆解，并可逐步演示探测循环。</p>
+  </div>
+
+  <div class="stages">
+    <div class="stage"><span class="n">①</span><h3>取 mask + buckets</h3><p>按平台三选一读 CACHE 字段，拆出高 16 位 mask 与低 48 位 buckets，算哈希 _cmd&amp;mask。</p></div>
+    <div class="stage"><span class="n">②</span><h3>定位并探测</h3><p>算出起始 bucket，进入 do-while 循环逐格比对 sel，向低地址方向探测。</p></div>
+    <div class="stage"><span class="n">③</span><h3>wrap-around</h3><p>探到表头还没中 → 绕到表尾继续扫，直到回到最初探测位才停。</p></div>
+    <div class="stage"><span class="n">④</span><h3>预优化缓存</h3><p>仅 dyld 共享缓存里的系统类走此路径，普通动态类用不到。</p></div>
+  </div>
+
+  <div class="panel">
+    <h3>探测循环交互演示 <span class="tag">do-while + wrap-around</span></h3>
+    <p class="sub">选一个要查找的 selector，逐步执行哈希定位与逐格比对，观察命中 / 扑空 / 回绕三种结局。</p>
+    <div class="regrow">
+      <span class="reg">p1 = <b id="rSel">bark</b></span>
+      <span class="reg">mask = <b>7</b></span>
+      <span class="reg">hash = _cmd &amp; mask = <b id="rHash">3</b></span>
+      <span class="reg">p13 → <b id="rPtr">bucket[3]</b></span>
+    </div>
+    <div class="buckets" id="buckets"></div>
+    <div class="ctl">
+      <label>查找目标</label>
+      <select id="selPick">
+        <option value="bark">bark（命中，起始槽即中）</option>
+        <option value="run">run（探测 2 格后命中）</option>
+        <option value="fly">fly（撞空槽，缓存未命中）</option>
+        <option value="eat">eat（需 wrap-around 绕回表尾）</option>
+      </select>
+      <button class="btn" id="stepBtn">下一步</button>
+      <button class="btn sec" id="resetBtn">重置</button>
+    </div>
+    <div class="log" id="log">点击「下一步」开始：先用 _cmd &amp; mask 定位起始 bucket。</div>
+  </div>
+
+  <div class="panel">
+    <h3>核心循环对应的汇编</h3>
+    <p class="sub">②的主探测循环与③的回绕循环，结构几乎一致，区别在于停止条件。</p>
+    <div class="codeblk"><span class="c">// ② 起始 bucket + do-while 探测</span>
+add  p13, p10, p12, LSL #(1+PTRSHIFT)   <span class="c">// p13 = 起始 bucket</span>
+1:  ldp  p17, p9, [x13], #-BUCKET_SIZE   <span class="c">// {imp,sel}=*bucket--</span>
+    cmp  p9, p1                          <span class="c">// sel == _cmd ?</span>
+    <span class="k">b.ne</span> 3f                            <span class="c">// 不等 → 继续扫</span>
+2:  CacheHit \Mode                       <span class="c">// 命中：跳/返回 imp</span>
+3:  <span class="k">cbz</span>  p9, \MissLabelDynamic        <span class="c">// 空槽 → 未命中(慢路径)</span>
+    cmp  p13, p10                        <span class="c">// bucket >= buckets ?</span>
+    <span class="k">b.hs</span> 1b                            <span class="c">// 是 → 继续 do-while</span>
+
+<span class="c">// ③ wrap-around：绕到表尾再扫一圈</span>
+add  p13, p10, ...(mask)                 <span class="c">// p13 = 最后一个 bucket</span>
+add  p12, p10, p12, LSL #(1+PTRSHIFT)    <span class="c">// 记下最初探测位</span>
+4:  ldp  p17, p9, [x13], #-BUCKET_SIZE
+    cmp  p9, p1
+    <span class="k">b.eq</span> 2b                            <span class="c">// 命中 → 回到 hit</span>
+    cmp  p9, #0
+    ccmp p13, p12, #0, ne                <span class="c">// sel!=0 且 bucket>初探位</span>
+    <span class="k">b.hi</span> 4b
+    <span class="k">b</span>    \MissLabelDynamic            <span class="c">// 绕完整圈仍无 → 未命中</span></div>
+  </div>
+
+  <div class="panel">
+    <h3>为什么探测方向是「向低地址递减」</h3>
+    <p class="note">指令 <code>ldp p17, p9, [x13], #-BUCKET_SIZE</code> 是「先读取，再把指针减一个 bucket（16 字节）」的后变址写法。所以探测从哈希起点向低地址走；当走到表头（<code>p13 &lt; p10/buckets</code>）仍没命中，就进入③把指针重置到表尾，环形地再扫一段，直到绕回最初探测位置 <code>p12</code> 才宣告未命中——这正是开放寻址哈希表的环形探测。撞到 <code>sel==0</code> 的空槽则立即判定未命中，因为缓存里方法是连续填充的，空槽意味着不可能再有该项。</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  const table=[
+    {sel:'bark',imp:'0x10a3..40'},
+    {sel:'meow',imp:'0x10a3..88'},
+    {sel:'0',imp:'—'},
+    {sel:'run',imp:'0x10a3..c0'},
+    {sel:'jump',imp:'0x10a3..04'},
+    {sel:'0',imp:'—'},
+    {sel:'swim',imp:'0x10a3..7c'},
+    {sel:'eat',imp:'0x10a3..b0'}
+  ];
+  const scenarios={
+    bark:{hash:0,seq:[{i:0,res:'hit'}]},
+    run:{hash:5,seq:[{i:5,res:'empty'}]},
+    fly:{hash:2,seq:[{i:2,res:'miss'}]},
+    eat:{hash:1,seq:[{i:1,res:'no'},{i:0,res:'no'},{wrap:true},{i:7,res:'hit'}]}
+  };
+  const bkWrap=document.getElementById('buckets');
+  const log=document.getElementById('log');
+  const rSel=document.getElementById('rSel'),rHash=document.getElementById('rHash'),rPtr=document.getElementById('rPtr');
+  const pick=document.getElementById('selPick'),stepBtn=document.getElementById('stepBtn'),resetBtn=document.getElementById('resetBtn');
+  let step=0;
+
+  function buildTable(){
+    bkWrap.innerHTML='';
+    table.forEach((b,i)=>{
+      const d=document.createElement('div');
+      d.className='bk'+(b.sel==='0'?' empty':'');
+      d.dataset.i=i;
+      d.innerHTML='<div class="idx">['+i+']</div><div class="sel">'+(b.sel==='0'?'∅':b.sel)+'</div><div class="imp">'+b.imp+'</div>';
+      bkWrap.appendChild(d);
+    });
+  }
+  function clearMarks(){document.querySelectorAll('.bk').forEach(e=>e.classList.remove('probe','hit','miss'));}
+  function mark(i,cls){const el=bkWrap.querySelector('.bk[data-i="'+i+'"]');if(el){clearMarks();el.classList.add(cls);}}
+
+  function reset(){
+    step=0;const s=pick.value;const sc=scenarios[s];
+    buildTable();clearMarks();
+    rSel.textContent=s;rHash.textContent=sc.hash;rPtr.textContent='bucket['+sc.hash+']';
+    log.innerHTML='查找 <span class="ac">'+s+'</span>：hash = _cmd &amp; mask = <span class="ac">'+sc.hash+'</span>。点击「下一步」开始探测。';
+    stepBtn.disabled=false;
+  }
+  function next(){
+    const s=pick.value;const sc=scenarios[s];
+    if(step>=sc.seq.length){return;}
+    const node=sc.seq[step];
+    if(node.wrap){
+      clearMarks();
+      log.innerHTML='探到表头仍未命中 → <span class="ac">wrap-around</span>：把 p13 重置到表尾 bucket[7]，继续环形探测。';
+      step++;return;
+    }
+    const b=table[node.i];
+    if(node.res==='hit'){
+      mark(node.i,'hit');
+      log.innerHTML='bucket['+node.i+'] sel = <span class="ok">'+b.sel+'</span> == _cmd → <span class="ok">命中！</span> 取出 imp '+b.imp+'，CacheHit 跳进 IMP。';
+      stepBtn.disabled=true;
+    }else if(node.res==='empty'){
+      mark(node.i,'miss');
+      log.innerHTML='bucket['+node.i+'] 是 <span class="bad">空槽 (sel==0)</span> → cbz 触发，缓存<span class="bad">未命中</span>，跳 MissLabelDynamic 慢路径。';
+      stepBtn.disabled=true;
+    }else if(node.res==='miss'){
+      mark(node.i,'miss');
+      log.innerHTML='bucket['+node.i+'] 是 <span class="bad">空槽 (sel==0)</span> → 缓存<span class="bad">未命中</span>，转 lookUpImpOrForward。';
+      stepBtn.disabled=true;
+    }else{
+      mark(node.i,'probe');
+      log.innerHTML='探测 bucket['+node.i+'] sel = <span class="ac">'+b.sel+'</span> ≠ _cmd → b.ne 继续向低地址扫描。';
+    }
+    step++;
+  }
+  pick.addEventListener('change',reset);
+  stepBtn.addEventListener('click',next);
+  resetBtn.addEventListener('click',reset);
+  reset();
+})();
+</script><script data-tabbit-widget-diagnostics="true">
+(function(){
+  if (window.__tabbitWidgetDiagnosticsInstalled) return;
+  window.__tabbitWidgetDiagnosticsInstalled = true;
+  window.__TABBIT_WIDGET_ERRORS__ = window.__TABBIT_WIDGET_ERRORS__ || [];
+  function emit(level, args) {
+    var payload = {
+      type: "tabbit_widget_diagnostics",
+      level: level,
+      message: Array.prototype.slice.call(args || []).map(function(item) {
+        if (item && item.stack) return item.stack;
+        if (typeof item === "string") return item;
+        try { return JSON.stringify(item); } catch (_) { return String(item); }
+      }).join(" "),
+      timestamp: Date.now()
+    };
+    window.__TABBIT_WIDGET_ERRORS__.push(payload);
+    try { window.parent && window.parent.postMessage(payload, "*"); } catch (_) {}
+  }
+  var originalError = console.error;
+  console.error = function() {
+    emit("error", arguments);
+    return originalError && originalError.apply(console, arguments);
+  };
+  window.addEventListener("error", function(event) {
+    emit("error", [event.message || "Script error", event.filename || "", event.lineno || ""]);
+  });
+  window.addEventListener("unhandledrejection", function(event) {
+    emit("unhandledrejection", [event.reason || "Unhandled promise rejection"]);
+  });
+})();
+</script>
+</body>
+</html>
