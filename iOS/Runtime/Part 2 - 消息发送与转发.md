@@ -680,6 +680,21 @@ LLookupPreopt\Function:
 #endif // CONFIG_USE_PREOPT_CACHES
 ```
 
+**文字梳理流程**（对着上面这段宏，寄存器：`x16=isa/cls`、`x1=_cmd`、`p10=buckets`、`p11=mask`、`p13=当前 bucket`、`p9=槽内 SEL`、`p17=槽内 IMP`）：
+
+0. **备份 isa**（:359 `mov x15, x16`）：把原始 isa 暂存到 `x15`，后面若要回退父类 / 重查（preopt 失败、`b LLookupStart`）还得拿它还原。
+1. **① 取 mask 与 buckets**（:362–403）：从 `[x16, #CACHE]` 一次读出 `cache` 字段——它把 `mask`（高 16 位）和 `buckets` 基址（低 48 位）打包在一个指针里，拆成 `p11=mask`、`p10=buckets`。顺手算哈希起始下标 `p12 = (sel ^ (sel>>7)) & mask`（`SEL_HASH_SHIFT_XOR`，即 §4 的 `cache_hash`）。
+2. **定位起始 bucket**（:405 `add p13, p10, p12, LSL #(1+PTRSHIFT)`）：`p13 = buckets + idx*16`（每个 `bucket_t` 占 16B = `BUCKET_SIZE`）。
+3. **② do-while 探测循环**（:408–417）：
+   - `ldp p17, p9, [x13], #-BUCKET_SIZE`：读出当前槽的 `{IMP, SEL}`，**同时把指针 -16**（后递减，向**低地址**挪一格）；
+   - `sel == _cmd` → 跳 `2: CacheHit`（命中，§3.3 处理）；
+   - `sel == 0`（撞到空槽）→ `MissLabelDynamic`，说明缓存里压根没有 → 转慢速查找（第二部分）；
+   - 都不是 → `while (bucket >= buckets)` 还没越过表头就回到循环顶继续扫。
+4. **③ wrap-around 回绕**（:419–454）：向低地址扫到越过表头还没命中，说明哈希落点靠前、要扫的内容绕到了表尾。于是把 `p13` 重置到**表尾最后一格**（`buckets + mask*16`），并记下**最初探测位置** `p12`，再向低地址扫第二轮：命中就跳回 `2b` 走 `CacheHit`；撞空槽**且**已绕回最初位置 → 停（`ccmp` 两条件与），仍没有 → `b MissLabelDynamic` 未命中。
+5. **命中收尾**（§3.3 `CacheHit`）：`imp` 不是裸地址，要用 `buckets ^ sel ^ cls`（3 项 modifier）`brab` 解签后**尾跳**进方法实现，不留栈帧、不返回。
+
+> ④ 预优化缓存（`LLookupPreopt`，:460–680）只在 `HIGH_16`（iOS 真机）且类的缓存来自 dyld 共享缓存时才进，普通类走不到，这里略过——你 mac 上更是连这分支都没编进去。
+
 **真机实测落在哪条分支？** 由 `objc-config.h:218` 决定：**iOS 真机 = `HIGH_16`，macOS（M 系列）/模拟器 = `HIGH_16_BIG_ADDRS`**（用户态地址空间更大，buckets 占满低 48 位）。两条逻辑几乎一样（mask 在高 16、buckets 在低 48），区别仅在 BIG_ADDRS 分两步取、且不含上面那段 preopt 共享缓存岔路（`CONFIG_USE_PREOPT_CACHES` 只对 `HIGH_16` 开）。
 ![[cachelookup_walkthrough.html]]
 
