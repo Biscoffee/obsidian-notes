@@ -880,6 +880,12 @@ do {
 .endmacro
 ```
 
+我们先来讲讲这三种模式：
+- NORMAL 是"找到就立刻跳进去执行"(objc_msgSend),GETIMP 是"只把函数指针交给我、不执行"(cache_getImp),LOOKUP 是"把指针交给我、由我自己决定何时跳"(objc_msgLookup,super 调用专用)​
+- GETIMP 服务的是 `cache_getImp`、`class_getMethodImplementation` 这类 API——它们的诉求是"**我只想拿到这个方法的函数指针,我现在不打算调用它**"。
+- LOOKUP 服务的是 `objc_msgLookup`,最典型的使用者是 **​`super` 调用**(`[super foo]` 会先经 `objc_msgLookupSuper2` 拿到 IMP),以及一些需要插桩/统计的场景。它的诉求介于前两者之间:"**给我指针(像 GETIMP),但我会自己跳(不像 GETIMP 那样只是拿去看),你别替我跳(不像 NORMAL)​**"。
+
+
 
 > ### 旧→新对照（objc4-818.2 → 951.1）：预优化缓存条目的位布局
 >
