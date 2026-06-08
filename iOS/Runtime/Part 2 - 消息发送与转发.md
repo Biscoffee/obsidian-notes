@@ -929,13 +929,13 @@ do {
 
 ### 4.1 `_bucketsAndMaybeMask`：指针与 mask 的融合
 
-`cache_t` 的**数据布局部分**逐字全文（含 `OUTLINED / HIGH_16 / HIGH_16_BIG_ADDRS / LOW_4` 全部分支常量；其后是访问器方法声明与 `FAST_CACHE_*` 快速分配标志，属另一主题，本块到 mask 存储常量为止）：
+`cache_t` 的**数据布局部分**，正文只展开 **arm64 真机（`HIGH_16`）** 这一支；`OUTLINED 32/64 位 / HIGH_16_BIG_ADDRS / LOW_4` 等其它平台分支不删、原文收进本节末尾的折叠块（iOS 真机用不到）。其后的访问器方法声明与 `FAST_CACHE_*` 快速分配标志属另一主题，本块到 mask 存储常量为止：
 
 ![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260608182157685.png)
 
 
 ```objc
-// objc-runtime-new.h:337  —— cache_t 字段与各架构 mask 存储常量（全文，越界处已标注）
+// objc-runtime-new.h:337  —— cache_t 字段（仅展开 arm64 真机 HIGH_16 分支，其余平台见文末折叠块）
 struct cache_t {
 private:
     explicit_atomic<uintptr_t> _bucketsAndMaybeMask;  // buckets 指针，也可能顺便包含 mask
@@ -960,28 +960,7 @@ private:
 */
         
         struct {
-#if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && !__LP64__
-            // Outlined cache mask storage, 32-bit, we have mask and occupied.
-            explicit_atomic<mask_t>    _mask;// 4 bytes (mask_t = uint32_t)
-            uint16_t                   _occupied;// 2 bytes
-            
-            
-    这是最朴素的布局。`mask` 有自己独立的字段，不需要从 `_bucketsAndMaybeMask` 里提取。`_mask` 用 `explicit_atomic` 包装是因为缓存扩容时需要原子地替换它。这个分支没有 `_flags`，说明旧的 32 位路径不支持 `FAST_CACHE_*` 快速标志位机制，类的属性查询需要走更慢的路径。
-    
-    
-    
-#elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && __LP64__
-            // Outlined cache mask storage, 64-bit, we have mask, occupied, flags.
-            explicit_atomic<mask_t>    _mask;// 4 bytes
-            uint16_t                   _occupied;//  2 bytes
-            uint16_t                   _flags;// 2 bytes
-            
-            在分支一的基础上加了 `_flags`，同时定义了 `CACHE_T_HAS_FLAGS`，启用快速标志位路径。`mask` 仍然是独立字段。这是你在 Mac 模拟器上调试时看到的布局，相对容易理解，也是很多 ObjC 源码分析文章的参考对象，但它和真机行为有本质差异。
-            
-            
-#   define CACHE_T_HAS_FLAGS 1
-#elif __LP64__
-            //arm64 真机走这里（HIGH_16）：注意没有独立 _mask！mask 在 _bucketsAndMaybeMask 高位
+            //arm64 真机（HIGH_16）：注意没有独立 _mask！mask 在 _bucketsAndMaybeMask 高位
             // Inline cache mask storage, 64-bit, we have occupied, flags, and
             // empty space to line up flags with originalPreoptCache.
             //
@@ -1001,13 +980,6 @@ private:
             */
             
 #   define CACHE_T_HAS_FLAGS 1
-#else
-            // Inline cache mask storage, 32-bit, we have occupied, flags.
-            uint16_t                   _occupied;
-            uint16_t                   _flags;
-            最精简的布局。mask 存在 `_bucketsAndMaybeMask` 的低 4 位，所以这里也不需要独立的 `_mask` 字段。`union` 整体是 4 字节，比其他路径小一半。
-#   define CACHE_T_HAS_FLAGS 1
-#endif
         };
         
         //  这一段有关之前涉及的PAC机制，暂且可以不管
@@ -1018,29 +990,8 @@ private:
     // Simple constructor for testing purposes only.
     cache_t() : _bucketsAndMaybeMask(0) {}
 
-#if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED
-    // _bucketsAndMaybeMask is a buckets_t pointer
-
-    static constexpr uintptr_t bucketsMask = ~0ul;
-    static_assert(!CONFIG_USE_PREOPT_CACHES, "preoptimized caches not supported");
-    `_bucketsAndMaybeMask` 整个字段就是 buckets 指针，没有任何位域打包。mask 独立存放在 `union` 里的 `_mask` 字段。`static_assert(!CONFIG_USE_PREOPT_CACHES, ...)` 是一个编译期断言，直接禁止这个平台开启 preopt cache 支持。因为 OUTLINED 策略下 `_bucketsAndMaybeMask` 没有空闲位来放 `preoptBucketsMarker`，实现上无法区分普通指针和 preopt 指针，所以干脆在编译期就封死这条路。
-    
-#elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16_BIG_ADDRS
-    static constexpr uintptr_t maskShift = 48;
-    static constexpr uintptr_t maxMask = ((uintptr_t)1 << (64 - maskShift)) - 1;
-    static constexpr uintptr_t bucketsMask = ((uintptr_t)1 << maskShift) - 1;
-    
-    
-    和下面的 `HIGH_16` 分支相比，这里**没有 `maskZeroBits`​**，buckets 指针可以用到 bit 47，完整占据低 48 位。这个分支针对地址空间更大的 arm64 变体（比如某些 Apple Silicon Mac 配置），`OBJC_VM_MAX_ADDRESS` 更高，需要更多位来表示指针，所以不能像真机那样牺牲 4 位做优化。代价是 `msgSend` 里无法用单指令得到 `mask << 4`，需要额外一条 shift 指令。
-
-    static_assert(bucketsMask >= OBJC_VM_MAX_ADDRESS, "Bucket field doesn't have enough bits for arbitrary pointers.");
-#if CONFIG_USE_PREOPT_CACHES
-    static constexpr uintptr_t preoptBucketsMarker = 1ul;
-    static constexpr uintptr_t preoptBucketsMask = bucketsMask & ~preoptBucketsMarker;
-#endif
-
-
-#elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16
+    // —— 只展开 arm64 真机 HIGH_16 的 mask 存储常量；OUTLINED / BIG_ADDRS / LOW_4 见折叠块 ——
+#if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16
     //arm64 真机的 mask 存储常量定义
     // _bucketsAndMaybeMask is a buckets_t pointer in the low 48 bits
 
@@ -1077,32 +1028,86 @@ private:
         // the right shift for 0x7fff rather than 0xffff
         return value | ((objc::mask16ShiftBits(cache->mask) - 1) << 60);
     }
-#else
-    // 63..53: hash_mask
-    // 52..48: hash_shift
-    // 47.. 1: buckets ptr
-    //      0: always 1
-    static constexpr uintptr_t preoptBucketsMask = 0x0000fffffffffffe;
-    static inline uintptr_t preoptBucketsHashParams(const preopt_cache_t *cache) {
-        return (uintptr_t)cache->hash_params << 48;
-    }
 #endif
 #endif // CONFIG_USE_PREOPT_CACHES
-#elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_LOW_4
-    // _bucketsAndMaybeMask is a buckets_t pointer in the top 28 bits
-
-    static constexpr uintptr_t maskBits = 4;
-    static constexpr uintptr_t maskMask = (1 << maskBits) - 1;
-    static constexpr uintptr_t bucketsMask = ~maskMask;
-    static_assert(!CONFIG_USE_PREOPT_CACHES, "preoptimized caches not supported");
-#else
-#error Unknown cache mask storage type.
 #endif
 
     // ……（以下为 mask()/buckets()/insert()/reallocate() 等方法声明，
     //     以及 FAST_CACHE_* 快速分配标志位定义，属另一主题，本块略去）
 };
 ```
+
+> [!note]- 其它平台的 cache_t 布局（OUTLINED 32/64 位、HIGH_16_BIG_ADDRS、LOW_4 —— iOS 真机用不到，点开看）
+>
+> **union 结构体的其余三个分支**
+>
+> ```objc
+> #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && !__LP64__
+>             // Outlined cache mask storage, 32-bit, we have mask and occupied.
+>             explicit_atomic<mask_t>    _mask;// 4 bytes (mask_t = uint32_t)
+>             uint16_t                   _occupied;// 2 bytes
+> #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && __LP64__
+>             // Outlined cache mask storage, 64-bit, we have mask, occupied, flags.
+>             explicit_atomic<mask_t>    _mask;// 4 bytes
+>             uint16_t                   _occupied;//  2 bytes
+>             uint16_t                   _flags;// 2 bytes
+> #   define CACHE_T_HAS_FLAGS 1
+> #else
+>             // Inline cache mask storage, 32-bit, we have occupied, flags.
+>             uint16_t                   _occupied;
+>             uint16_t                   _flags;
+> #   define CACHE_T_HAS_FLAGS 1
+> #endif
+> ```
+>
+> - **OUTLINED 32 位**：这是最朴素的布局。`mask` 有自己独立的字段，不需要从 `_bucketsAndMaybeMask` 里提取。`_mask` 用 `explicit_atomic` 包装是因为缓存扩容时需要原子地替换它。这个分支没有 `_flags`，说明旧的 32 位路径不支持 `FAST_CACHE_*` 快速标志位机制，类的属性查询需要走更慢的路径。
+> - **OUTLINED 64 位（Mac 模拟器）**：在分支一的基础上加了 `_flags`，同时定义了 `CACHE_T_HAS_FLAGS`，启用快速标志位路径。`mask` 仍然是独立字段。这是你在 Mac 模拟器上调试时看到的布局，相对容易理解，也是很多 ObjC 源码分析文章的参考对象，但它和真机行为有本质差异。
+> - **32 位 inline**：最精简的布局。mask 存在 `_bucketsAndMaybeMask` 的低 4 位，所以这里也不需要独立的 `_mask` 字段。`union` 整体是 4 字节，比其他路径小一半。
+>
+> **mask 存储常量的其余三个分支**
+>
+> ```objc
+> #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED
+>     // _bucketsAndMaybeMask is a buckets_t pointer
+>     static constexpr uintptr_t bucketsMask = ~0ul;
+>     static_assert(!CONFIG_USE_PREOPT_CACHES, "preoptimized caches not supported");
+> #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16_BIG_ADDRS
+>     static constexpr uintptr_t maskShift = 48;
+>     static constexpr uintptr_t maxMask = ((uintptr_t)1 << (64 - maskShift)) - 1;
+>     static constexpr uintptr_t bucketsMask = ((uintptr_t)1 << maskShift) - 1;
+>     static_assert(bucketsMask >= OBJC_VM_MAX_ADDRESS, "Bucket field doesn't have enough bits for arbitrary pointers.");
+> #if CONFIG_USE_PREOPT_CACHES
+>     static constexpr uintptr_t preoptBucketsMarker = 1ul;
+>     static constexpr uintptr_t preoptBucketsMask = bucketsMask & ~preoptBucketsMarker;
+> #endif
+> #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_LOW_4
+>     // _bucketsAndMaybeMask is a buckets_t pointer in the top 28 bits
+>     static constexpr uintptr_t maskBits = 4;
+>     static constexpr uintptr_t maskMask = (1 << maskBits) - 1;
+>     static constexpr uintptr_t bucketsMask = ~maskMask;
+>     static_assert(!CONFIG_USE_PREOPT_CACHES, "preoptimized caches not supported");
+> #endif
+> ```
+>
+> - **OUTLINED**：`_bucketsAndMaybeMask` 整个字段就是 buckets 指针，没有任何位域打包。mask 独立存放在 `union` 里的 `_mask` 字段。`static_assert(!CONFIG_USE_PREOPT_CACHES, ...)` 是一个编译期断言，直接禁止这个平台开启 preopt cache 支持。因为 OUTLINED 策略下 `_bucketsAndMaybeMask` 没有空闲位来放 `preoptBucketsMarker`，实现上无法区分普通指针和 preopt 指针，所以干脆在编译期就封死这条路。
+> - **HIGH_16_BIG_ADDRS**：和 `HIGH_16` 分支相比，这里**没有 `maskZeroBits`**，buckets 指针可以用到 bit 47，完整占据低 48 位。这个分支针对地址空间更大的 arm64 变体（比如某些 Apple Silicon Mac 配置），`OBJC_VM_MAX_ADDRESS` 更高，需要更多位来表示指针，所以不能像真机那样牺牲 4 位做优化。代价是 `msgSend` 里无法用单指令得到 `mask << 4`，需要额外一条 shift 指令。
+>
+> **HIGH_16 内的非 PAC（A11 及更早）子分支**
+>
+> ```objc
+> #else
+>     // 63..53: hash_mask
+>     // 52..48: hash_shift
+>     // 47.. 1: buckets ptr
+>     //      0: always 1
+>     static constexpr uintptr_t preoptBucketsMask = 0x0000fffffffffffe;
+>     static inline uintptr_t preoptBucketsHashParams(const preopt_cache_t *cache) {
+>         return (uintptr_t)cache->hash_params << 48;
+>     }
+> #endif
+> ```
+>
+> - A11 及更早（无指针认证）走这支：hash 参数 `<< 48`，bit 63..53 放 hash_mask、52..48 放 hash_shift——和 PAC 版（63..60 mask 位数、59..55 hash_shift、`0x7fff >> mask_bits`）的打包方式不同。这与 §3.2 汇编 ② 里"只留 ARM64e 真机分支"的口径一致。
 
 要点：arm64（`CACHE_MASK_STORAGE_HIGH_16`）上**没有独立 `_mask` 字段**——mask 编码在 `_bucketsAndMaybeMask` 高 16 位，这正是 3.2 里「一条 `ldr` 取出 `mask|buckets`，再 `lsr #48` 拆 mask、`and` 低 48 位拆 buckets」的来源。`maskZeroBits = 4` 让 msgSend 单条指令就能从该字段构造 `mask << 4`。
 
