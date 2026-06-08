@@ -1133,7 +1133,8 @@ struct bucket_t *cache_t::buckets() const {                                     
 
 `setBucketsAndMask`（`(mask<<48)|buckets`）= 汇编看到的那个融合字是怎么写进去的；`mask()`（`>>48`）/`buckets()`（`& bucketsMask`）= 汇编 `lsr`/`and` 在 C++ 里的等价拆解。换言之第 3.2 节那几条指令，就是把这三个 C++ 函数手写进了汇编快速路径。
 
-### 🔄 旧→新对照（objc4-756.2 → 951.1）：cache_t 三字段 → 融合字段
+
+旧→新对照（objc4-756.2 → 951.1）：cache_t 三字段 → 融合字段
 
 缓存结构最有名的一次重构。旧版三个独立字段，新版融合成一个 `_bucketsAndMaybeMask`。
 
