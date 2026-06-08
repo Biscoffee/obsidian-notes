@@ -1288,6 +1288,8 @@ static inline mask_t cache_hash(SEL sel, mask_t mask)
 
 ## 5. 缓存的写入与扩容（`objc-cache.mm`）
 
+> **注**：写入路径（`cache_t::insert`）并不在快速路径执行过程中触发——快速路径只读 cache。`insert` 的实际触发点是第二部分第 9 节：慢速查找成功后，`log_and_fill_cache` 回填缓存时才调用它。本节放在第一部分，是因为 cache 的读/写/结构三者放在一起对照阅读更方便，并非表示写入属于快速路径的执行流。
+
 ### 5.1 `insert`：哈希落位（:873）
 
 逐字全文：
