@@ -931,11 +931,12 @@ do {
 
 `cache_t` 的**数据布局部分**逐字全文（含 `OUTLINED / HIGH_16 / HIGH_16_BIG_ADDRS / LOW_4` 全部分支常量；其后是访问器方法声明与 `FAST_CACHE_*` 快速分配标志，属另一主题，本块到 mask 存储常量为止）：
 
+
 ```objc
 // objc-runtime-new.h:337  —— cache_t 字段与各架构 mask 存储常量（全文，越界处已标注）
 struct cache_t {
 private:
-    explicit_atomic<uintptr_t> _bucketsAndMaybeMask;
+    explicit_atomic<uintptr_t> _bucketsAndMaybeMask;  // buckets 指针，也可能顺便包含 mask
     //核心字段：arm64 上高 16 位 = mask，低 48 位 = buckets 指针（一字双用）
     union {
         // Note: _flags on ARM64 needs to line up with the unused bits of
