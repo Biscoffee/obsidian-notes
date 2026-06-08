@@ -942,7 +942,6 @@ private:
     
     `explicit_atomic` 是 objc runtime 自己封装的原子类型，保证多线程下的读写安全，但不加任何额外内存屏障开销，具体关于bucketsAndMaybeMask的内容我们下面再讲
     
-    
     //核心字段：arm64 上高 16 位 = mask，低 48 位 = buckets 指针（一字双用）
     union {
         // Note: _flags on ARM64 needs to line up with the unused bits of
@@ -950,16 +949,36 @@ private:
         // FAST_CACHE_HAS_DEFAULT_CORE and FAST_CACHE_HAS_DEFAULT_AWZ) on
         // unrealized classes with the assumption that they will start out
         // as 0.
+        
+        /*这段注释解释了整个 `union` 设计中最微妙的一个约束。要理解它，需要知道两个背景：
+
+**背景一：unrealized class 的初始状态。​** 一个 ObjC 类在被第一次使用之前处于 "unrealized" 状态，这时 `cache_t` 的内存是零初始化的（来自 `cache_t() : _bucketsAndMaybeMask(0) {}` 以及 BSS 段的零填充）。此时 `_originalPreoptCache` 这个指针字段的值是 0，也就是说这 8 字节全是零。
+
+**背景二：runtime 需要在 unrealized 阶段就读取某些标志位。​** `FAST_CACHE_HAS_DEFAULT_CORE` 和 `FAST_CACHE_HAS_DEFAULT_AWZ` 这两个标志位存在 `_flags` 字段里，而 runtime 在类还没有被 realized 的时候就需要读取它们，此时 `_originalPreoptCache` 覆盖着这块内存。
+
+**约束的结论**：必须保证 `_flags` 在 `union` 内的偏移位置，恰好对应 `_originalPreoptCache` 指针值为 0 时的那些 bit。换句话说，当指针是 null（全零）时，`_flags` 读出来也是 0，而这两个标志位的语义恰好是"0 = 使用默认实现"，所以零初始化的状态天然就是正确的初始值，runtime 不需要做任何特殊判断就能安全读取。这个约束直接决定了下面 arm64 分支里 `_disguisedPreoptCacheSignature` 的存在——它就是为了把 `_occupied` 和 `_flags` 推到正确的偏移位置而填充的。
+*/
+        
         struct {
 #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && !__LP64__
             // Outlined cache mask storage, 32-bit, we have mask and occupied.
-            explicit_atomic<mask_t>    _mask;
-            uint16_t                   _occupied;
+            explicit_atomic<mask_t>    _mask;// 4 bytes (mask_t = uint32_t)
+            uint16_t                   _occupied;// 2 bytes
+            
+            
+    这是最朴素的布局。`mask` 有自己独立的字段，不需要从 `_bucketsAndMaybeMask` 里提取。`_mask` 用 `explicit_atomic` 包装是因为缓存扩容时需要原子地替换它。这个分支没有 `_flags`，说明旧的 32 位路径不支持 `FAST_CACHE_*` 快速标志位机制，类的属性查询需要走更慢的路径。
+    
+    
+    
 #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && __LP64__
             // Outlined cache mask storage, 64-bit, we have mask, occupied, flags.
-            explicit_atomic<mask_t>    _mask;
-            uint16_t                   _occupied;
-            uint16_t                   _flags;
+            explicit_atomic<mask_t>    _mask;// 4 bytes
+            uint16_t                   _occupied;//  2 bytes
+            uint16_t                   _flags;// 2 bytes
+            
+            在分支一的基础上加了 `_flags`，同时定义了 `CACHE_T_HAS_FLAGS`，启用快速标志位路径。`mask` 仍然是独立字段。这是你在 Mac 模拟器上调试时看到的布局，相对容易理解，也是很多 ObjC 源码分析文章的参考对象，但它和真机行为有本质差异。
+            
+            
 #   define CACHE_T_HAS_FLAGS 1
 #elif __LP64__
             //arm64 真机走这里（HIGH_16）：注意没有独立 _mask！mask 在 _bucketsAndMaybeMask 高位
@@ -970,18 +989,28 @@ private:
             // location of _flags and the
             // FAST_CACHE_HAS_CUSTOM_DEALLOC_INITIATION flag within. Any changes
             // must be applied there as well.
-            uint32_t                   _disguisedPreoptCacheSignature;
-            uint16_t                   _occupied;
-            uint16_t                   _flags;
+            uint32_t                   _disguisedPreoptCacheSignature;//4
+            uint16_t                   _occupied;// 2 bytes
+            uint16_t                   _flags;// 2 bytes
+            
+            /*这是最复杂也最值得细讲的分支。注意这里**没有 `_mask` 字段**，因为 mask 已经被打包进了 `_bucketsAndMaybeMask` 的高 16 位，不需要在这里重复存储。
+
+**​`_disguisedPreoptCacheSignature` 是什么？​** 这个字段的名字非常刻意——"disguised"（伪装的）暗示它并不是一个普通的数据字段，而是一个**结构性占位符**，目的是把 `_occupied`（offset 4）和 `_flags`（offset 6）推到正确的内存位置，满足前面注释里说的对齐约束。
+
+具体来说，`_originalPreoptCache` 是一个经过 ptrauth 签名的指针，在 arm64 上指针的低几位有特定含义，高位用于存放签名。当这个指针不为 null 时，它的 bit 布局里某些位置是"未使用位"（unused bits），而 runtime 要求 `_flags` 在 `union` 内的偏移恰好落在这些未使用位上，这样两套身份才能安全共存而不互相干扰。`_disguisedPreoptCacheSignature` 占据前 4 字节，使得 `_flags` 落在 offset 6，正好满足这个约束。
+            */
+            
 #   define CACHE_T_HAS_FLAGS 1
 #else
             // Inline cache mask storage, 32-bit, we have occupied, flags.
             uint16_t                   _occupied;
             uint16_t                   _flags;
+            最精简的布局。mask 存在 `_bucketsAndMaybeMask` 的低 4 位，所以这里也不需要独立的 `_mask` 字段。`union` 整体是 4 字节，比其他路径小一半。
 #   define CACHE_T_HAS_FLAGS 1
 #endif
-
         };
+        
+        //  这一段有关之前涉及的PAC机制，暂且可以不管
         explicit_atomic<preopt_cache_t *, PTRAUTH_STR(originalPreoptCache, ptrauth_key_process_independent_data)> _originalPreoptCache;
         //与上面 struct 共用内存：预优化缓存时这里是 preopt_cache_t*
     };
@@ -994,16 +1023,23 @@ private:
 
     static constexpr uintptr_t bucketsMask = ~0ul;
     static_assert(!CONFIG_USE_PREOPT_CACHES, "preoptimized caches not supported");
+    `_bucketsAndMaybeMask` 整个字段就是 buckets 指针，没有任何位域打包。mask 独立存放在 `union` 里的 `_mask` 字段。`static_assert(!CONFIG_USE_PREOPT_CACHES, ...)` 是一个编译期断言，直接禁止这个平台开启 preopt cache 支持。因为 OUTLINED 策略下 `_bucketsAndMaybeMask` 没有空闲位来放 `preoptBucketsMarker`，实现上无法区分普通指针和 preopt 指针，所以干脆在编译期就封死这条路。
+    
 #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16_BIG_ADDRS
     static constexpr uintptr_t maskShift = 48;
     static constexpr uintptr_t maxMask = ((uintptr_t)1 << (64 - maskShift)) - 1;
     static constexpr uintptr_t bucketsMask = ((uintptr_t)1 << maskShift) - 1;
+    
+    
+    和下面的 `HIGH_16` 分支相比，这里**没有 `maskZeroBits`​**，buckets 指针可以用到 bit 47，完整占据低 48 位。这个分支针对地址空间更大的 arm64 变体（比如某些 Apple Silicon Mac 配置），`OBJC_VM_MAX_ADDRESS` 更高，需要更多位来表示指针，所以不能像真机那样牺牲 4 位做优化。代价是 `msgSend` 里无法用单指令得到 `mask << 4`，需要额外一条 shift 指令。
 
     static_assert(bucketsMask >= OBJC_VM_MAX_ADDRESS, "Bucket field doesn't have enough bits for arbitrary pointers.");
 #if CONFIG_USE_PREOPT_CACHES
     static constexpr uintptr_t preoptBucketsMarker = 1ul;
     static constexpr uintptr_t preoptBucketsMask = bucketsMask & ~preoptBucketsMarker;
 #endif
+
+
 #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16
     //arm64 真机的 mask 存储常量定义
     // _bucketsAndMaybeMask is a buckets_t pointer in the low 48 bits
