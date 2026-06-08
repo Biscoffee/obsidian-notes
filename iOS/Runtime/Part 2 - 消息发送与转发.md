@@ -46,7 +46,7 @@
 
 > 源码定位说明：`objc_msgSend` 汇编在 951.1 里已移到 `runtime/Messengers.subproj/objc-msg-arm64.s`（不在 `runtime/` 根下）。下文源码块均为 objc4-951.1 **逐字全文**（保留所有架构 `#if` 分支），中文注释为本文新增、英文原注释保留。LLDB 在 **系统 libobjc**（`/usr/lib/libobjc.A.dylib`）上下符号断点，`settings set target.disable-aslr true` 关 ASLR，环境 macOS 26 / arm64。
 >
-> 新旧对照说明：文中带 🔄 的「旧→新对照」框，旧版取自本地 **objc4-818.2**（可调试版）真实源码、新版为 **951.1**，均标注精确 `file:line`。注意：缓存早期那次著名的大改造（`_buckets`/`_mask`/`_occupied` 三个分离字段 → 融合成 `_bucketsAndMaybeMask`）发生在 **781 之前**，本地无该版本源码，故未做该处对照、也不凭记忆杜撰；818.2 与 951.1 同属「融合字段后」时代，下列对照都是这之后的增量演进。
+> 新旧对照说明：文中带 🔄 的「旧→新对照」框，旧版取自本地 **objc4-818.2**（可调试版）真实源码、新版为 **951.1**，均标注精确 `file:line`。注意：缓存早期那次著名的大改造（`_buckets`/`_mask`/`_occupied` 三个分离字段 → 融合成 `_bucketsAndMaybeMask`）发生在 **781 之前**，已用本地 **objc4-756.2**（融合前末代，真实源码 `objc-runtime-new.h:82`）补做对照（见 4.1 末）；其余对照的旧版多取自 818.2，818.2 与 951.1 同属「融合字段后」时代，是这之后的增量演进。所有旧版代码均据真实源码、绝不凭记忆杜撰。
 
 ---
 # objc_msgSend简介
@@ -516,7 +516,7 @@ LLookupStart\Function:
 #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16
 
 
-	//拿到mask计算哈希索引，普通版本直接 `_cmd & mask`(因为 SEL 本质是字符串地址,低位足够随机)。`SEL_HASH_SHIFT_XOR` 版本则先做一次 `sel ^ (sel >> 7)` 混淆再 `& mask`,目的是把高位信息搅进低位,**减少哈希冲突**,对应 C++ 源码里的 `cache_hash` 函数。`& mask` 这步利用了"桶数量永远是 2 的幂"这个前提,等价于对桶数取模,得到落在 `[0, mask]` 范围内的索引。
+	// 算哈希桶索引：普通版 _cmd & mask；XOR 版先 sel^(sel>>7) 混淆再 &mask（即 cache_hash，减冲突）。桶数恒为 2 的幂，&mask 等价取模
 
 	//iOS 真机走这里（objc-config.h:218）：一条 ldr 取出 mask|buckets，后面边算哈希边移位，比 BIG_ADDRS 省一步
 	
@@ -866,18 +866,18 @@ do {
 	cbz	p0, 9f					// don't ptrauth a nil imp，- 如果 IMP 是 0(空),直接跳到 9: 返回,绝不对 nil 做指针认证(对 nil 做 PAC 会得到一个垃圾值,反而坏事);
 	AuthAndResignAsIMP x0, x10, x1, x16, x17	// authenticate imp and re-sign as IMP
 9:	ret						// return IMP
-					//cache_getImp 走这条：把 IMP 当返回值给出，不调用，和 NORMAL 的本质差别就是最后是 `ret` 返回值,而不是 `br` 跳过去执行。注释"把 IMP 当返回值给出,不调用"说的就是这个。
+					// cache_getImp 走这条：把 IMP 当返回值给出、不调用；与 NORMAL 的区别是最后用 ret 返回而非 br 跳转
 					
 					
 .elseif $0 == LOOKUP
 	// No nil check for ptrauth: the caller would crash anyway when they
 	// jump to a nil IMP. We don't care if that jump also fails ptrauth.
-	AuthAndResignAsIMP x17, x10, x1, x16, x10	// authenticate imp and re-sign as IMP，先 `AuthAndResignAsIMP` 解签重签 IMP(注释说明:这里**不做 nil 检查**——因为调用方拿到 nil IMP 去跳本来就会崩,我们不在乎这个 nil 跳转顺带 PAC 失败,省一步);
-	cmp	x16, x15    //拿当前 isa(`x16`)和最初备份的原始 isa(`x15`)​ 比较。还记得 `CacheLookup` 开头 `mov x15, x16` 和预优化路径里 fallback 改写 `x16` 吗?如果查找过程中沿继承链上溯过,`x16` 就会和 `x15` 不一样;
+	AuthAndResignAsIMP x17, x10, x1, x16, x10	// authenticate imp and re-sign as IMP ← 解签重签 IMP；不做 nil 检查（拿 nil 去跳本就会崩，省一步）
+	cmp	x16, x15    // 比较当前 isa(x16) 与开头备份的原始 isa(x15)：preopt fallback 上溯父类时两者不等
 	
-	cinc	x16, x16, ne			// x16 += 1 when x15 != x16 (for instrumentation ; fallback to the parent class)。条件自增——当 `x15 != x16`（即 preopt fallback 路径改写了 x16、确实回退到父类）时给 `x16` 加 1，作为 instrumentation 标志位；非 preopt 的普通快速路径中 x16 自始至终不变，此指令不会触发。
+	cinc	x16, x16, ne			// x16 += 1 when x15 != x16 (for instrumentation ; fallback to the parent class) ← 回退父类时 x16+1 作标志；普通快速路径 x16 不变、不触发
 	
-	ret				// return imp via x17，通过 `x17` 返回 IMP(注意是返回,不是跳转)
+	ret				// return imp via x17 ← 返回 IMP，不是跳转
 					//objc_msgLookup 走这条：返回 IMP 但不跳（super 调用用）
 					
 					
@@ -898,30 +898,30 @@ do {
 
 
 
->旧→新对照（objc4-818.2 → 951.1）：预优化缓存条目的位布局
->
-> 共享缓存「预优化缓存」里每个条目把 sel 偏移与 imp 偏移打包进一个 64 位字，**两版位划分不同**。
->
-> 旧（818.2，`objc-msg-arm64.s:474`）—— sel / imp 各 32 位：
-> ```asm
-> ldr  x17, [x10, x9, LSL #3]   // x17 == sel_offs | (imp_offs << 32)
-> cmp  x12, w17, uxtw
-> ...
-> sub  x0, x16, x17, LSR #32    // imp = isa - imp_offs
-> ...
-> 5: ldursw x9, [x10, #-8]      // fallback offset 在 -8
-> ```
-> 新（951.1，`:500`）—— 改成 sel 26 位 / imp 38 位（imp 偏移再 `<<2`）：
-> ```asm
-> ldr   x17, [x10, x9, LSL #3]   // x17 == (sel_offs << 38) | imp_offs
-> cmp   x12, x17, LSR #38
-> ...
-> sbfiz x17, x17, #2, #38        // imp_offs = bits[0..37] << 2
-> sub   x0, x16, x17             // imp = isa - imp_offs
-> ...
-> 5: ldur  x9, [x10, #-16]       // fallback offset 移到 -16
-> ```
-> 动机（951 新增注释自陈）：共享缓存越来越大，32 位 imp 偏移不够「够到」远处的 IMP，于是把 imp 偏移扩到 38 位（再 `<<2` 进一步增大寻址范围），sel 偏移压到 26 位（足够寻址 ~64MB 选择子表）。
+旧→新对照（objc4-818.2 → 951.1）：预优化缓存条目的位布局
+
+共享缓存「预优化缓存」里每个条目把 sel 偏移与 imp 偏移打包进一个 64 位字，**两版位划分不同**。
+
+旧（818.2，`objc-msg-arm64.s:474`）—— sel / imp 各 32 位：
+```asm
+ldr  x17, [x10, x9, LSL #3]   // x17 == sel_offs | (imp_offs << 32)
+cmp  x12, w17, uxtw
+...
+sub  x0, x16, x17, LSR #32    // imp = isa - imp_offs
+...
+5: ldursw x9, [x10, #-8]      // fallback offset 在 -8
+```
+新（951.1，`:500`）—— 改成 sel 26 位 / imp 38 位（imp 偏移再 `<<2`）：
+```asm
+ldr   x17, [x10, x9, LSL #3]   // x17 == (sel_offs << 38) | imp_offs
+cmp   x12, x17, LSR #38
+...
+sbfiz x17, x17, #2, #38        // imp_offs = bits[0..37] << 2
+sub   x0, x16, x17             // imp = isa - imp_offs
+...
+5: ldur  x9, [x10, #-16]       // fallback offset 移到 -16
+```
+动机（951 新增注释自陈）：共享缓存越来越大，32 位 imp 偏移不够「够到」远处的 IMP，于是把 imp 偏移扩到 38 位（再 `<<2` 进一步增大寻址范围），sel 偏移压到 26 位（足够寻址 ~64MB 选择子表）。
 
 ![[Objective-C-快速路径查找要点总结.html]]
 
@@ -940,8 +940,6 @@ struct cache_t {
 private:
     explicit_atomic<uintptr_t> _bucketsAndMaybeMask;  // buckets 指针，也可能顺便包含 mask
     
-    `explicit_atomic` 是 objc runtime 自己封装的原子类型，保证多线程下的读写安全，但不加任何额外内存屏障开销，具体关于bucketsAndMaybeMask的内容我们下面再讲
-    
     //核心字段：arm64 上高 16 位 = mask，低 48 位 = buckets 指针（一字双用）
     union {
         // Note: _flags on ARM64 needs to line up with the unused bits of
@@ -949,15 +947,6 @@ private:
         // FAST_CACHE_HAS_DEFAULT_CORE and FAST_CACHE_HAS_DEFAULT_AWZ) on
         // unrealized classes with the assumption that they will start out
         // as 0.
-        
-        /*这段注释解释了整个 `union` 设计中最微妙的一个约束。要理解它，需要知道两个背景：
-
-**背景一：unrealized class 的初始状态。​** 一个 ObjC 类在被第一次使用之前处于 "unrealized" 状态，这时 `cache_t` 的内存是零初始化的（来自 `cache_t() : _bucketsAndMaybeMask(0) {}` 以及 BSS 段的零填充）。此时 `_originalPreoptCache` 这个指针字段的值是 0，也就是说这 8 字节全是零。
-
-**背景二：runtime 需要在 unrealized 阶段就读取某些标志位。​** `FAST_CACHE_HAS_DEFAULT_CORE` 和 `FAST_CACHE_HAS_DEFAULT_AWZ` 这两个标志位存在 `_flags` 字段里，而 runtime 在类还没有被 realized 的时候就需要读取它们，此时 `_originalPreoptCache` 覆盖着这块内存。
-
-**约束的结论**：必须保证 `_flags` 在 `union` 内的偏移位置，恰好对应 `_originalPreoptCache` 指针值为 0 时的那些 bit。换句话说，当指针是 null（全零）时，`_flags` 读出来也是 0，而这两个标志位的语义恰好是"0 = 使用默认实现"，所以零初始化的状态天然就是正确的初始值，runtime 不需要做任何特殊判断就能安全读取。这个约束直接决定了下面 arm64 分支里 `_disguisedPreoptCacheSignature` 的存在——它就是为了把 `_occupied` 和 `_flags` 推到正确的偏移位置而填充的。
-*/
         
         struct {
             //arm64 真机（HIGH_16）：注意没有独立 _mask！mask 在 _bucketsAndMaybeMask 高位
@@ -972,19 +961,11 @@ private:
             uint16_t                   _occupied;// 2 bytes
             uint16_t                   _flags;// 2 bytes
             
-            /*这是最复杂也最值得细讲的分支。注意这里**没有 `_mask` 字段**，因为 mask 已经被打包进了 `_bucketsAndMaybeMask` 的高 16 位，不需要在这里重复存储。
-
-**​`_disguisedPreoptCacheSignature` 是什么？​** 这个字段的名字非常刻意——"disguised"（伪装的）暗示它并不是一个普通的数据字段，而是一个**结构性占位符**，目的是把 `_occupied`（offset 4）和 `_flags`（offset 6）推到正确的内存位置，满足前面注释里说的对齐约束。
-
-具体来说，`_originalPreoptCache` 是一个经过 ptrauth 签名的指针，在 arm64 上指针的低几位有特定含义，高位用于存放签名。当这个指针不为 null 时，它的 bit 布局里某些位置是"未使用位"（unused bits），而 runtime 要求 `_flags` 在 `union` 内的偏移恰好落在这些未使用位上，这样两套身份才能安全共存而不互相干扰。`_disguisedPreoptCacheSignature` 占据前 4 字节，使得 `_flags` 落在 offset 6，正好满足这个约束。
-            */
-            
 #   define CACHE_T_HAS_FLAGS 1
         };
         
         //  这一段有关之前涉及的PAC机制，暂且可以不管
         explicit_atomic<preopt_cache_t *, PTRAUTH_STR(originalPreoptCache, ptrauth_key_process_independent_data)> _originalPreoptCache;
-        //与上面 struct 共用内存：预优化缓存时这里是 preopt_cache_t*
     };
 
     // Simple constructor for testing purposes only.
@@ -1036,6 +1017,21 @@ private:
     //     以及 FAST_CACHE_* 快速分配标志位定义，属另一主题，本块略去）
 };
 ```
+
+**代码解析**
+
+explicit_atomic 是 objc runtime 自己封装的原子类型，保证多线程下的读写安全，但不加任何额外内存屏障开销，具体关于bucketsAndMaybeMask的内容我们下面再讲
+
+**union 的对齐约束**：runtime 在类 realized 之前就需要读 `_flags`（含 `FAST_CACHE_HAS_DEFAULT_CORE`/AWZ），此时 `_originalPreoptCache` 还是 null（全零）。因此 union 的内存布局必须保证：`_originalPreoptCache == 0` 时，`_flags` 读出来也是 0——而这两个标志位的语义正好是"0 = 使用默认实现"，零初始化即正确初始值，无需额外处理。`_disguisedPreoptCacheSignature` 的唯一作用就是填充偏移，让 `_flags` 落在这个位置上。
+
+**为什么没有 `_mask`、却多了 `_disguisedPreoptCacheSignature`**
+
+这里没有 `_mask` 字段，因为 mask 已经被打包进了 `_bucketsAndMaybeMask` 的高 16 位，不需要在这里重复存储。
+​`_disguisedPreoptCacheSignature` 这个字段的名字非常刻意——"disguised"（伪装的）暗示它并不是一个普通的数据字段，而是一个结构性占位符，目的是把 `_occupied`（offset 4）和 `_flags`（offset 6）推到正确的内存位置，满足前面注释里说的对齐约束。
+
+具体来说，`_originalPreoptCache` 是一个经过 ptrauth 签名的指针，在 arm64 上指针的低几位有特定含义，高位用于存放签名。当这个指针不为 null 时，它的 bit 布局里某些位置是"未使用位"（unused bits），而 runtime 要求 `_flags` 在 `union` 内的偏移恰好落在这些未使用位上，这样两套身份才能安全共存而不互相干扰。`_disguisedPreoptCacheSignature` 占据前 4 字节，使得 `_flags` 落在 offset 6，正好满足这个约束。
+
+**`_originalPreoptCache`（union 的另一重身份）**：与上面 struct 共用内存：预优化缓存时这里是 preopt_cache_t*，`preopt_cache_t` 是 dyld 在构建 shared cache 时预先生成的方法哈希表，存放在只读内存里。一个类在被 realized 之前，如果 dyld 已经为它准备好了 preopt cache，那么 `_originalPreoptCache` 就指向那张预生成的表，runtime 可以直接用，省去了首次 realize 时重建缓存的开销。一旦类被 realized、开始正常运行，这块内存就切换到 `struct` 身份，用 `_occupied` 记录已填充的 bucket 数量，用 `_flags` 存放类的快速标志位。两种状态互斥，共用内存没有语义冲突
 
 > [!note]- 其它平台的 cache_t 布局（OUTLINED 32/64 位、HIGH_16_BIG_ADDRS、LOW_4 —— iOS 真机用不到，点开看）
 >
@@ -1109,7 +1105,9 @@ private:
 >
 > - A11 及更早（无指针认证）走这支：hash 参数 `<< 48`，bit 63..53 放 hash_mask、52..48 放 hash_shift——和 PAC 版（63..60 mask 位数、59..55 hash_shift、`0x7fff >> mask_bits`）的打包方式不同。这与 §3.2 汇编 ② 里"只留 ARM64e 真机分支"的口径一致。
 
-要点：arm64（`CACHE_MASK_STORAGE_HIGH_16`）上**没有独立 `_mask` 字段**——mask 编码在 `_bucketsAndMaybeMask` 高 16 位，这正是 3.2 里「一条 `ldr` 取出 `mask|buckets`，再 `lsr #48` 拆 mask、`and` 低 48 位拆 buckets」的来源。`maskZeroBits = 4` 让 msgSend 单条指令就能从该字段构造 `mask << 4`。
+
+
+
 
 而这套「融合字」的拆/装，C++ 侧有对应实现——和 3.2 的汇编一一镜像：
 
@@ -1135,33 +1133,33 @@ struct bucket_t *cache_t::buckets() const {                                     
 
 `setBucketsAndMask`（`(mask<<48)|buckets`）= 汇编看到的那个融合字是怎么写进去的；`mask()`（`>>48`）/`buckets()`（`& bucketsMask`）= 汇编 `lsr`/`and` 在 C++ 里的等价拆解。换言之第 3.2 节那几条指令，就是把这三个 C++ 函数手写进了汇编快速路径。
 
-> ### 🔄 旧→新对照（objc4-756.2 → 951.1）：cache_t 三字段 → 融合字段【经典大改造】
->
-> 缓存结构最有名的一次重构。旧版三个独立字段，新版融合成一个 `_bucketsAndMaybeMask`。
->
-> 旧（756.2，`objc-runtime-new.h:82`）：
-> ```objc
-> struct cache_t {
->     struct bucket_t *_buckets;   // 桶数组指针（独立字段）
->     mask_t _mask;                // 容量掩码（独立字段）
->     mask_t _occupied;            // 已用槽数（独立字段）
->     ...
->     void expand();
->     struct bucket_t * find(SEL sel, id receiver);
-> };
-> ```
-> 新（951.1，`:337`，arm64 走 HIGH_16）：
-> ```objc
-> struct cache_t {
->     explicit_atomic<uintptr_t> _bucketsAndMaybeMask;  // 高16位=mask，低48位=buckets，一字双用
->     union {
->         struct { uint32_t _disguisedPreoptCacheSignature; uint16_t _occupied; uint16_t _flags; };
->         explicit_atomic<preopt_cache_t *> _originalPreoptCache;
->     };
->     ...
-> };
-> ```
-> 三字段 → 一字段：`_mask` 不再单独存，挤进 `_bucketsAndMaybeMask` 的高 16 位（省一次内存读取，且第 3.2 节那条「一条 `ldr` 同时取出 mask 和 buckets」正因此成立）；新增的 union 是给 dyld 共享缓存「预优化缓存」让位。`_occupied` 保留。
+### 🔄 旧→新对照（objc4-756.2 → 951.1）：cache_t 三字段 → 融合字段
+
+缓存结构最有名的一次重构。旧版三个独立字段，新版融合成一个 `_bucketsAndMaybeMask`。
+
+旧（756.2，`objc-runtime-new.h:82`）：
+```objc
+struct cache_t {
+    struct bucket_t *_buckets;   // 桶数组指针（独立字段）
+    mask_t _mask;                // 容量掩码（独立字段）
+    mask_t _occupied;            // 已用槽数（独立字段）
+    ...
+    void expand();
+    struct bucket_t * find(SEL sel, id receiver);
+};
+```
+新（951.1，`:337`，arm64 走 HIGH_16）：
+```objc
+struct cache_t {
+    explicit_atomic<uintptr_t> _bucketsAndMaybeMask;  // 高16位=mask，低48位=buckets，一字双用
+    union {
+        struct { uint32_t _disguisedPreoptCacheSignature; uint16_t _occupied; uint16_t _flags; };
+        explicit_atomic<preopt_cache_t *> _originalPreoptCache;
+    };
+    ...
+};
+```
+三字段 → 一字段：`_mask` 不再单独存，挤进 `_bucketsAndMaybeMask` 的高 16 位（省一次内存读取，且第 3.2 节那条「一条 `ldr` 同时取出 mask 和 buckets」正因此成立）；新增的 union 是给 dyld 共享缓存「预优化缓存」让位。`_occupied` 保留。
 
 ### 4.2 `bucket_t`：`{IMP, SEL}` 与 ptrauth（:214）
 
@@ -1258,48 +1256,48 @@ public:
 
 arm64 上 IMP 在前、SEL 在后，所以 3.2 的 `ldp p17, p9`（先 imp 后 sel）顺序与此一致；命中时用 `modifierForSEL`（`buckets_base ^ sel ^ cls`）重算修饰子解签，正是 3.3 实测的两条 `eor`。
 
-> ### 🔄 旧→新对照（756.2 → 951.1）：IMP 签名修饰子从 2 项到 3 项
->
-> 旧（756.2，`objc-runtime-new.h:51`）—— 裸字段，修饰子只有 `&_imp ^ sel` 两项：
-> ```objc
-> #if __arm64__
->     uintptr_t _imp;          // 非 atomic 裸字段
->     SEL _sel;
-> #endif
->     uintptr_t modifierForSEL(SEL newSel) const {
->         return (uintptr_t)&_imp ^ (uintptr_t)newSel;       // 仅 2 项
->     }
-> ```
-> 新（951.1，`:219` / `:227`）—— 原子字段，修饰子加入 `cls` 成 3 项：
-> ```objc
-> #if __arm64__
->     explicit_atomic<uintptr_t> _imp;     // 改为原子字段
->     explicit_atomic<SEL> _sel;
-> #endif
->     uintptr_t modifierForSEL(bucket_t *base, SEL newSel, Class cls) const {
->         return (uintptr_t)base ^ (uintptr_t)newSel ^ (uintptr_t)cls;   // 加入 cls，3 项
->     }
-> ```
-> 把 `cls` 拌进 ptrauth 修饰子，让同一个 IMP 在不同类的缓存里签名不同，跨类伪造更难——这也是第 3.3 节命中时汇编要算**两条** `eor`（`^sel`、`^cls`）的原因；756.2 时只需异或 `sel` 一项。字段也从裸 `uintptr_t` 升级为 `explicit_atomic` 配合无锁读。下面这条（818.2 → 951.1）则是同一行更晚的一次细化：
->
-> ### 🔄 旧→新对照（818.2 → 951.1）：IMP 签名加入「类型判别子」
->
-> 旧（818.2，`objc-runtime-new.h:234`）—— 判别子恒为 `0`：
-> ```objc
-> ptrauth_auth_and_resign(newImp,
->                         ptrauth_key_function_pointer, 0,        // 判别子 = 0
->                         ptrauth_key_process_dependent_code,
->                         modifierForSEL(base, newSel, cls));
-> ```
-> 新（951.1，`:236`）—— 换成 IMP 类型判别子：
-> ```objc
-> bitcast_auth_and_resign(void *, newImp,
->                         ptrauth_key_function_pointer,
->                         ptrauth_function_pointer_type_discriminator(IMP),  // 绑定到 IMP 类型
->                         ptrauth_key_process_dependent_code,
->                         modifierForSEL(base, newSel, cls));
-> ```
-> 把固定判别子 `0` 换成 `ptrauth_function_pointer_type_discriminator(IMP)`，签名绑定到「函数指针类型」，arm64e 上更难被跨类型伪造；951 还新增了配套的 `rawImp()` 取值方法（见上方 `bucket_t` 全文）。
+### 🔄 旧→新对照（756.2 → 951.1）：IMP 签名修饰子从 2 项到 3 项
+
+旧（756.2，`objc-runtime-new.h:51`）—— 裸字段，修饰子只有 `&_imp ^ sel` 两项：
+```objc
+#if __arm64__
+    uintptr_t _imp;          // 非 atomic 裸字段
+    SEL _sel;
+#endif
+    uintptr_t modifierForSEL(SEL newSel) const {
+        return (uintptr_t)&_imp ^ (uintptr_t)newSel;       // 仅 2 项
+    }
+```
+新（951.1，`:219` / `:227`）—— 原子字段，修饰子加入 `cls` 成 3 项：
+```objc
+#if __arm64__
+    explicit_atomic<uintptr_t> _imp;     // 改为原子字段
+    explicit_atomic<SEL> _sel;
+#endif
+    uintptr_t modifierForSEL(bucket_t *base, SEL newSel, Class cls) const {
+        return (uintptr_t)base ^ (uintptr_t)newSel ^ (uintptr_t)cls;   // 加入 cls，3 项
+    }
+```
+把 `cls` 拌进 ptrauth 修饰子，让同一个 IMP 在不同类的缓存里签名不同，跨类伪造更难——这也是第 3.3 节命中时汇编要算**两条** `eor`（`^sel`、`^cls`）的原因；756.2 时只需异或 `sel` 一项。字段也从裸 `uintptr_t` 升级为 `explicit_atomic` 配合无锁读。下面这条（818.2 → 951.1）则是同一行更晚的一次细化：
+
+### 🔄 旧→新对照（818.2 → 951.1）：IMP 签名加入「类型判别子」
+
+旧（818.2，`objc-runtime-new.h:234`）—— 判别子恒为 `0`：
+```objc
+ptrauth_auth_and_resign(newImp,
+                        ptrauth_key_function_pointer, 0,        // 判别子 = 0
+                        ptrauth_key_process_dependent_code,
+                        modifierForSEL(base, newSel, cls));
+```
+新（951.1，`:236`）—— 换成 IMP 类型判别子：
+```objc
+bitcast_auth_and_resign(void *, newImp,
+                        ptrauth_key_function_pointer,
+                        ptrauth_function_pointer_type_discriminator(IMP),  // 绑定到 IMP 类型
+                        ptrauth_key_process_dependent_code,
+                        modifierForSEL(base, newSel, cls));
+```
+把固定判别子 `0` 换成 `ptrauth_function_pointer_type_discriminator(IMP)`，签名绑定到「函数指针类型」，arm64e 上更难被跨类型伪造；951 还新增了配套的 `rawImp()` 取值方法（见上方 `bucket_t` 全文）。
 
 ### 4.3 哈希与开放寻址探测（`cache_hash` :307 / `cache_next` :241）
 
@@ -1446,20 +1444,20 @@ void cache_t::reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld)
 }
 ```
 
-> ### 🔄 旧→新对照（756.2 → 951.1）：缓存写入从「三个自由函数」到「一个 insert 方法」
->
-> 旧（756.2）把写入拆成多块：`cache_fill_nolock()`（自由函数，`objc-cache.mm:556`）判 3/4 装填 → 满了调 `cache_t::expand()`（`:539`，`oldCapacity*2` 翻倍）→ 再 `cache_t::find()`（`:519`，开放寻址找空槽 / 同 sel）落位。
-> ```objc
-> // 756.2：expand() —— 翻倍扩容
-> uint32_t newCapacity = oldCapacity ? oldCapacity*2 : INIT_CACHE_SIZE;
-> // 756.2：find() —— 独立的开放寻址探测
-> do {
->     if (b[i].sel() == 0 || b[i].sel() == s) return &b[i];
-> } while ((i = cache_next(i, m)) != begin);
-> ```
-> 新（951.1）把「判装填 + 扩容 + 探测落位」**合并进一个 `cache_t::insert()`**（见 5.1 全文），`reallocate` 还多了 `freeOld` 参数管旧表回收。
->
-> 一处**没变**的设计（756.2 `:476` 与 951.1 `:814` 注释一字不差）：`// Cache's old contents are not propagated.`——扩容即丢弃旧表、不迁移，从那时起就是如此，并非新近退化。
+### 🔄 旧→新对照（756.2 → 951.1）：缓存写入从「三个自由函数」到「一个 insert 方法」
+
+旧（756.2）把写入拆成多块：`cache_fill_nolock()`（自由函数，`objc-cache.mm:556`）判 3/4 装填 → 满了调 `cache_t::expand()`（`:539`，`oldCapacity*2` 翻倍）→ 再 `cache_t::find()`（`:519`，开放寻址找空槽 / 同 sel）落位。
+```objc
+// 756.2：expand() —— 翻倍扩容
+uint32_t newCapacity = oldCapacity ? oldCapacity*2 : INIT_CACHE_SIZE;
+// 756.2：find() —— 独立的开放寻址探测
+do {
+    if (b[i].sel() == 0 || b[i].sel() == s) return &b[i];
+} while ((i = cache_next(i, m)) != begin);
+```
+新（951.1）把「判装填 + 扩容 + 探测落位」**合并进一个 `cache_t::insert()`**（见 5.1 全文），`reallocate` 还多了 `freeOld` 参数管旧表回收。
+
+一处**没变**的设计（756.2 `:476` 与 951.1 `:814` 注释一字不差）：`// Cache's old contents are not propagated.`——扩容即丢弃旧表、不迁移，从那时起就是如此，并非新近退化。
 
 ### 5.3 装填因子与留空策略
 
@@ -1659,53 +1657,53 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
 }
 ```
 
-> ### 🔄 旧→新对照（756.2 → 951.1）：查找函数的签名与「乐观缓存查找」
->
-> 旧（756.2，`objc-runtime-new.mm:5264`）—— Class 在前、三个 bool 参数；函数**开头自带一次乐观缓存查找**；对外入口是包装函数 `_class_lookupMethodAndLoadCache3`：
-> ```objc
-> IMP _class_lookupMethodAndLoadCache3(id obj, SEL sel, Class cls) {      // :5245 旧对外入口
->     return lookUpImpOrForward(cls, sel, obj, YES/*initialize*/, NO/*cache*/, YES/*resolver*/);
-> }
-> IMP lookUpImpOrForward(Class cls, SEL sel, id inst,
->                        bool initialize, bool cache, bool resolver)      // :5264 旧签名（3 个 bool）
-> {
->     IMP imp = nil;
->     bool triedResolver = NO;
->     runtimeLock.assertUnlocked();
->     // Optimistic cache lookup
->     if (cache) {                          // ← 进锁前先查一次缓存
->         imp = cache_getImp(cls, sel);
->         if (imp) return imp;
->     }
->     runtimeLock.lock();
->     ...
-> }
-> ```
-> 新（951.1，`:7624`）—— `inst` 在前、三个 bool 合并成一个 `int behavior` 位掩码；并**删掉了开头那次乐观缓存查找**：
-> ```objc
-> IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)       // :7624 新签名（位掩码）
-> // 注释（:7673）：进锁后这里曾经会再查一次缓存，但实测「绝大多数是 miss」反而费时，故移除
-> ```
-> 三个 bool → 一个 `behavior` 位掩码（`LOOKUP_INITIALIZE | LOOKUP_RESOLVER | LOOKUP_NIL | LOOKUP_NOCACHE`，更易扩展）；旧的 `triedResolver` 布尔也被 `behavior ^= LOOKUP_RESOLVER` 取代。下面这条（818.2 → 951.1）是更晚的一处增量：
->
-> ### 🔄 旧→新对照（818.2 → 951.1）：`lookUpImpOrForward` 新增「禁用类」短路
->
-> 951 在取锁、realize 之后、进入查找主循环之前，**多了一段**把「被禁用的类」按 nil 处理的短路（818.2 此处直接进 `for` 主循环）：
-> ```objc
-> // 951.1 新增（objc-runtime-new.mm:7681；旧版 818.2 在 curClass=cls 后直接进 for 循环）
-> // Has this class been disabled? Act like a message to nil.
-> if (!cls || !cls->ISA()) {
-> #if __arm64__
->     imp = _objc_returnNil;
->     goto done;
-> #elif __x86_64
->     ... 按返回类型选 _objc_msgNil / _objc_msgNil_fpret / _objc_msgNil_fp2ret ...
->     behavior |= LOOKUP_NOCACHE;
->     goto done;
-> #endif
-> }
-> ```
-> 另外两处小改：818.2 的 `Method meth = getMethodNoSuper_nolock(...)` 在 951 改为具体类型 `method_t *meth = ...`；818.2 紧跟其后的 `lookupMethodInClassAndLoadCache`（`.cxx_construct/.cxx_destruct` 专用）在 951 此处已被挪走。
+### 🔄 旧→新对照（756.2 → 951.1）：查找函数的签名与「乐观缓存查找」
+
+旧（756.2，`objc-runtime-new.mm:5264`）—— Class 在前、三个 bool 参数；函数**开头自带一次乐观缓存查找**；对外入口是包装函数 `_class_lookupMethodAndLoadCache3`：
+```objc
+IMP _class_lookupMethodAndLoadCache3(id obj, SEL sel, Class cls) {      // :5245 旧对外入口
+    return lookUpImpOrForward(cls, sel, obj, YES/*initialize*/, NO/*cache*/, YES/*resolver*/);
+}
+IMP lookUpImpOrForward(Class cls, SEL sel, id inst,
+                       bool initialize, bool cache, bool resolver)      // :5264 旧签名（3 个 bool）
+{
+    IMP imp = nil;
+    bool triedResolver = NO;
+    runtimeLock.assertUnlocked();
+    // Optimistic cache lookup
+    if (cache) {                          // ← 进锁前先查一次缓存
+        imp = cache_getImp(cls, sel);
+        if (imp) return imp;
+    }
+    runtimeLock.lock();
+    ...
+}
+```
+新（951.1，`:7624`）—— `inst` 在前、三个 bool 合并成一个 `int behavior` 位掩码；并**删掉了开头那次乐观缓存查找**：
+```objc
+IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)       // :7624 新签名（位掩码）
+// 注释（:7673）：进锁后这里曾经会再查一次缓存，但实测「绝大多数是 miss」反而费时，故移除
+```
+三个 bool → 一个 `behavior` 位掩码（`LOOKUP_INITIALIZE | LOOKUP_RESOLVER | LOOKUP_NIL | LOOKUP_NOCACHE`，更易扩展）；旧的 `triedResolver` 布尔也被 `behavior ^= LOOKUP_RESOLVER` 取代。下面这条（818.2 → 951.1）是更晚的一处增量：
+
+### 🔄 旧→新对照（818.2 → 951.1）：`lookUpImpOrForward` 新增「禁用类」短路
+
+951 在取锁、realize 之后、进入查找主循环之前，**多了一段**把「被禁用的类」按 nil 处理的短路（818.2 此处直接进 `for` 主循环）：
+```objc
+// 951.1 新增（objc-runtime-new.mm:7681；旧版 818.2 在 curClass=cls 后直接进 for 循环）
+// Has this class been disabled? Act like a message to nil.
+if (!cls || !cls->ISA()) {
+#if __arm64__
+    imp = _objc_returnNil;
+    goto done;
+#elif __x86_64
+    ... 按返回类型选 _objc_msgNil / _objc_msgNil_fpret / _objc_msgNil_fp2ret ...
+    behavior |= LOOKUP_NOCACHE;
+    goto done;
+#endif
+}
+```
+另外两处小改：818.2 的 `Method meth = getMethodNoSuper_nolock(...)` 在 951 改为具体类型 `method_t *meth = ...`；818.2 紧跟其后的 `lookupMethodInClassAndLoadCache`（`.cxx_construct/.cxx_destruct` 专用）在 951 此处已被挪走。
 
 ## 7. 在当前类找方法
 
@@ -1832,26 +1830,26 @@ findMethodInSortedMethodList(SEL key, const method_list_t *list)
 
 方法列表按 SEL 地址排序故能二分；命中后**向前回退到第一个相等项**，保证分类覆盖原方法时取到分类版本。
 
-> ### 🔄 旧→新对照（818.2 → 951.1）：二分查找入口从「二分类」到「三分类 + 相对偏移比较」
->
-> 旧（818.2，`objc-runtime-new.mm:5962`）—— `isSmallList()` 两分支，lambda 直接给出 SEL：
-> ```objc
-> findMethodInSortedMethodList(SEL key, const method_list_t *list)
-> {
->     if (list->isSmallList()) {
->         if (CONFIG_SHARED_CACHE_RELATIVE_DIRECT_SELECTORS && objc::inSharedCache((uintptr_t)list)) {
->             return findMethodInSortedMethodList(key, list, [](method_t &m) { return m.getSmallNameAsSEL(); });
->         } else {
->             return findMethodInSortedMethodList(key, list, [](method_t &m) { return m.getSmallNameAsSELRef(); });
->         }
->     } else {
->         return findMethodInSortedMethodList(key, list, [](method_t &m) { return m.big().name; });
->     }
-> }
-> ```
-> 新（951.1，`:7061`）—— `switch (list->listKind())` 三种 Kind（**新增 `bigSigned`**），且共享缓存里改成按相对偏移 `compare(keyOffset, ...)` 直接比较，不再先解析出 SEL（全文见 7.2 上方）。
->
-> 两点实质变化：① 方法名指针在 arm64e 上可被签名，于是多出 `bigSigned` 这一 Kind；② 共享缓存场景用 `key - sharedCacheRelativeMethodBase()` 得到的偏移直接比，省掉「解引用取 SEL」一步。
+### 🔄 旧→新对照（818.2 → 951.1）：二分查找入口从「二分类」到「三分类 + 相对偏移比较」
+
+旧（818.2，`objc-runtime-new.mm:5962`）—— `isSmallList()` 两分支，lambda 直接给出 SEL：
+```objc
+findMethodInSortedMethodList(SEL key, const method_list_t *list)
+{
+    if (list->isSmallList()) {
+        if (CONFIG_SHARED_CACHE_RELATIVE_DIRECT_SELECTORS && objc::inSharedCache((uintptr_t)list)) {
+            return findMethodInSortedMethodList(key, list, [](method_t &m) { return m.getSmallNameAsSEL(); });
+        } else {
+            return findMethodInSortedMethodList(key, list, [](method_t &m) { return m.getSmallNameAsSELRef(); });
+        }
+    } else {
+        return findMethodInSortedMethodList(key, list, [](method_t &m) { return m.big().name; });
+    }
+}
+```
+新（951.1，`:7061`）—— `switch (list->listKind())` 三种 Kind（**新增 `bigSigned`**），且共享缓存里改成按相对偏移 `compare(keyOffset, ...)` 直接比较，不再先解析出 SEL（全文见 7.2 上方）。
+
+两点实质变化：① 方法名指针在 arm64e 上可被签名，于是多出 `bigSigned` 这一 Kind；② 共享缓存场景用 `key - sharedCacheRelativeMethodBase()` 得到的偏移直接比，省掉「解引用取 SEL」一步。
 
 ## 8. 沿 superclass 链逐层上溯（每层先查父类 cache）
 
