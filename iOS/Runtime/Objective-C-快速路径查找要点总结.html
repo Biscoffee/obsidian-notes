@@ -1,0 +1,182 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>show_widget</title>
+</head>
+<body>
+<style>
+:root{
+--primary:#F3A04C;--accent:#E58522;--background:#F4F4F6;--panel-bg:#FEFDFC;--card-bg:#fff;
+--success:#40B43E;--warning:#EBA400;--destructive:#E65C53;--primary-foreground:#fff;
+--text-primary:rgba(0,0,0,.8);--text-secondary:rgba(0,0,0,.5);--text-tertiary:rgba(0,0,0,.35);
+--intensity-3:rgba(0,0,0,.03);--intensity-4:rgba(0,0,0,.04);--intensity-6:rgba(0,0,0,.06);
+--intensity-8:rgba(0,0,0,.08);--intensity-12:rgba(0,0,0,.12);--intensity-60:rgba(0,0,0,.6);
+--input-shadow:rgba(0,0,0,.08);
+font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+}
+@media (prefers-color-scheme:dark){
+:root{
+--background:#232324;--panel-bg:#332D28;--card-bg:#2E2E2E;--primary-foreground:#000;
+--text-primary:rgba(255,255,255,.8);--text-secondary:rgba(255,255,255,.5);--text-tertiary:rgba(255,255,255,.35);
+--intensity-3:rgba(255,255,255,.03);--intensity-4:rgba(255,255,255,.04);--intensity-6:rgba(255,255,255,.06);
+--intensity-8:rgba(255,255,255,.08);--intensity-12:rgba(255,255,255,.12);--intensity-60:rgba(255,255,255,.6);
+--input-shadow:rgba(0,0,0,.28)
+}
+}
+*{box-sizing:border-box}
+.wrap{display:block;width:100%;color:var(--text-primary);background:var(--background);border-radius:18px;padding:20px}
+.head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.head h2{font-size:18px;font-weight:600;margin:0}
+.head .sub{font-size:12px;color:var(--text-secondary)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.tag{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:10px;font-weight:500;border:.5px solid var(--intensity-8)}
+.tag.p{background:color-mix(in srgb,var(--primary) 18%,transparent);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:16px}
+.card{background:var(--card-bg);border:.5px solid var(--intensity-8);border-radius:14px;padding:14px 16px;min-width:0}
+.card .step{font-size:11px;font-weight:600;color:var(--accent);letter-spacing:.04em}
+.card .ct{font-size:14px;font-weight:600;margin:6px 0 8px}
+.card .cd{font-size:12.5px;color:var(--text-secondary);line-height:1.55}
+.card .cd code{font-family:ui-monospace,Menlo,Consolas,monospace;background:var(--intensity-6);padding:1px 5px;border-radius:6px;color:var(--text-primary);font-size:11.5px}
+.sec{font-size:13px;font-weight:600;margin:22px 0 4px;color:var(--text-primary)}
+.sec .pin{font-size:11px;font-weight:500;color:var(--text-tertiary);margin-left:6px}
+.asm{background:var(--panel-bg);border:.5px solid var(--intensity-8);border-radius:14px;padding:4px 0;margin-top:10px;overflow:hidden}
+.row{display:grid;grid-template-columns:78px 1fr;gap:12px;padding:9px 16px;align-items:start}
+.row+.row{border-top:.5px solid var(--intensity-6)}
+.row .ln{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--accent);font-weight:600;padding-top:1px}
+.row .rt{font-size:12.5px;color:var(--text-primary);line-height:1.5}
+.row .rt b{font-weight:600}
+.row .rt span{color:var(--text-secondary)}
+.note{margin-top:14px;display:flex;gap:8px;align-items:flex-start;background:var(--intensity-4);border-radius:12px;padding:11px 14px;font-size:12px;color:var(--text-secondary);line-height:1.55}
+.note .k{color:var(--warning);font-weight:600;flex:none}
+</style>
+<div class="wrap">
+  <div class="head">
+    <h2>Objective-C 快速路径查找要点</h2>
+    <span class="tag p">objc-msg-arm64.s</span>
+  </div>
+  <div class="head"><span class="sub">第一部分 · 快速路径（缓存命中）— 从 <span class="mono">[obj foo]</span> 到 IMP 的最短路</span></div>
+
+  <div class="sec">一、方法调用的本质与汇编缘由</div>
+  <div class="grid">
+    <div class="card">
+      <div class="step">01 · 调用本质</div>
+      <div class="ct">消息发送即函数转译</div>
+      <div class="cd"><code>[obj foo]</code> 在编译期被改写为 <code>objc_msgSend(obj, sel)</code>，即把方法调用转换成对运行时的一次函数派发，由 receiver 与 selector 共同决定最终执行的 IMP。</div>
+    </div>
+    <div class="card">
+      <div class="step">02 · 为何用汇编</div>
+      <div class="ct">极致性能与寄存器可控</div>
+      <div class="cd">每一次方法调用都会走 <code>objc_msgSend</code>，是绝对热点。用汇编手写可避免编译器破坏调用约定、精确控制寄存器、并实现高效的尾调用 <code>br</code> 跳转，把开销压到最低。</div>
+    </div>
+  </div>
+
+  <div class="sec">二、快速路径汇编逐段<span class="pin">第 3 节 · objc-msg-arm64.s</span></div>
+  <div class="asm">
+    <div class="row">
+      <div class="ln">布局</div>
+      <div class="rt"><b>3.0 类对象内存布局</b><br><span>先确定 <code>#CACHE</code> 与 <code>#SUPERCLASS</code> 这两个偏移量从何而来，它们是后续读取缓存与父类指针的基础。</span></div>
+    </div>
+    <div class="row">
+      <div class="ln">:115</div>
+      <div class="rt"><b>3.1 取 isa → class</b><br><span>通过 <code>GetClassFromIsa_p16</code> 用 <code>ISA_MASK</code> 抹掉 isa 中的非指针位，得到真正的 class，呼应 Part 1 中的 isa 指针布局。</span></div>
+    </div>
+    <div class="row">
+      <div class="ln">:336</div>
+      <div class="rt"><b>3.2 CacheLookup</b><br><span>按 <code>SEL</code> 做哈希，定位到缓存中对应的 <code>bucket</code>，准备比对缓存里存放的 sel-imp 键值对。</span></div>
+    </div>
+    <div class="row">
+      <div class="ln">:316</div>
+      <div class="rt"><b>3.3 命中 / 未命中分支</b><br><span>命中（<code>CacheHit</code>）则直接 <code>br IMP</code> 跳转执行；未命中则转入慢速查找（方法列表 / 继承链）。</span></div>
+    </div>
+  </div>
+
+  <div class="sec">三、缓存查找控制流</div>
+  <svg width="100%" viewBox="0 0 680 250" role="img" aria-label="objc_msgSend 快速路径缓存查找流程">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+    <style>
+      .t{font:400 13px ui-sans-serif,system-ui;fill:var(--text-primary,rgba(0,0,0,.8))}
+      .th{font:600 13px ui-sans-serif,system-ui;fill:var(--text-primary,rgba(0,0,0,.8))}
+      .ts{font:400 11px ui-monospace,Menlo,monospace;fill:var(--text-secondary,rgba(0,0,0,.5))}
+      .box{fill:var(--card-bg,#fff);stroke:var(--intensity-12,rgba(0,0,0,.12));stroke-width:.5}
+      .arr{fill:none;stroke:var(--intensity-60,rgba(0,0,0,.35));stroke-width:1.5;marker-end:url(#arrow)}
+      .hit{fill:none;stroke:#40B43E;stroke-width:1.5;marker-end:url(#arrow)}
+      .miss{fill:none;stroke:#E58522;stroke-width:1.5;marker-end:url(#arrow)}
+      @media (prefers-color-scheme:dark){
+        .t,.th{fill:rgba(255,255,255,.8)}.ts{fill:rgba(255,255,255,.55)}
+        .box{fill:#2E2E2E;stroke:rgba(255,255,255,.12)}
+      }
+    </style>
+    <rect class="box" x="40" y="30" width="150" height="56" rx="10"/>
+    <text class="th" x="115" y="52" text-anchor="middle">objc_msgSend</text>
+    <text class="ts" x="115" y="70" text-anchor="middle">[obj foo]</text>
+
+    <rect class="box" x="265" y="30" width="150" height="56" rx="10"/>
+    <text class="th" x="340" y="52" text-anchor="middle">取 class</text>
+    <text class="ts" x="340" y="70" text-anchor="middle">isa &amp; ISA_MASK</text>
+
+    <rect class="box" x="490" y="30" width="150" height="56" rx="10"/>
+    <text class="th" x="565" y="52" text-anchor="middle">CacheLookup</text>
+    <text class="ts" x="565" y="70" text-anchor="middle">hash(SEL) → bucket</text>
+
+    <path class="arr" d="M190 58 L262 58"/>
+    <path class="arr" d="M415 58 L487 58"/>
+    <path class="arr" d="M565 86 L565 116"/>
+
+    <rect class="box" x="490" y="116" width="150" height="42" rx="10"/>
+    <text class="th" x="565" y="142" text-anchor="middle">比对 SEL</text>
+
+    <rect class="box" x="40" y="190" width="220" height="46" rx="10" stroke="#40B43E" stroke-width="1"/>
+    <text class="th" x="150" y="210" text-anchor="middle">命中 CacheHit · :316</text>
+    <text class="ts" x="150" y="226" text-anchor="middle">br IMP 直接跳转执行</text>
+
+    <rect class="box" x="420" y="190" width="220" height="46" rx="10" stroke="#E58522" stroke-width="1"/>
+    <text class="th" x="530" y="210" text-anchor="middle">未命中 → 慢速查找</text>
+    <text class="ts" x="530" y="226" text-anchor="middle">方法列表 / 继承链</text>
+
+    <path class="hit" d="M520 158 L520 175 L150 175 L150 187"/>
+    <path class="miss" d="M610 158 L610 175 L530 175 L530 187"/>
+    <text class="ts" x="335" y="171" text-anchor="middle" fill="#40B43E">命中</text>
+    <text class="ts" x="624" y="171" text-anchor="middle" fill="#E58522">未命中</text>
+  </svg>
+
+  <div class="note"><span class="k">关键</span><span>快速路径的全部目标，就是在缓存命中时用最少指令完成 <b>isa → class → CacheLookup → br IMP</b>；只有缓存落空才会付出慢速查找的代价。这正是 <code>objc_msgSend</code> 用汇编手写的根本动机。</span></div>
+</div><script data-tabbit-widget-diagnostics="true">
+(function(){
+  if (window.__tabbitWidgetDiagnosticsInstalled) return;
+  window.__tabbitWidgetDiagnosticsInstalled = true;
+  window.__TABBIT_WIDGET_ERRORS__ = window.__TABBIT_WIDGET_ERRORS__ || [];
+  function emit(level, args) {
+    var payload = {
+      type: "tabbit_widget_diagnostics",
+      level: level,
+      message: Array.prototype.slice.call(args || []).map(function(item) {
+        if (item && item.stack) return item.stack;
+        if (typeof item === "string") return item;
+        try { return JSON.stringify(item); } catch (_) { return String(item); }
+      }).join(" "),
+      timestamp: Date.now()
+    };
+    window.__TABBIT_WIDGET_ERRORS__.push(payload);
+    try { window.parent && window.parent.postMessage(payload, "*"); } catch (_) {}
+  }
+  var originalError = console.error;
+  console.error = function() {
+    emit("error", arguments);
+    return originalError && originalError.apply(console, arguments);
+  };
+  window.addEventListener("error", function(event) {
+    emit("error", [event.message || "Script error", event.filename || "", event.lineno || ""]);
+  });
+  window.addEventListener("unhandledrejection", function(event) {
+    emit("unhandledrejection", [event.reason || "Unhandled promise rejection"]);
+  });
+})();
+</script>
+</body>
+</html>
