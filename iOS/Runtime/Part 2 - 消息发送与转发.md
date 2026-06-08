@@ -17,7 +17,7 @@
   - 4.3 哈希与开放寻址探测（`cache_hash` / `cache_next`）
 - **5. 缓存的写入与扩容**（`objc-cache.mm`）
   - 5.1 `insert`：哈希落位（:873）
-  - 5.2 `reallocate`：翻倍扩容、丢弃旧表不迁移（:809）
+  - 5.2 `reallocate`：翻倍扩容、丢弃旧表不迁移（:808）
   - 5.3 装填因子与留空策略
 
 ### 第二部分 · 慢速查找（lookUpImpOrForward）
@@ -498,7 +498,7 @@ LLookupStart\Function:
 	// ════════ ① ：取 mask + buckets  ════════
 #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16_BIG_ADDRS
 
-	//macOS(M系列)/模拟器走这里（地址空间大，objc-config.h:218）
+	//macOS 原生 + Mac Catalyst 走这里（地址空间大，objc-config.h:218）
 	
 	ldr	p10, [x16, #CACHE]				// p10 = mask|buckets
 	lsr	p11, p10, #48			// p11 = mask
@@ -800,7 +800,7 @@ br    x17                         // NORMAL 模式：直接跳进方法体执行
 ```text
 ;; LLDB disassemble --frame：objc_msgSend 内联展开的 CacheLookup（macOS arm64 = HIGH_16_BIG_ADDRS）
 ;; 寄存器约定：x16=isa/cls  x1=_cmd(SEL)  x10=buckets基址  x11=mask  x13=当前bucket  x9=槽内SEL  x17=槽内IMP
-  <+28>: mov  x15, x16                  ; 备份 isa（转发回退父类时要用，对应宏 `mov x15,x16`）
+  <+28>: mov  x15, x16                  ; 备份初始 isa；preopt fallback 改写 x16 后，x15 仍保留起始类，CacheHit LOOKUP 的 `cmp x16, x15 / cinc` 凭此判断是否命中父类
   <+32>: ldr  x10, [x16, #0x10]         ; x10 = cache 字段 = mask|buckets（#CACHE=0x10）
   <+36>: lsr  x11, x10, #48             ; x11 = mask（高 16 位）
   <+40>: and  x10, x10, #0xffffffffffff ; x10 = buckets（低 48 位）
@@ -875,7 +875,7 @@ do {
 	AuthAndResignAsIMP x17, x10, x1, x16, x10	// authenticate imp and re-sign as IMP，先 `AuthAndResignAsIMP` 解签重签 IMP(注释说明:这里**不做 nil 检查**——因为调用方拿到 nil IMP 去跳本来就会崩,我们不在乎这个 nil 跳转顺带 PAC 失败,省一步);
 	cmp	x16, x15    //拿当前 isa(`x16`)和最初备份的原始 isa(`x15`)​ 比较。还记得 `CacheLookup` 开头 `mov x15, x16` 和预优化路径里 fallback 改写 `x16` 吗?如果查找过程中沿继承链上溯过,`x16` 就会和 `x15` 不一样;
 	
-	cinc	x16, x16, ne			// x16 += 1 when x15 != x16 (for instrumentation ; fallback to the parent class)。条件自增——当 `x15 != x16`(即确实回退到了父类)时给 `x16` 加 1。这是给上层 instrumentation/调试用的标志位,告诉它"这次命中的 IMP 不是原始类自己的,而是从父类找来的";
+	cinc	x16, x16, ne			// x16 += 1 when x15 != x16 (for instrumentation ; fallback to the parent class)。条件自增——当 `x15 != x16`（即 preopt fallback 路径改写了 x16、确实回退到父类）时给 `x16` 加 1，作为 instrumentation 标志位；非 preopt 的普通快速路径中 x16 自始至终不变，此指令不会触发。
 	
 	ret				// return imp via x17，通过 `x17` 返回 IMP(注意是返回,不是跳转)
 					//objc_msgLookup 走这条：返回 IMP 但不跳（super 调用用）
@@ -922,11 +922,6 @@ do {
 > 5: ldur  x9, [x10, #-16]       // fallback offset 移到 -16
 > ```
 > 动机（951 新增注释自陈）：共享缓存越来越大，32 位 imp 偏移不够「够到」远处的 IMP，于是把 imp 偏移扩到 38 位（再 `<<2` 进一步增大寻址范围），sel 偏移压到 26 位（足够寻址 ~64MB 选择子表）。
-
-
-
-![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260607215758067.png)
-
 
 
 
@@ -1118,7 +1113,7 @@ struct bucket_t *cache_t::buckets() const {                                     
 >     ...
 > };
 > ```
-> 三字段 → 一字段：`_mask` 不再单独存，挤进 `_bucketsAndMaybeMask` 的高 16 位（每个类省 8 字节，且第 3.2 节那条「一条 `ldr` 同时取出 mask 和 buckets」正因此成立）；新增的 union 是给 dyld 共享缓存「预优化缓存」让位。`_occupied` 保留。
+> 三字段 → 一字段：`_mask` 不再单独存，挤进 `_bucketsAndMaybeMask` 的高 16 位（省一次内存读取，且第 3.2 节那条「一条 `ldr` 同时取出 mask 和 buckets」正因此成立）；新增的 union 是给 dyld 共享缓存「预优化缓存」让位。`_occupied` 保留。
 
 ### 4.2 `bucket_t`：`{IMP, SEL}` 与 ptrauth（:214）
 
@@ -1141,7 +1136,7 @@ private:
     // Compute the ptrauth signing modifier from &_imp, newSel, and cls.
     uintptr_t modifierForSEL(bucket_t *base, SEL newSel, Class cls) const {
         return (uintptr_t)base ^ (uintptr_t)newSel ^ (uintptr_t)cls;
-        //IMP 的签名修饰子 = &_imp ^ sel ^ cls（命中时汇编里两条 eor 就是在重算它）
+        //IMP 的签名修饰子 = buckets_base ^ sel ^ cls（命中时汇编里两条 eor 就是在重算它）
     }
 
     // Sign newImp, with &_imp, newSel, and cls as modifiers.
@@ -1213,7 +1208,7 @@ public:
 };
 ```
 
-arm64 上 IMP 在前、SEL 在后，所以 3.2 的 `ldp p17, p9`（先 imp 后 sel）顺序与此一致；命中时用 `modifierForSEL`（`&_imp ^ sel ^ cls`）重算修饰子解签，正是 3.3 实测的两条 `eor`。
+arm64 上 IMP 在前、SEL 在后，所以 3.2 的 `ldp p17, p9`（先 imp 后 sel）顺序与此一致；命中时用 `modifierForSEL`（`buckets_base ^ sel ^ cls`）重算修饰子解签，正是 3.3 实测的两条 `eor`。
 
 > ### 🔄 旧→新对照（756.2 → 951.1）：IMP 签名修饰子从 2 项到 3 项
 >
@@ -1372,7 +1367,7 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
 }
 ```
 
-### 5.2 `reallocate`：翻倍扩容、丢弃旧表不迁移（:809）
+### 5.2 `reallocate`：翻倍扩容、丢弃旧表不迁移（:808）
 
 逐字全文：
 
@@ -1418,7 +1413,7 @@ void cache_t::reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld)
 
 ### 5.3 装填因子与留空策略
 
-`insert` 里 `cache_fill_ratio(capacity)`（默认 3/4）就是装填因子上限；开放寻址表必须留空槽，3.2 探测循环正是靠 `cbz p9`（撞到 sel==0 的空槽）判定 miss——所以缓存永不会被填满到没有空位。
+`insert` 里 `cache_fill_ratio(capacity)`（默认 3/4）就是装填因子上限；3.2 探测循环靠 `cbz p9` 撞空槽判定 miss——3/4 装填上限通常保证有空槽；但启用 `CACHE_ALLOW_FULL_UTILIZATION` 时小容量表（`capacity <= FULL_UTILIZATION_CACHE_SIZE`）可达 100%，此时 wrap-around 靠「绕回出发点」而非「撞空槽」终止（正是 §3.2 引用的那条注释所解释的）。
 
 ---
 
