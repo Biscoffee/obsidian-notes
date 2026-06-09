@@ -1257,7 +1257,7 @@ public:
 
 arm64 上 IMP 在前、SEL 在后，所以 3.2 的 `ldp p17, p9`（先 imp 后 sel）顺序与此一致；命中时用 `modifierForSEL`（`buckets_base ^ sel ^ cls`）重算修饰子解签，正是 3.3 实测的两条 `eor`。
 
-### 🔄 旧→新对照（756.2 → 951.1）：IMP 签名修饰子从 2 项到 3 项
+ 旧→新对照（756.2 → 951.1）：IMP 签名修饰子从 2 项到 3 项
 
 旧（756.2，`objc-runtime-new.h:51`）—— 裸字段，修饰子只有 `&_imp ^ sel` 两项：
 ```objc
