@@ -1,0 +1,418 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>show_widget</title>
+</head>
+<body>
+
+<style>
+:root{
+--primary:#F3A04C;--accent:#E58522;--background:#F4F4F6;--panel-bg:#FEFDFC;--card-bg:#fff;
+--tooltip-bg:#454545;--success:#40B43E;--warning:#EBA400;--destructive:#E65C53;
+--primary-foreground:#fff;--text-primary:rgba(0,0,0,.8);--text-secondary:rgba(0,0,0,.5);
+--text-tertiary:rgba(0,0,0,.35);--intensity-4:rgba(0,0,0,.04);--intensity-6:rgba(0,0,0,.06);
+--intensity-8:rgba(0,0,0,.08);--intensity-12:rgba(0,0,0,.12);--intensity-20:rgba(0,0,0,.2);
+--intensity-35:rgba(0,0,0,.35);--intensity-60:rgba(0,0,0,.6);--input-shadow:rgba(0,0,0,.08);
+font-family:ui-sans-serif,system-ui,-apple-system,sans-serif
+}
+@media(prefers-color-scheme:dark){
+:root{
+--background:#232324;--panel-bg:#2A2A2B;--card-bg:#2E2E2E;
+--primary-foreground:#000;--text-primary:rgba(255,255,255,.85);--text-secondary:rgba(255,255,255,.5);
+--text-tertiary:rgba(255,255,255,.35);--intensity-4:rgba(255,255,255,.04);--intensity-6:rgba(255,255,255,.06);
+--intensity-8:rgba(255,255,255,.08);--intensity-12:rgba(255,255,255,.12);--intensity-20:rgba(255,255,255,.2);
+--intensity-35:rgba(255,255,255,.35);--intensity-60:rgba(255,255,255,.6);--input-shadow:rgba(0,0,0,.35)
+}
+}
+*{box-sizing:border-box;margin:0;padding:0}
+button{cursor:pointer}
+</style>
+
+<div style="display:block;width:100%;color:var(--text-primary);font-size:13px;line-height:1.5;">
+
+  <!-- Tab bar -->
+  <div style="display:flex;gap:4px;padding:0 0 16px 0;border-bottom:.5px solid var(--intensity-8);margin-bottom:20px;flex-wrap:wrap;">
+    <button class="tab-btn" data-tab="overview" style="height:32px;padding:0 14px;border:.5px solid var(--intensity-8);border-radius:999px;background:var(--primary);color:var(--primary-foreground);font-size:12px;font-weight:500;">总览</button>
+    <button class="tab-btn" data-tab="bits" style="height:32px;padding:0 14px;border:.5px solid var(--intensity-8);border-radius:999px;background:var(--intensity-6);color:var(--text-primary);font-size:12px;font-weight:500;">位域结构</button>
+    <button class="tab-btn" data-tab="union" style="height:32px;padding:0 14px;border:.5px solid var(--intensity-8);border-radius:999px;background:var(--intensity-6);color:var(--text-primary);font-size:12px;font-weight:500;">union 详解</button>
+    <button class="tab-btn" data-tab="bucket" style="height:32px;padding:0 14px;border:.5px solid var(--intensity-8);border-radius:999px;background:var(--intensity-6);color:var(--text-primary);font-size:12px;font-weight:500;">bucket_t</button>
+    <button class="tab-btn" data-tab="flow" style="height:32px;padding:0 14px;border:.5px solid var(--intensity-8);border-radius:999px;background:var(--intensity-6);color:var(--text-primary);font-size:12px;font-weight:500;">msgSend 流程</button>
+  </div>
+
+  <!-- ===== TAB: overview ===== -->
+  <div class="tab-panel" id="tab-overview">
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">cache_t 实例内存（arm64 真机，共 16 bytes）</div>
+
+    <!-- memory strip -->
+    <div style="display:flex;border-radius:10px;overflow:hidden;border:.5px solid var(--intensity-12);margin-bottom:20px;">
+      <div style="flex:1;background:color-mix(in srgb,#F3A04C 15%,transparent);padding:12px 14px;border-right:.5px solid var(--intensity-12);">
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;">offset 0 · 8 bytes</div>
+        <div style="font-size:13px;font-weight:500;color:var(--text-primary);margin-bottom:2px;">_bucketsAndMaybeMask</div>
+        <div style="font-size:11px;color:var(--text-secondary);">uintptr_t · 位域打包</div>
+      </div>
+      <div style="flex:1;background:color-mix(in srgb,#58B2DC 12%,transparent);padding:12px 14px;">
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;">offset 8 · 8 bytes</div>
+        <div style="font-size:13px;font-weight:500;color:var(--text-primary);margin-bottom:2px;">union { struct | preoptCache }</div>
+        <div style="font-size:11px;color:var(--text-secondary);">两套身份共享内存</div>
+      </div>
+    </div>
+
+    <!-- two cards -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div style="background:var(--card-bg);border:.5px solid var(--intensity-8);border-radius:14px;padding:14px;">
+        <div style="font-size:12px;font-weight:500;color:var(--text-primary);margin-bottom:8px;">字段 1 — _bucketsAndMaybeMask</div>
+        <pre style="font-size:11px;color:#E58522;background:var(--intensity-4);border-radius:8px;padding:10px;overflow-x:auto;line-height:1.6;">explicit_atomic&lt;uintptr_t&gt;
+  _bucketsAndMaybeMask;</pre>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:8px;">一个整数，同时打包了 mask（高16位）和 buckets 指针（低44位）</div>
+      </div>
+      <div style="background:var(--card-bg);border:.5px solid var(--intensity-8);border-radius:14px;padding:14px;">
+        <div style="font-size:12px;font-weight:500;color:var(--text-primary);margin-bottom:8px;">字段 2 — union</div>
+        <pre style="font-size:11px;color:#58B2DC;background:var(--intensity-4);border-radius:8px;padding:10px;overflow-x:auto;line-height:1.6;">union {
+  struct {
+    uint32_t _disguised…;
+    uint16_t _occupied;
+    uint16_t _flags;
+  };
+  preopt_cache_t *_orig…;
+};</pre>
+      </div>
+    </div>
+
+    <!-- static constexpr note -->
+    <div style="background:var(--intensity-4);border-radius:10px;padding:12px 14px;border-left:3px solid var(--primary);">
+      <div style="font-size:12px;font-weight:500;margin-bottom:4px;">static constexpr 常量块</div>
+      <div style="font-size:11px;color:var(--text-secondary);">不占实例内存，编译期内联。是 _bucketsAndMaybeMask 的"解码规则"，定义 maskShift / maskZeroBits / bucketsMask 等。</div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: bits ===== -->
+  <div class="tab-panel" id="tab-bits" style="display:none;">
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">_bucketsAndMaybeMask 64位位域（arm64 HIGH_16）</div>
+
+    <!-- bit strip -->
+    <div style="margin-bottom:8px;">
+      <div style="display:flex;height:44px;border-radius:10px;overflow:hidden;border:.5px solid var(--intensity-12);">
+        <div style="width:25%;background:color-mix(in srgb,#E58522 20%,transparent);display:flex;align-items:center;justify-content:center;flex-direction:column;border-right:.5px solid var(--intensity-12);">
+          <div style="font-size:11px;font-weight:500;">mask</div>
+          <div style="font-size:10px;color:var(--text-secondary);">bit 63..48</div>
+        </div>
+        <div style="width:8%;background:color-mix(in srgb,#EBA400 20%,transparent);display:flex;align-items:center;justify-content:center;flex-direction:column;border-right:.5px solid var(--intensity-12);">
+          <div style="font-size:10px;font-weight:500;">零×4</div>
+          <div style="font-size:9px;color:var(--text-secondary);">47..44</div>
+        </div>
+        <div style="flex:1;background:color-mix(in srgb,#58B2DC 15%,transparent);display:flex;align-items:center;justify-content:center;flex-direction:column;">
+          <div style="font-size:11px;font-weight:500;">buckets pointer</div>
+          <div style="font-size:10px;color:var(--text-secondary);">bit 43..0（44位）</div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-tertiary);margin-bottom:20px;padding:0 2px;">
+      <span>bit 63</span><span>bit 0</span>
+    </div>
+
+    <!-- constexpr table -->
+    <div style="font-size:12px;font-weight:500;margin-bottom:10px;">常量定义</div>
+    <div style="background:var(--card-bg);border:.5px solid var(--intensity-8);border-radius:14px;overflow:hidden;margin-bottom:16px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;background:var(--intensity-4);padding:8px 14px;font-size:11px;font-weight:500;color:var(--text-secondary);">
+        <span>常量</span><span>值</span><span>含义</span>
+      </div>
+      <div class="code-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:10px 14px;border-top:.5px solid var(--intensity-8);font-size:11px;">
+        <span style="color:#E58522;font-family:monospace;">maskShift</span>
+        <span style="color:var(--text-secondary);">48</span>
+        <span style="color:var(--text-secondary);">mask 起始位</span>
+      </div>
+      <div class="code-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:10px 14px;border-top:.5px solid var(--intensity-8);font-size:11px;">
+        <span style="color:#E58522;font-family:monospace;">maskZeroBits</span>
+        <span style="color:var(--text-secondary);">4</span>
+        <span style="color:var(--text-secondary);">强制零位，优化用</span>
+      </div>
+      <div class="code-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:10px 14px;border-top:.5px solid var(--intensity-8);font-size:11px;">
+        <span style="color:#E58522;font-family:monospace;">maxMask</span>
+        <span style="color:var(--text-secondary);">0xFFFF</span>
+        <span style="color:var(--text-secondary);">最大容量 65535</span>
+      </div>
+      <div class="code-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:10px 14px;border-top:.5px solid var(--intensity-8);font-size:11px;">
+        <span style="color:#E58522;font-family:monospace;">bucketsMask</span>
+        <span style="color:var(--text-secondary);">0x00000FFFFFFFFFFF</span>
+        <span style="color:var(--text-secondary);">低44位掩码</span>
+      </div>
+    </div>
+
+    <!-- decode snippet -->
+    <div style="font-size:12px;font-weight:500;margin-bottom:8px;">解码方法（源码节选）</div>
+    <pre style="font-size:11px;color:var(--text-primary);background:var(--intensity-4);border-radius:10px;padding:14px;overflow-x:auto;line-height:1.7;">buckets_t *buckets() {
+  return (buckets_t *)
+    (_bucketsAndMaybeMask &amp; <span style="color:#58B2DC;">bucketsMask</span>);
+}
+
+mask_t mask() {
+  return (mask_t)
+    (_bucketsAndMaybeMask &gt;&gt; <span style="color:#E58522;">maskShift</span>);
+}
+
+<span style="color:var(--text-tertiary);">// msgSend 单指令得到 mask&lt;&lt;4：</span>
+<span style="color:var(--text-tertiary);">// LSR x1, x0, #44  （44 = maskShift - maskZeroBits）</span></pre>
+
+    <div style="background:var(--intensity-4);border-radius:10px;padding:12px 14px;border-left:3px solid #EBA400;margin-top:12px;">
+      <div style="font-size:11px;color:var(--text-secondary);">maskZeroBits=4 的作用：mask 存放在 bit 63..48，紧邻的 4 位为零，相当于 mask 已预先左移 4 位。msgSend 只需 LSR #44 就能同时完成"提取 mask"和"× 16"，省一条指令。</div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: union ===== -->
+  <div class="tab-panel" id="tab-union" style="display:none;">
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">union 8 bytes（offset 8），两个成员完全重叠</div>
+
+    <!-- two states -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div style="background:var(--card-bg);border:.5px solid var(--intensity-8);border-radius:14px;overflow:hidden;">
+        <div style="background:color-mix(in srgb,#40B43E 15%,transparent);padding:8px 14px;font-size:12px;font-weight:500;border-bottom:.5px solid var(--intensity-8);">普通缓存状态</div>
+        <div style="padding:12px 14px;">
+          <pre style="font-size:11px;color:var(--text-primary);line-height:1.7;background:var(--intensity-4);border-radius:8px;padding:10px;overflow-x:auto;">uint32_t
+  _disguisedPreopt…; <span style="color:var(--text-tertiary);">// 占位</span>
+uint16_t _occupied;  <span style="color:#40B43E;">// 已填槽数</span>
+uint16_t _flags;     <span style="color:#58B2DC;">// 快速标志位</span></pre>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:8px;">_disguisedPreoptCacheSignature 是纯占位符，把 _flags 推到 offset 6</div>
+        </div>
+      </div>
+      <div style="background:var(--card-bg);border:.5px solid var(--intensity-8);border-radius:14px;overflow:hidden;">
+        <div style="background:color-mix(in srgb,#B481BB 15%,transparent);padding:8px 14px;font-size:12px;font-weight:500;border-bottom:.5px solid var(--intensity-8);">preopt 缓存状态</div>
+        <div style="padding:12px 14px;">
+          <pre style="font-size:11px;color:var(--text-primary);line-height:1.7;background:var(--intensity-4);border-radius:8px;padding:10px;overflow-x:auto;">explicit_atomic&lt;
+  preopt_cache_t *,
+  PTRAUTH_STR(…)
+&gt; _originalPreoptCache;</pre>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:8px;">dyld 预生成的方法哈希表指针，带 PAC 签名</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- offset diagram -->
+    <div style="font-size:12px;font-weight:500;margin-bottom:8px;">内存偏移对齐约束</div>
+    <div style="background:var(--card-bg);border:.5px solid var(--intensity-8);border-radius:14px;padding:14px;margin-bottom:12px;">
+      <div style="display:flex;gap:0;margin-bottom:8px;">
+        <div style="width:50%;background:color-mix(in srgb,#B481BB 15%,transparent);border-radius:8px 0 0 8px;padding:8px 10px;text-align:center;border:.5px solid var(--intensity-12);">
+          <div style="font-size:10px;color:var(--text-tertiary);">offset 0–3</div>
+          <div style="font-size:11px;font-weight:500;">_disguisedPreopt…</div>
+          <div style="font-size:10px;color:var(--text-secondary);">uint32，纯占位</div>
+        </div>
+        <div style="width:25%;background:color-mix(in srgb,#40B43E 15%,transparent);padding:8px 10px;text-align:center;border:.5px solid var(--intensity-12);">
+          <div style="font-size:10px;color:var(--text-tertiary);">offset 4–5</div>
+          <div style="font-size:11px;font-weight:500;">_occupied</div>
+          <div style="font-size:10px;color:var(--text-secondary);">uint16</div>
+        </div>
+        <div style="width:25%;background:color-mix(in srgb,#58B2DC 15%,transparent);border-radius:0 8px 8px 0;padding:8px 10px;text-align:center;border:.5px solid var(--intensity-12);">
+          <div style="font-size:10px;color:var(--text-tertiary);">offset 6–7</div>
+          <div style="font-size:11px;font-weight:500;">_flags</div>
+          <div style="font-size:10px;color:var(--text-secondary);">uint16</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text-secondary);">_flags 落在 offset 6，对应 _originalPreoptCache 指针的 bit 63..48（符号扩展位）。null 指针时这些位全零，与标志位"0=默认实现"的语义天然吻合。</div>
+    </div>
+
+    <div style="background:var(--intensity-4);border-radius:10px;padding:12px 14px;border-left:3px solid #E65C53;">
+      <div style="font-size:12px;font-weight:500;margin-bottom:4px;">汇编硬编码警告</div>
+      <div style="font-size:11px;color:var(--text-secondary);">objc_release_xN 汇编直接用立即数偏移读取 _flags 里的 FAST_CACHE_HAS_CUSTOM_DEALLOC_INITIATION。修改字段顺序必须同步修改 .s 文件。</div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: bucket ===== -->
+  <div class="tab-panel" id="tab-bucket" style="display:none;">
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">bucket_t — 方法缓存哈希表的单个槽位（arm64，16 bytes）</div>
+
+    <!-- field layout -->
+    <div style="display:flex;gap:0;margin-bottom:16px;">
+      <div style="flex:1;background:color-mix(in srgb,#F17C67 15%,transparent);border-radius:10px 0 0 10px;padding:12px 14px;border:.5px solid var(--intensity-12);">
+        <div style="font-size:10px;color:var(--text-tertiary);">offset 0 · 8 bytes</div>
+        <div style="font-size:13px;font-weight:500;margin:2px 0;">_imp</div>
+        <div style="font-size:11px;color:var(--text-secondary);">uintptr_t · 编码后的 IMP</div>
+      </div>
+      <div style="flex:1;background:color-mix(in srgb,#86C166 15%,transparent);border-radius:0 10px 10px 0;padding:12px 14px;border:.5px solid var(--intensity-12);">
+        <div style="font-size:10px;color:var(--text-tertiary);">offset 8 · 8 bytes</div>
+        <div style="font-size:13px;font-weight:500;margin:2px 0;">_sel</div>
+        <div style="font-size:11px;color:var(--text-secondary);">SEL · 方法选择子</div>
+      </div>
+    </div>
+
+    <!-- IMP encoding -->
+    <div style="font-size:12px;font-weight:500;margin-bottom:8px;">IMP 编码策略（三路）</div>
+    <div style="background:var(--card-bg);border:.5px solid var(--intensity-8);border-radius:14px;overflow:hidden;margin-bottom:16px;">
+      <div style="display:grid;grid-template-columns:120px 1fr;background:var(--intensity-4);padding:8px 14px;font-size:11px;font-weight:500;color:var(--text-secondary);border-bottom:.5px solid var(--intensity-8);">
+        <span>策略</span><span>源码</span>
+      </div>
+      <div style="display:grid;grid-template-columns:120px 1fr;padding:10px 14px;border-bottom:.5px solid var(--intensity-8);gap:12px;align-items:start;">
+        <div>
+          <div style="font-size:11px;font-weight:500;">PTRAUTH</div>
+          <div style="font-size:10px;color:var(--text-secondary);">arm64e · A12+</div>
+        </div>
+        <pre style="font-size:10px;color:#E58522;background:var(--intensity-4);border-radius:6px;padding:8px;overflow-x:auto;line-height:1.6;">bitcast_auth_and_resign(
+  void *, newImp,
+  ptrauth_key_function_pointer, …,
+  ptrauth_key_process_dependent_code,
+  modifierForSEL(base, newSel, cls)
+);</pre>
+      </div>
+      <div style="display:grid;grid-template-columns:120px 1fr;padding:10px 14px;border-bottom:.5px solid var(--intensity-8);gap:12px;align-items:start;">
+        <div>
+          <div style="font-size:11px;font-weight:500;">ISA_XOR</div>
+          <div style="font-size:10px;color:var(--text-secondary);">普通 arm64</div>
+        </div>
+        <pre style="font-size:10px;color:#58B2DC;background:var(--intensity-4);border-radius:6px;padding:8px;overflow-x:auto;line-height:1.6;">return (uintptr_t)newImp ^ (uintptr_t)cls;
+<span style="color:var(--text-tertiary);">// 还原：imp ^ (uintptr_t)cls</span></pre>
+      </div>
+      <div style="display:grid;grid-template-columns:120px 1fr;padding:10px 14px;gap:12px;align-items:start;">
+        <div>
+          <div style="font-size:11px;font-weight:500;">NONE</div>
+          <div style="font-size:10px;color:var(--text-secondary);">x86_64 模拟器</div>
+        </div>
+        <pre style="font-size:10px;color:var(--text-secondary);background:var(--intensity-4);border-radius:6px;padding:8px;overflow-x:auto;">return (uintptr_t)newImp;</pre>
+      </div>
+    </div>
+
+    <!-- modifierForSEL -->
+    <div style="font-size:12px;font-weight:500;margin-bottom:8px;">modifierForSEL — ptrauth discriminator</div>
+    <pre style="font-size:11px;color:var(--text-primary);background:var(--intensity-4);border-radius:10px;padding:14px;overflow-x:auto;line-height:1.7;margin-bottom:10px;">uintptr_t modifierForSEL(
+    bucket_t *base, SEL newSel, Class cls) {
+  return (uintptr_t)<span style="color:#F17C67;">base</span>   <span style="color:var(--text-tertiary);">// 绑定缓存数组</span>
+       ^ (uintptr_t)<span style="color:#86C166;">newSel</span> <span style="color:var(--text-tertiary);">// 绑定 SEL</span>
+       ^ (uintptr_t)<span style="color:#58B2DC;">cls</span>;   <span style="color:var(--text-tertiary);">// 绑定类</span>
+}</pre>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+      <div style="background:color-mix(in srgb,#F17C67 12%,transparent);border-radius:8px;padding:10px;font-size:11px;">
+        <div style="font-weight:500;color:#F17C67;margin-bottom:4px;">base</div>
+        <div style="color:var(--text-secondary);">扩容后 base 变，旧签名自动失效</div>
+      </div>
+      <div style="background:color-mix(in srgb,#86C166 12%,transparent);border-radius:8px;padding:10px;font-size:11px;">
+        <div style="font-weight:500;color:#86C166;margin-bottom:4px;">newSel</div>
+        <div style="color:var(--text-secondary);">防止跨 SEL 复制签名 IMP</div>
+      </div>
+      <div style="background:color-mix(in srgb,#58B2DC 12%,transparent);border-radius:8px;padding:10px;font-size:11px;">
+        <div style="font-weight:500;color:#58B2DC;margin-bottom:4px;">cls</div>
+        <div style="color:var(--text-secondary);">防止跨类复制缓存条目</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: flow ===== -->
+  <div class="tab-panel" id="tab-flow" style="display:none;">
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">objc_msgSend 缓存查找全链路</div>
+
+    <!-- chain -->
+    <div style="display:flex;flex-direction:column;gap:0;margin-bottom:20px;">
+
+      <div style="background:color-mix(in srgb,#F3A04C 15%,transparent);border:.5px solid color-mix(in srgb,#F3A04C 30%,transparent);border-radius:10px 10px 0 0;padding:12px 14px;">
+        <div style="font-size:11px;font-weight:500;margin-bottom:4px;">① 读取 _bucketsAndMaybeMask</div>
+        <pre style="font-size:10px;color:var(--text-primary);line-height:1.6;">uintptr_t val = _bucketsAndMaybeMask;
+mask_t     mask    = val &gt;&gt; 48;          <span style="color:var(--text-tertiary);">// 高16位</span>
+buckets_t *buckets = val &amp; bucketsMask;  <span style="color:var(--text-tertiary);">// 低44位</span></pre>
+      </div>
+
+      <div style="width:2px;height:12px;background:var(--intensity-20);margin-left:24px;"></div>
+
+      <div style="background:color-mix(in srgb,#58B2DC 12%,transparent);border:.5px solid color-mix(in srgb,#58B2DC 25%,transparent);padding:12px 14px;">
+        <div style="font-size:11px;font-weight:500;margin-bottom:4px;">② 哈希定位 bucket</div>
+        <pre style="font-size:10px;color:var(--text-primary);line-height:1.6;">index = (uintptr_t)sel &amp; mask;  <span style="color:var(--text-tertiary);">// 位与代替取模（capacity = 2^n）</span>
+bucket_t *b = buckets + index;</pre>
+      </div>
+
+      <div style="width:2px;height:12px;background:var(--intensity-20);margin-left:24px;"></div>
+
+      <div style="background:color-mix(in srgb,#86C166 12%,transparent);border:.5px solid color-mix(in srgb,#86C166 25%,transparent);padding:12px 14px;">
+        <div style="font-size:11px;font-weight:500;margin-bottom:4px;">③ 线性探测比较 _sel</div>
+        <pre style="font-size:10px;color:var(--text-primary);line-height:1.6;">if (b-&gt;_sel == sel) goto hit;   <span style="color:var(--text-tertiary);">// 命中</span>
+b--;                             <span style="color:var(--text-tertiary);">// 向前探测（环形）</span>
+if (b &lt; buckets) b = &amp;buckets[mask];
+if (b-&gt;_sel == 0) goto miss;    <span style="color:var(--text-tertiary);">// 空槽，未命中</span></pre>
+      </div>
+
+      <div style="width:2px;height:12px;background:var(--intensity-20);margin-left:24px;"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
+        <div style="background:color-mix(in srgb,#40B43E 12%,transparent);border:.5px solid color-mix(in srgb,#40B43E 25%,transparent);border-radius:0 0 0 10px;padding:12px 14px;">
+          <div style="font-size:11px;font-weight:500;color:#40B43E;margin-bottom:4px;">命中 → 解码 IMP</div>
+          <pre style="font-size:10px;color:var(--text-primary);line-height:1.6;">IMP fn = b-&gt;imp(base, cls);
+<span style="color:var(--text-tertiary);">// PTRAUTH: AUTIB 验签</span>
+<span style="color:var(--text-tertiary);">// ISA_XOR: imp ^ cls</span>
+jmp fn;</pre>
+        </div>
+        <div style="background:color-mix(in srgb,#E65C53 10%,transparent);border:.5px solid color-mix(in srgb,#E65C53 20%,transparent);border-radius:0 0 10px 0;padding:12px 14px;">
+          <div style="font-size:11px;font-weight:500;color:#E65C53;margin-bottom:4px;">未命中 → 慢速路径</div>
+          <pre style="font-size:10px;color:var(--text-primary);line-height:1.6;">lookUpImpOrForward()
+  → 遍历方法列表
+  → 写入缓存
+  → 执行</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- whole picture -->
+    <div style="font-size:12px;font-weight:500;margin-bottom:8px;">完整数据链路</div>
+    <div style="background:var(--card-bg);border:.5px solid var(--intensity-8);border-radius:14px;padding:14px;">
+      <pre style="font-size:11px;color:var(--text-primary);line-height:1.9;overflow-x:auto;">cache_t（16 bytes，内嵌在 objc_class）
+  └─ _bucketsAndMaybeMask
+       ├─ [63..48] mask  →  capacity = mask + 1
+       └─ [43.. 0] ptr   →  bucket_t[]（堆，动态分配）
+                               ├─ [0]  { _imp(编码), _sel }
+                               ├─ [1]  { _imp(编码), _sel }
+                               └─ [mask] { _imp(编码), _sel }
+
+每个 bucket_t 16 bytes：_imp(8) + _sel(8)</pre>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  var tabs = document.querySelectorAll('.tab-btn');
+  var panels = document.querySelectorAll('.tab-panel');
+  tabs.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var target = btn.getAttribute('data-tab');
+      tabs.forEach(function(b){
+        var active = b.getAttribute('data-tab') === target;
+        b.style.background = active ? 'var(--primary)' : 'var(--intensity-6)';
+        b.style.color = active ? 'var(--primary-foreground)' : 'var(--text-primary)';
+      });
+      panels.forEach(function(p){
+        p.style.display = p.id === 'tab-' + target ? 'block' : 'none';
+      });
+    });
+  });
+})();
+</script>
+<script data-tabbit-widget-diagnostics="true">
+(function(){
+  if (window.__tabbitWidgetDiagnosticsInstalled) return;
+  window.__tabbitWidgetDiagnosticsInstalled = true;
+  window.__TABBIT_WIDGET_ERRORS__ = window.__TABBIT_WIDGET_ERRORS__ || [];
+  function emit(level, args) {
+    var payload = {
+      type: "tabbit_widget_diagnostics",
+      level: level,
+      message: Array.prototype.slice.call(args || []).map(function(item) {
+        if (item && item.stack) return item.stack;
+        if (typeof item === "string") return item;
+        try { return JSON.stringify(item); } catch (_) { return String(item); }
+      }).join(" "),
+      timestamp: Date.now()
+    };
+    window.__TABBIT_WIDGET_ERRORS__.push(payload);
+    try { window.parent && window.parent.postMessage(payload, "*"); } catch (_) {}
+  }
+  var originalError = console.error;
+  console.error = function() {
+    emit("error", arguments);
+    return originalError && originalError.apply(console, arguments);
+  };
+  window.addEventListener("error", function(event) {
+    emit("error", [event.message || "Script error", event.filename || "", event.lineno || ""]);
+  });
+  window.addEventListener("unhandledrejection", function(event) {
+    emit("unhandledrejection", [event.reason || "Unhandled promise rejection"]);
+  });
+})();
+</script>
+</body>
+</html>

@@ -7,14 +7,14 @@
 ### 第一部分 · 快速路径（缓存命中）
 - **1. 方法调用的本质**：`[obj foo]` → `objc_msgSend(obj, sel)`
 - **2. 为什么 objc_msgSend 用汇编写**：性能 / 未知参数 / 尾调用
-- **3. 快速路径汇编逐段**（`objc-msg-arm64.s`）
-  - 3.1 取 isa → class（`GetClassFromIsa`，呼应 ISA_MASK）
-  - 3.2 CacheLookup：按 SEL 哈希定位 bucket
-  - 3.3 命中 `br IMP` / 未命中转入慢速查找
-- **4. cache_t 数据结构**（`objc-runtime-new.h:337`）
-  - 4.1 `_bucketsAndMaybeMask`：指针与 mask 的融合
-  - 4.2 `bucket_t`：`{SEL, IMP}` 与 ptrauth
-  - 4.3 哈希与开放寻址探测（`cache_hash` / `cache_next`）
+- **3. cache_t 数据结构**（`objc-runtime-new.h:337`）：先摊开汇编要操作的两张表
+  - 3.1 `_bucketsAndMaybeMask`：指针与 mask 的融合
+  - 3.2 `bucket_t`：`{SEL, IMP}` 与 ptrauth
+  - 3.3 哈希与开放寻址探测（`cache_hash` / `cache_next`）
+- **4. 快速路径汇编逐段**（`objc-msg-arm64.s`）：拿着 §3 的结构逐条印证
+  - 4.1 取 isa → class（`GetClassFromIsa`，呼应 ISA_MASK）
+  - 4.2 CacheLookup：按 SEL 哈希定位 bucket
+  - 4.3 命中 `br IMP` / 未命中转入慢速查找
 - **5. 缓存的写入与扩容**（`objc-cache.mm`）
   - 5.1 `insert`：哈希落位（:873）
   - 5.2 `reallocate`：翻倍扩容、丢弃旧表不迁移（:808）
@@ -46,7 +46,7 @@
 
 > 源码定位说明：`objc_msgSend` 汇编在 951.1 里已移到 `runtime/Messengers.subproj/objc-msg-arm64.s`（不在 `runtime/` 根下）。下文源码块均为 objc4-951.1 **逐字全文**（保留所有架构 `#if` 分支），中文注释为本文新增、英文原注释保留。LLDB 在 **系统 libobjc**（`/usr/lib/libobjc.A.dylib`）上下符号断点，`settings set target.disable-aslr true` 关 ASLR，环境 macOS 26 / arm64。
 >
-> 新旧对照说明：文中带 🔄 的「旧→新对照」框，旧版取自本地 **objc4-818.2**（可调试版）真实源码、新版为 **951.1**，均标注精确 `file:line`。注意：缓存早期那次著名的大改造（`_buckets`/`_mask`/`_occupied` 三个分离字段 → 融合成 `_bucketsAndMaybeMask`）发生在 **781 之前**，已用本地 **objc4-756.2**（融合前末代，真实源码 `objc-runtime-new.h:82`）补做对照（见 4.1 末）；其余对照的旧版多取自 818.2，818.2 与 951.1 同属「融合字段后」时代，是这之后的增量演进。所有旧版代码均据真实源码、绝不凭记忆杜撰。
+> 新旧对照说明：文中带 🔄 的「旧→新对照」框，旧版取自本地 **objc4-818.2**（可调试版）真实源码、新版为 **951.1**，均标注精确 `file:line`。注意：缓存早期那次著名的大改造（`_buckets`/`_mask`/`_occupied` 三个分离字段 → 融合成 `_bucketsAndMaybeMask`）发生在 **781 之前**，已用本地 **objc4-756.2**（融合前末代，真实源码 `objc-runtime-new.h:82`）补做对照（见 3.1 末）；其余对照的旧版多取自 818.2，818.2 与 951.1 同属「融合字段后」时代，是这之后的增量演进。所有旧版代码均据真实源码、绝不凭记忆杜撰。
 
 ---
 # objc_msgSend简介
@@ -306,7 +306,7 @@ Dog
 三个原因：
 - 调用频率极高，手写汇编榨干每一周期；
 - 它要在**不知道目标方法参数个数/类型**的情况下原样透传所有寄存器；
-- 命中后用**尾调用**（`br`）直接跳进 IMP，自己不留栈帧。下面第 3 节的命中分支 `br x17`（实测解析成带 PAC 的 `brab`）正是「不返回、直接跳走」。
+- 命中后用**尾调用**（`br`）直接跳进 IMP，自己不留栈帧。下面第 4 节的命中分支 `br x17`（实测解析成带 PAC 的 `brab`）正是「不返回、直接跳走」。
 
 源码佐证「透传所有参数寄存器」：快速路径命中时直接尾跳、不存任何东西；而一旦 miss 要调 C 函数做慢速查找，`SAVE_REGS` 会先把**全部参数寄存器**存下来，查完恢复再尾跳 IMP——保证 IMP 拿到的参数和最初一模一样：
 
@@ -337,7 +337,474 @@ Dog
 
 `x0..x8 + q0..q7` 正是 arm64 调用约定里**全部整型/浮点参数 + 结构体返回辅助寄存器**——objc_msgSend 不知道目标方法签名，索性整体保下来透传，这就是「未知参数也能转发」的底气。
 
-## 3. 快速路径汇编逐段（`objc-msg-arm64.s`）
+---
+
+既然 `objc_msgSend` 用汇编写，那它到底在**操作什么**？快速路径全程就干一件事：拿 `sel` 在「类的方法缓存」这张哈希表里查 `imp`，查到就跳。所以在逐条读汇编之前，先把汇编要读写的两张表摊开——**§3 先讲静态结构**（`cache_t` 怎么把 buckets 指针和 mask 塞进一个字、`bucket_t` 怎么存 `{SEL, IMP}`、哈希怎么算下标、撞了怎么探测），**§4 再拿着这张地图逐条读汇编**。这样到了 §4，每条指令都能对应回 §3 的某个字段或常量，全是「印证」而不是「悬念」。
+
+## 3. cache_t 数据结构（`objc-runtime-new.h:337`）
+
+### 3.1 `_bucketsAndMaybeMask`：指针与 mask 的融合
+
+`cache_t` 的**数据布局部分**，正文只展开 **arm64 真机（`HIGH_16`）** 这一支；`OUTLINED 32/64 位 / HIGH_16_BIG_ADDRS / LOW_4` 等其它平台分支不删、原文收进本节末尾的折叠块（iOS 真机用不到）。其后的访问器方法声明与 `FAST_CACHE_*` 快速分配标志属另一主题，本块到 mask 存储常量为止：
+
+![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260608182157685.png)
+
+
+```objc
+// objc-runtime-new.h:337  —— cache_t 字段（仅展开 arm64 真机 HIGH_16 分支，其余平台见文末折叠块）
+struct cache_t {
+private:
+    explicit_atomic<uintptr_t> _bucketsAndMaybeMask;  // buckets 指针，也可能顺便包含 mask
+    
+    //核心字段：arm64 上高 16 位 = mask，低 48 位 = buckets 指针（一字双用）
+    union {
+        // Note: _flags on ARM64 needs to line up with the unused bits of
+        // _originalPreoptCache because we access some flags (specifically
+        // FAST_CACHE_HAS_DEFAULT_CORE and FAST_CACHE_HAS_DEFAULT_AWZ) on
+        // unrealized classes with the assumption that they will start out
+        // as 0.
+        
+        struct {
+            //arm64 真机（HIGH_16）：注意没有独立 _mask！mask 在 _bucketsAndMaybeMask 高位
+            // Inline cache mask storage, 64-bit, we have occupied, flags, and
+            // empty space to line up flags with originalPreoptCache.
+            //
+            // Note: the assembly code for objc_release_xN knows about the
+            // location of _flags and the
+            // FAST_CACHE_HAS_CUSTOM_DEALLOC_INITIATION flag within. Any changes
+            // must be applied there as well.
+            uint32_t                   _disguisedPreoptCacheSignature;//4
+            uint16_t                   _occupied;// 2 bytes
+            uint16_t                   _flags;// 2 bytes
+            
+#   define CACHE_T_HAS_FLAGS 1
+        };
+        
+        //  这一段有关之前涉及的PAC机制，暂且可以不管
+        explicit_atomic<preopt_cache_t *, PTRAUTH_STR(originalPreoptCache, ptrauth_key_process_independent_data)> _originalPreoptCache;
+    };
+
+    // Simple constructor for testing purposes only.
+    cache_t() : _bucketsAndMaybeMask(0) {}
+
+    // —— 只展开 arm64 真机 HIGH_16 的 mask 存储常量；OUTLINED / BIG_ADDRS / LOW_4 见折叠块 ——
+#if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16
+    //arm64 真机的 mask 存储常量定义
+    // _bucketsAndMaybeMask is a buckets_t pointer in the low 48 bits
+
+    // How much the mask is shifted by.
+    static constexpr uintptr_t maskShift = 48;		//mask 放在第 48 位起的高 16 位
+
+    // Additional bits after the mask which must be zero. msgSend
+    // takes advantage of these additional bits to construct the value
+    // `mask << 4` from `_maskAndBuckets` in a single instruction.
+    static constexpr uintptr_t maskZeroBits = 4;	//紧邻 mask 的 4 位必须为 0，
+							// 让 msgSend 一条指令算出 mask<<4（见 4.2 的 LSR #(48-(1+PTRSHIFT))）
+
+    // The largest mask value we can store.
+    static constexpr uintptr_t maxMask = ((uintptr_t)1 << (64 - maskShift)) - 1;
+
+    // The mask applied to `_maskAndBuckets` to retrieve the buckets pointer.
+    static constexpr uintptr_t bucketsMask = ((uintptr_t)1 << (maskShift - maskZeroBits)) - 1;
+
+    // Ensure we have enough bits for the buckets pointer.
+    static_assert(bucketsMask >= OBJC_VM_MAX_ADDRESS,
+            "Bucket field doesn't have enough bits for arbitrary pointers.");
+
+#if CONFIG_USE_PREOPT_CACHES
+    static constexpr uintptr_t preoptBucketsMarker = 1ul;
+#if __has_feature(ptrauth_calls)
+    // 63..60: hash_mask_shift
+    // 59..55: hash_shift
+    // 54.. 1: buckets ptr + auth
+    //      0: always 1
+    static constexpr uintptr_t preoptBucketsMask = 0x007ffffffffffffe;
+    static inline uintptr_t preoptBucketsHashParams(const preopt_cache_t *cache) {
+        uintptr_t value = (uintptr_t)cache->shift << 55;
+        // masks have 11 bits but can be 0, so we compute
+        // the right shift for 0x7fff rather than 0xffff
+        return value | ((objc::mask16ShiftBits(cache->mask) - 1) << 60);
+    }
+#endif
+#endif // CONFIG_USE_PREOPT_CACHES
+#endif
+
+    // ……（以下为 mask()/buckets()/insert()/reallocate() 等方法声明，
+    //     以及 FAST_CACHE_* 快速分配标志位定义，属另一主题，本块略去）
+};
+```
+
+
+- explicit_atomic 是 objc runtime 自己封装的原子类型，保证多线程下的读写安全，但不加任何额外内存屏障开销，具体关于bucketsAndMaybeMask的内容我们下面再讲
+
+- **union 的对齐约束**：runtime 在类 realized 之前就需要读 `_flags`（含 `FAST_CACHE_HAS_DEFAULT_CORE`/AWZ），此时 `_originalPreoptCache` 还是 null（全零）。因此 union 的内存布局必须保证：`_originalPreoptCache == 0` 时，`_flags` 读出来也是 0——而这两个标志位的语义正好是"0 = 使用默认实现"，零初始化即正确初始值，无需额外处理。`_disguisedPreoptCacheSignature` 的唯一作用就是填充偏移，让 `_flags` 落在这个位置上。
+
+**为什么没有 `_mask`、却多了 `_disguisedPreoptCacheSignature`**
+
+​`_disguisedPreoptCacheSignature` 这个字段的名字非常刻意——"disguised"（伪装的）暗示它并不是一个普通的数据字段，而是一个结构性占位符，目的是把 `_occupied`（offset 4）和 `_flags`（offset 6）推到正确的内存位置，满足前面注释里说的对齐约束。
+
+具体来说，`_originalPreoptCache` 是一个经过 ptrauth 签名的指针，在 arm64 上指针的低几位有特定含义，高位用于存放签名。当这个指针不为 null 时，它的 bit 布局里某些位置是"未使用位"（unused bits），而 runtime 要求 `_flags` 在 `union` 内的偏移恰好落在这些未使用位上，这样两套身份才能安全共存而不互相干扰。`_disguisedPreoptCacheSignature` 占据前 4 字节，使得 `_flags` 落在 offset 6，正好满足这个约束。
+
+
+**`_originalPreoptCache`**：与上面 struct 共用内存：预优化缓存时这里是 preopt_cache_t*，`preopt_cache_t` 是 dyld 在构建 shared cache 时预先生成的方法哈希表，存放在只读内存里。一个类在被 realized 之前，如果 dyld 已经为它准备好了 preopt cache，那么 `_originalPreoptCache` 就指向那张预生成的表，runtime 可以直接用，省去了首次 realize 时重建缓存的开销。一旦类被 realized、开始正常运行，这块内存就切换到 `struct` 身份，用 `_occupied` 记录已填充的 bucket 数量，用 `_flags` 存放类的快速标志位。两种状态互斥，共用内存没有语义冲突
+
+> [!note]- 其它平台的 cache_t 布局（OUTLINED 32/64 位、HIGH_16_BIG_ADDRS、LOW_4 
+>
+> **union 结构体的其余三个分支**
+>
+> ```objc
+> #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && !__LP64__
+>             // Outlined cache mask storage, 32-bit, we have mask and occupied.
+>             explicit_atomic<mask_t>    _mask;// 4 bytes (mask_t = uint32_t)
+>             uint16_t                   _occupied;// 2 bytes
+> #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && __LP64__
+>             // Outlined cache mask storage, 64-bit, we have mask, occupied, flags.
+>             explicit_atomic<mask_t>    _mask;// 4 bytes
+>             uint16_t                   _occupied;//  2 bytes
+>             uint16_t                   _flags;// 2 bytes
+> #   define CACHE_T_HAS_FLAGS 1
+> #else
+>             // Inline cache mask storage, 32-bit, we have occupied, flags.
+>             uint16_t                   _occupied;
+>             uint16_t                   _flags;
+> #   define CACHE_T_HAS_FLAGS 1
+> #endif
+> ```
+>
+> - **OUTLINED 32 位**：这是最朴素的布局。`mask` 有自己独立的字段，不需要从 `_bucketsAndMaybeMask` 里提取。`_mask` 用 `explicit_atomic` 包装是因为缓存扩容时需要原子地替换它。这个分支没有 `_flags`，说明旧的 32 位路径不支持 `FAST_CACHE_*` 快速标志位机制，类的属性查询需要走更慢的路径。
+> - **OUTLINED 64 位（Mac 模拟器）**：在分支一的基础上加了 `_flags`，同时定义了 `CACHE_T_HAS_FLAGS`，启用快速标志位路径。`mask` 仍然是独立字段。这是你在 Mac 模拟器上调试时看到的布局，相对容易理解，也是很多 ObjC 源码分析文章的参考对象，但它和真机行为有本质差异。
+> - **32 位 inline**：最精简的布局。mask 存在 `_bucketsAndMaybeMask` 的低 4 位，所以这里也不需要独立的 `_mask` 字段。`union` 整体是 4 字节，比其他路径小一半。
+>
+> **mask 存储常量的其余三个分支**
+>
+> ```objc
+> #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED
+>     // _bucketsAndMaybeMask is a buckets_t pointer
+>     static constexpr uintptr_t bucketsMask = ~0ul;
+>     static_assert(!CONFIG_USE_PREOPT_CACHES, "preoptimized caches not supported");
+> #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16_BIG_ADDRS
+>     static constexpr uintptr_t maskShift = 48;
+>     static constexpr uintptr_t maxMask = ((uintptr_t)1 << (64 - maskShift)) - 1;
+>     static constexpr uintptr_t bucketsMask = ((uintptr_t)1 << maskShift) - 1;
+>     static_assert(bucketsMask >= OBJC_VM_MAX_ADDRESS, "Bucket field doesn't have enough bits for arbitrary pointers.");
+> #if CONFIG_USE_PREOPT_CACHES
+>     static constexpr uintptr_t preoptBucketsMarker = 1ul;
+>     static constexpr uintptr_t preoptBucketsMask = bucketsMask & ~preoptBucketsMarker;
+> #endif
+> #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_LOW_4
+>     // _bucketsAndMaybeMask is a buckets_t pointer in the top 28 bits
+>     static constexpr uintptr_t maskBits = 4;
+>     static constexpr uintptr_t maskMask = (1 << maskBits) - 1;
+>     static constexpr uintptr_t bucketsMask = ~maskMask;
+>     static_assert(!CONFIG_USE_PREOPT_CACHES, "preoptimized caches not supported");
+> #endif
+> ```
+>
+> - **OUTLINED**：`_bucketsAndMaybeMask` 整个字段就是 buckets 指针，没有任何位域打包。mask 独立存放在 `union` 里的 `_mask` 字段。`static_assert(!CONFIG_USE_PREOPT_CACHES, ...)` 是一个编译期断言，直接禁止这个平台开启 preopt cache 支持。因为 OUTLINED 策略下 `_bucketsAndMaybeMask` 没有空闲位来放 `preoptBucketsMarker`，实现上无法区分普通指针和 preopt 指针，所以干脆在编译期就封死这条路。
+> - **HIGH_16_BIG_ADDRS**：和 `HIGH_16` 分支相比，这里**没有 `maskZeroBits`**，buckets 指针可以用到 bit 47，完整占据低 48 位。这个分支针对地址空间更大的 arm64 变体（比如某些 Apple Silicon Mac 配置），`OBJC_VM_MAX_ADDRESS` 更高，需要更多位来表示指针，所以不能像真机那样牺牲 4 位做优化。代价是 `msgSend` 里无法用单指令得到 `mask << 4`，需要额外一条 shift 指令。
+>
+> **HIGH_16 内的非 PAC（A11 及更早）子分支**
+>
+> ```objc
+> #else
+>     // 63..53: hash_mask
+>     // 52..48: hash_shift
+>     // 47.. 1: buckets ptr
+>     //      0: always 1
+>     static constexpr uintptr_t preoptBucketsMask = 0x0000fffffffffffe;
+>     static inline uintptr_t preoptBucketsHashParams(const preopt_cache_t *cache) {
+>         return (uintptr_t)cache->hash_params << 48;
+>     }
+> #endif
+> ```
+>
+> - A11 及更早（无指针认证）走这支：hash 参数 `<< 48`，bit 63..53 放 hash_mask、52..48 放 hash_shift——和 PAC 版（63..60 mask 位数、59..55 hash_shift、`0x7fff >> mask_bits`）的打包方式不同。这与 §4.2 汇编 ② 里"只留 ARM64e 真机分支"的口径一致。
+
+
+而这套「融合字」的拆/装，C++ 侧有对应实现——和 4.2 的汇编一一镜像：
+
+```objc
+// objc-cache.mm（arm64 HIGH_16 分支）
+void cache_t::setBucketsAndMask(struct bucket_t *newBuckets, mask_t newMask) {   // :625 编码（装）
+    // mask 放高位、buckets 放低位，或成一个字
+    _bucketsAndMaybeMask.store(((uintptr_t)newMask << maskShift) | (uintptr_t)newBuckets,
+                               memory_order_release);
+    _occupied = 0;
+}
+
+mask_t cache_t::mask() const {                                                   // :637 取 mask（拆高位）
+    uintptr_t maskAndBuckets = _bucketsAndMaybeMask.load(memory_order_relaxed);
+    return maskAndBuckets >> maskShift;             //>>48，对应汇编 lsr p11,#48
+}
+
+struct bucket_t *cache_t::buckets() const {                                      // :671 取 buckets（拆低位）
+    uintptr_t addr = _bucketsAndMaybeMask.load(memory_order_relaxed);
+    return (bucket_t *)(addr & bucketsMask);        //& 低位掩码，对应汇编 and p10,…
+}
+```
+
+`setBucketsAndMask`（`(mask<<48)|buckets`）= 汇编看到的那个融合字是怎么写进去的；`mask()`（`>>48`）/`buckets()`（`& bucketsMask`）= 汇编 `lsr`/`and` 在 C++ 里的等价拆解。换言之第 4.2 节那几条指令，就是把这三个 C++ 函数手写进了汇编快速路径。
+
+**`buckets()` 为什么能从一个整数里「掏出」`bucket_t *`**——把上面那行 `addr & bucketsMask` 摊开看，arm64 HIGH_16 下 `_bucketsAndMaybeMask` 这一个字的位布局是：
+
+```
+位 63 ........ 48 | 47 .. 44 | 43 ............... 0
+   mask（16 位）   | 必为 0   |  buckets 指针（低 44 位）
+   └ maskShift=48           └ maskZeroBits=4
+```
+
+- **`bucketsMask` 是怎么来的**：`bucketsMask = (1 << (maskShift - maskZeroBits)) - 1 = (1 << 44) - 1`，即低 44 位全 1（`0x00000FFF_FFFFFFFF`）。`addr & bucketsMask` 把高 16 位的 mask 连同中间那 4 个保留位一起抹掉，剩下的就是纯指针，强转 `(bucket_t *)` 即得桶数组首地址——这是 `bucket_t` 在整套缓存读取里**唯一现身**的一刻。
+- **为什么在 3.1 的字段里看不到 `bucket_t`**：`_bucketsAndMaybeMask` 声明成 `uintptr_t`（整数）而非 `bucket_t *`；3.1 只给了 `bucketsMask`/`maskShift` 等「解码常量」（钥匙），真正执行 `& 掩码 + 强转` 的动作在这里的 `buckets()` 里。所以在 3.1 那段按 `bucket_t` 去搜，搜不到是必然的——钥匙在抽屉里，开门的手在这一节。
+- **`maskZeroBits = 4` 不是被浪费的 4 个位**：它垫在 mask（高 16 位）和指针区之间，专为 `objc_msgSend` 服务。msgSend 取 mask 时用的是 `LSR #44`（= `maskShift - maskZeroBits = 48 - 4`）而非 `LSR #48`，少右移 4 位，出来的值直接就是 `mask << 4`——而散列下标计算恰好需要 `mask << 4`（每个 bucket 16 = `1 << 4` 字节，即 §4.2 的 `BUCKET_SIZE`）。一条移位指令顺手把「取 mask」和「乘 bucket 大小」两件事一起做完，这正是把指针与 mask 打包进同一个字换来的性能红利。
+
+
+旧→新对照（objc4-756.2 → 951.1）：cache_t 三字段 → 融合字段
+
+这是缓存结构最有名的一次重构。旧版三个独立字段，新版融合成一个 `_bucketsAndMaybeMask`。
+
+旧（756.2，`objc-runtime-new.h:82`）：
+```objc
+struct cache_t {
+    struct bucket_t *_buckets;   // 桶数组指针（独立字段）
+    mask_t _mask;                // 容量掩码（独立字段）
+    mask_t _occupied;            // 已用槽数（独立字段）
+    ...
+    void expand();
+    struct bucket_t * find(SEL sel, id receiver);
+};
+```
+新（951.1，`:337`，arm64 走 HIGH_16）：
+```objc
+struct cache_t {
+    explicit_atomic<uintptr_t> _bucketsAndMaybeMask;  // 高16位=mask，低48位=buckets，一字双用
+    union {
+        struct { uint32_t _disguisedPreoptCacheSignature; uint16_t _occupied; uint16_t _flags; };
+        explicit_atomic<preopt_cache_t *> _originalPreoptCache;
+    };
+    ...
+};
+```
+三字段 变更为 一字段：`_mask` 不再单独存，挤进 `_bucketsAndMaybeMask` 的高 16 位（省一次内存读取，且第 4.2 节那条「一条 `ldr` 同时取出 mask 和 buckets」正因此成立）；新增的 union 是给 dyld 共享缓存「预优化缓存」让位。`_occupied` 保留。
+
+### 3.2 `bucket_t`：`{IMP, SEL}` 与 ptrauth（:214）
+
+逐字全文（含编码/解码/签名全部成员）：
+
+```objc
+// objc-runtime-new.h:214  —— bucket_t（全文）
+struct bucket_t {
+private:
+    // IMP-first is better for arm64e ptrauth and no worse for arm64.
+    // SEL-first is better for armv7* and i386 and x86_64.
+    //arm64e 的 ptrauth 更适合 IMP 在前；armv7*/i386/x86_64 则 SEL 在前更优
+#if __arm64__
+    explicit_atomic<uintptr_t> _imp;	//arm64：IMP 在前（利于 ptrauth），存「编码后」的实现地址
+    explicit_atomic<SEL> _sel;		//SEL：方法选择子，桶的查找键（命中判定就比它）
+#else
+    explicit_atomic<SEL> _sel;		//非 arm64：SEL 在前
+    explicit_atomic<uintptr_t> _imp;	//IMP：编码后的函数实现地址
+#endif
+
+    // Compute the ptrauth signing modifier from &_imp, newSel, and cls.
+    //`modifierForSEL` 把"这个 IMP 应该出现在哪里"这件事——哪个缓存数组、哪个方法、哪个类——压缩成一个整数，作为 ptrauth 签名的上下文标签，让每个 bucket 的签名都是唯一的，无法跨 bucket、跨 SEL、跨类复制。
+    uintptr_t modifierForSEL(bucket_t *base, SEL newSel, Class cls) const {	//算 IMP 的 ptrauth 签名修饰子
+        return (uintptr_t)base ^ (uintptr_t)newSel ^ (uintptr_t)cls;
+        //IMP 的签名修饰子 = buckets_base ^ sel ^ cls（命中时汇编里两条 eor 就是在重算它）
+    }
+
+    // Sign newImp, with &_imp, newSel, and cls as modifiers.
+    // 如果直接存裸指针，攻击者只要能写入 `cache_t` 所在的内存（比如通过堆溢出漏洞），就能把 `_imp` 改成任意地址，下次 `objc_msgSend` 命中这个 bucket 时就会跳到攻击者控制的地址，实现任意代码执行。
+    
+  // `encodeImp` 的存在就是为了防止这件事——**存入 `_imp` 的不是裸指针，而是经过某种变换的值，让攻击者即使能写内存，也无法构造出一个"看起来合法"的 `_imp` 值。​**
+    //把一个 IMP 转成一个可以安全存入 `_imp` 字段的整数值，三条路径只是"怎么转"的区别，输入输出的本质完全相同。
+    uintptr_t encodeImp(UNUSED_WITHOUT_PTRAUTH bucket_t *base, IMP newImp, UNUSED_WITHOUT_PTRAUTH SEL newSel, Class cls) const {	//写入缓存前：给 IMP 编码/签名
+        if (!newImp) return 0;		//空 IMP 存 0，不参与编码
+#if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_PTRAUTH
+        //arm64e：用 ptrauth 把 IMP 重新签名，修饰子带入 base^sel^cls
+        return (uintptr_t)
+        bitcast_auth_and_resign(void *, newImp,
+                                ptrauth_key_function_pointer,			//源密钥：通用函数指针
+                                ptrauth_function_pointer_type_discriminator(IMP),	//源判别子：IMP 类型
+                                ptrauth_key_process_dependent_code,		//目标密钥：进程相关代码
+                                modifierForSEL(base, newSel, cls));		//目标修饰子：base^sel^cls
+                                
+#elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
+        return (uintptr_t)newImp ^ (uintptr_t)cls;	//非 ptrauth 设备：用类指针 `cls` 对 IMP 做异或，结果存入 `_imp`。这不是密码学安全，但它能防止最简单的攻击：直接从内存里读出 `_imp` 的值，得到的是混淆后的整数，不是可以直接调用的函数地址。还原时再 XOR 一次 `cls` 即可，因为 `a ^ b ^ b = a`
+        
+#elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_NONE
+        return (uintptr_t)newImp;		//不编码：裸存 IMP（模拟器/部分调试配置）
+#else
+#error Unknown method cache IMP encoding.
+#endif
+    }
+
+public:
+    static inline size_t offsetOfSel() { return offsetof(bucket_t, _sel); }	//_sel 在结构体内的偏移（汇编/插入定位用）
+    
+    
+    inline SEL sel() const { return _sel.load(memory_order_relaxed); }		//原子读出 SEL（relaxed，无屏障）
+
+#if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
+#define MAYBE_UNUSED_ISA				//ISA_XOR 编码：解码要用到 cls，参数不能标 unused
+#else
+#define MAYBE_UNUSED_ISA __attribute__((unused))	//其它编码用不到 cls，标 unused 避免「未使用参数」告警
+#endif
+
+    inline IMP rawImp(MAYBE_UNUSED_ISA objc_class *cls) const {	//取 IMP「裸值」：解 XOR 混淆，但不验证 ptrauth 签名
+        uintptr_t imp = _imp.load(memory_order_relaxed);
+        if (!imp) return nil;			//空槽返回 nil
+#if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_PTRAUTH
+        //ptrauth：rawImp 不解签名，原样返回带签名位的指针
+#elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
+        imp ^= (uintptr_t)cls;			//还原 ISA_XOR：再异或一次 cls
+#elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_NONE
+#else
+#error Unknown method cache IMP encoding.
+#endif
+        return (IMP)imp;
+    }
+
+    inline IMP imp(UNUSED_WITHOUT_PTRAUTH bucket_t *base, Class cls) const {	//取可直接调用的 IMP：完整解码 + 验签
+        uintptr_t imp = _imp.load(memory_order_relaxed);
+        if (!imp) return nil;			//空槽返回 nil
+#if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_PTRAUTH
+        SEL sel = _sel.load(memory_order_relaxed);	//ptrauth：先读出 sel 以重算修饰子
+        return bitcast_auth_and_resign(IMP, imp,
+                                       ptrauth_key_process_dependent_code,		//源密钥：进程相关代码
+                                       modifierForSEL(base, sel, cls),			//源修饰子：base^sel^cls（用它验签）
+                                       ptrauth_key_function_pointer,			//目标密钥：通用函数指针
+                                       ptrauth_function_pointer_type_discriminator(IMP));	//目标判别子：IMP 类型
+#elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
+        return (IMP)(imp ^ (uintptr_t)cls);	//还原 IMP ^ cls
+#elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_NONE
+        return (IMP)imp;			//裸值直接返回
+#else
+#error Unknown method cache IMP encoding.
+#endif
+    }
+
+    inline void scribbleIMP(uintptr_t value) {	//用指定值覆写 _imp（缓存清空/标记无效用）
+        _imp.store(value, memory_order_relaxed);
+    }
+
+    template <Atomicity, IMPEncoding>		//模板参数决定：原子性（是否加锁/屏障）与 IMP 编码方式
+    void set(bucket_t *base, SEL newSel, IMP newImp, Class cls);	//把 {sel,imp} 落位到本桶（声明，实现在 .mm）
+};
+```
+
+
+arm64 上 IMP 在前、SEL 在后，所以 4.2 的 `ldp p17, p9`（先 imp 后 sel）顺序与此一致；命中时用 `modifierForSEL`（`buckets_base ^ sel ^ cls`）重算修饰子解签，正是 4.3 实测的两条 `eor`。
+
+> [!summary] 本段小结：bucket_t 就是「一个被加密保护的 {SEL, IMP} 槽」
+>
+> **1. 它是什么** —— `bucket_t` 是方法缓存哈希表的最小单元：`_sel` 是查找键（命中判定比它），`_imp` 是该方法的实现地址。整张缓存就是一个 `bucket_t[]`。
+>
+> **2. 核心设计：`_imp` 从不裸存** —— 缓存位于可写内存，一旦被堆溢出等漏洞改写，裸 `_imp` 就等于把「下次 `objc_msgSend` 跳哪」的控制权交给攻击者。所以写入前一律经 `encodeImp` 变换，读出时再还原。三条编码路径按强度递减：
+>
+> | 编码 | 平台 | 手段 | 安全级别 |
+> |---|---|---|---|
+> | `PTRAUTH` | arm64e 真机 | ptrauth 重签名，修饰子 = `base^sel^cls` | 密码学级，跨桶/跨类无法复制 |
+> | `ISA_XOR` | 一般 arm64 | `_imp ^ cls` | 仅混淆，挡「读内存直接拿地址」 |
+> | `NONE` | 模拟器/调试 | 裸存 | 无 |
+>
+> **3. 编/解码是一对镜像** —— `encodeImp`（写）↔ `imp`（读：解码 + **验签**）。其中 `modifierForSEL`（`base^sel^cls`）是把「这个 IMP 该出现在哪个桶、哪个方法、哪个类」压成一个上下文标签，让每个签名都唯一。`rawImp` 是**不验签的旁路**，只解 XOR、不碰 ptrauth，用于不需要调用、只想看值的场景。
+>
+> **4. 与汇编呼应** —— 正因为修饰子是 `base^sel^cls` 三项，§4.3 命中时才需要 `^sel`、`^cls` **两条 `eor`** 重算修饰子解签；756.2 时代修饰子只有 `&_imp^sel` 两项，故只需一条（见下文旧→新对照）。
+
+ 旧→新对照（756.2 → 951.1）：IMP 签名修饰子从 2 项到 3 项
+
+旧（756.2，`objc-runtime-new.h:51`）—— 裸字段，修饰子只有 `&_imp ^ sel` 两项：
+```objc
+#if __arm64__
+    uintptr_t _imp;          // 非 atomic 裸字段
+    SEL _sel;
+#endif
+    uintptr_t modifierForSEL(SEL newSel) const {
+        return (uintptr_t)&_imp ^ (uintptr_t)newSel;       // 仅 2 项
+    }
+```
+新（951.1，`:219` / `:227`）—— 原子字段，修饰子加入 `cls` 成 3 项：
+```objc
+#if __arm64__
+    explicit_atomic<uintptr_t> _imp;     // 改为原子字段
+    explicit_atomic<SEL> _sel;
+#endif
+    uintptr_t modifierForSEL(bucket_t *base, SEL newSel, Class cls) const {
+        return (uintptr_t)base ^ (uintptr_t)newSel ^ (uintptr_t)cls;   // 加入 cls，3 项
+    }
+```
+把 `cls` 加进 ptrauth 修饰子，让同一个 IMP 在不同类的缓存里签名不同，跨类伪造更难——这也是第 4.3 节命中时汇编要算**两条** `eor`（`^sel`、`^cls`）的原因；756.2 时只需异或 `sel` 一项。字段也从裸 `uintptr_t` 升级为 `explicit_atomic` 配合无锁读。下面这条（818.2 → 951.1）则是同一行更晚的一次细化：
+
+### 旧→新对照（818.2 → 951.1）：IMP 签名加入「类型判别子」
+
+旧（818.2，`objc-runtime-new.h:234`）—— 判别子恒为 `0`：
+```objc
+ptrauth_auth_and_resign(newImp,
+                        ptrauth_key_function_pointer, 0,        // 判别子 = 0
+                        ptrauth_key_process_dependent_code,
+                        modifierForSEL(base, newSel, cls));
+```
+新（951.1，`:236`）—— 换成 IMP 类型判别子：
+```objc
+bitcast_auth_and_resign(void *, newImp,
+                        ptrauth_key_function_pointer,
+                        ptrauth_function_pointer_type_discriminator(IMP),  // 绑定到 IMP 类型
+                        ptrauth_key_process_dependent_code,
+                        modifierForSEL(base, newSel, cls));
+```
+把固定判别子 `0` 换成 `ptrauth_function_pointer_type_discriminator(IMP)`，签名绑定到「函数指针类型」，arm64e 上更难被跨类型伪造；951 还新增了配套的 `rawImp()` 取值方法（见上方 `bucket_t` 全文）。
+
+### 3.3 哈希与开放寻址探测（`cache_hash` :307 / `cache_next` :241）
+
+逐字全文：
+
+```objc
+// objc-cache.mm:240  —— cache_next（全文，含两种配置）
+#if CACHE_END_MARKER
+static inline mask_t cache_next(mask_t i, mask_t mask) {
+    return (i+1) & mask;			//带哨兵：向高地址探测，回绕到 0
+}
+#elif __arm64__
+static inline mask_t cache_next(mask_t i, mask_t mask) {
+    return i ? i-1 : mask;			//arm64：向低地址探测，到 0 则回绕到 mask（表尾）
+}
+#else
+#error unexpected configuration
+#endif
+
+// objc-cache.mm:304
+// Class points to cache. SEL is key. Cache buckets store SEL+IMP.
+// Caches are never built in the dyld shared cache.
+
+// objc-cache.mm:307  —— cache_hash  SEL到下标到，它的输入是 SEL，输出是一个**下标整数**（`mask_t`），仅此而已。它不知道 `buckets_t *` 在哪里，也不接触任何 `bucket_t`
+static inline mask_t cache_hash(SEL sel, mask_t mask)
+{
+    uintptr_t value = (uintptr_t)sel;
+#if SEL_HASH_SHIFT_XOR
+    value ^= value >> 7;			//与汇编 eor p12,p1,p1,LSR #7 一一对应
+#endif
+    return (mask_t)(value & mask);
+}
+```
+
+`cache_hash` 决定"从哪里开始找"，`cache_next` 决定"找不到时往哪里走"。两者共同构成了方法缓存哈希表的完整寻址逻辑，在 `insert` 和 `objc_msgSend` 的汇编里都按照同样的顺序执行，保证写入和查找的探测路径完全一致，写入时存在 slot `i` 的条目，查找时一定能在同样的探测路径上找到。
+
+
+探测方向的两种策略：
+
+1. 下标加一，用 `& mask` 实现环形回绕（因为 capacity 是 2 的幂，`mask = capacity - 1`，位与自动把越界的下标映射回 0）。这是最经典的开放寻址线性探测写法。
+   `CACHE_END_MARKER` 的存在意味着哈希表末尾保留了一个特殊的哨兵 bucket，它的 `_sel` 是一个非零的特殊值，用于让 `objc_msgSend` 的汇编在探测时能快速识别"已经到达表尾，需要回绕"，而不需要做边界比较。这个哨兵在 `reallocate` 时被显式写入。
+
+
+2. 下标减一，到达 0 时跳回 `mask`（即数组最后一个槽位）。这是**反向探测**，从哈希起点向低地址方向扫描。
+   方向本身不影响正确性，只影响探测顺序。arm64 选择反向探测有一个具体的汇编优化原因：`objc_msgSend` 的汇编热路径里，探测循环的终止条件是"回到起点 `begin`"。反向探测时，`begin` 是探测的起始下标，也是循环的终止边界，汇编里可以复用同一个寄存器做比较，减少寄存器压力。同时，递减操作在 arm64 的 `SUBS` 指令里天然设置 condition flags，可以直接用条件跳转，不需要额外的比较指令。
+
+   你在上面 `insert` 代码里看到的 `cache_next` 调用，走的就是这条 arm64 路径，所以探测方向是递减的
+![[ObjC-cache_t-bucket_t-完整梳理.html]]
+
+## 4. 快速路径汇编逐段（`objc-msg-arm64.s`）
+
+§3 把两张表（`cache_t` / `bucket_t`）和哈希探测讲清楚了，下面逐条读汇编时，每条指令都能对应回去：`ldr [x0]` 取的是 §3.1 的 isa、`[x16, #CACHE]` 取的是 §3.1 的融合字、`ldp` 拆的是 §3.2 的 `bucket_t`、命中时两条 `eor` 重算的是 §3.2 的 `modifierForSEL`。
 
 入口 `_objc_msgSend`（:587），逐字全文：
 
@@ -357,11 +824,11 @@ Dog
 	ldr	p14, [x0]		// p14 = raw isa
 					//取对象首 8 字节 = 原始 isa（含标志位）
 	GetClassFromIsa_p16 p14, 1, x0	// p16 = class
-					//抹标志位 + ptrauth 解签 → 真正的 Class（见 3.1）
+					//抹标志位 + ptrauth 解签 → 真正的 Class（见 4.1）
 LGetIsaDone:
 	// calls imp or objc_msgSend_uncached
 	CacheLookup NORMAL, _objc_msgSend, __objc_msgSend_uncached
-					//查缓存：命中尾跳 IMP，未命中跳 uncached（见 3.2/3.3）
+					//查缓存：命中尾跳 IMP，未命中跳 uncached（见 4.2/4.3）
 
 #if SUPPORT_TAGGED_POINTERS
 LNilOrTagged:
@@ -386,14 +853,14 @@ LReturnZero:
 
 > **旁注：判空两架构都做，但 x86_64 抽成宏、arm64 直接内联。** 你若翻 x86_64 资料，会看到判空被抽成一个 `NilTest` 宏（`objc-msg-x86_64.s:641`，`testq %a1,%a1; jz LNilTestSlow`），而且要按返回类型 `NORMAL / FPRET / FP2RET / STRET` **分流**——因为 x86 上结构体返回、浮点返回各有专门的 messenger（`objc_msgSend_stret / _fpret / _fp2ret`）。**arm64 没有这些变体**（见 §0.2 的 `OBJC_ARM64_UNAVAILABLE`），所以既不需要分流、也不抽宏，判空就是上面入口那两条内联指令：`:590 cmp p0,#0` 把「nil（==0）」和「tagged pointer（最高位=1，补码看像负数）」一次比掉，`:592 b.le` 同时兜住两种情况，nil 最终走 `LReturnZero`（:610）清零返回。一句话：**x86_64 因为背着 stret/fpret 家族才搞出带分流的 `NilTest` 宏；arm64 精简到入口一条 `cmp`。**
 
-### 3.0 先看类对象布局：`#CACHE` / `#SUPERCLASS` 偏移哪来的
+### 4.0 先看类对象布局：`#CACHE` / `#SUPERCLASS` 偏移哪来的
 
-上面入口里 `[x0]` 取 isa、后面 3.2 的 `[x16, #CACHE]`、第 8 节的 `[x16, #SUPERCLASS]`，这些偏移都来自 `objc_class` 的内存布局：
+上面入口里 `[x0]` 取 isa、后面 4.2 的 `[x16, #CACHE]`、第 8 节的 `[x16, #SUPERCLASS]`，这些偏移都来自 `objc_class` 的内存布局：
 
 ```objc
 // objc-runtime-new.h:2635 —— 类对象本身就是一个 objc_class
 struct objc_class : objc_object {
-    // Class ISA;          //偏移 0：继承自 objc_object（3.1 节 ldr [x0] 取的就是它）
+    // Class ISA;          //偏移 0：继承自 objc_object（4.1 节 ldr [x0] 取的就是它）
     Class superclass;      //偏移 8
     cache_t cache;         //偏移 16
     class_data_bits_t bits;//偏移 16+sizeof(cache_t)：class_rw_t* + rr/alloc 标志
@@ -406,12 +873,12 @@ struct objc_class : objc_object {
 ;; objc-msg-arm64.s:79 —— 类结构里被选用的字段偏移
 #define SUPERCLASS       __SIZEOF_POINTER__        // = 8   → [x16, #SUPERCLASS]
 #define CACHE            (2 * __SIZEOF_POINTER__)  // = 16  → [x16, #CACHE]
-#define BUCKET_SIZE      (2 * __SIZEOF_POINTER__)  // = 16  → 3.2 的 ldp …, #-BUCKET_SIZE
+#define BUCKET_SIZE      (2 * __SIZEOF_POINTER__)  // = 16  → 4.2 的 ldp …, #-BUCKET_SIZE
 ```
 
-对照 3.2 的 LLDB 反汇编 `ldr x10, [x16, #0x10]`：`0x10` = 16 = `#CACHE`，取的正是 `cache` 字段（即融合字 `_bucketsAndMaybeMask`）；`ldp …, #-0x10` 里的 `0x10` 就是 `BUCKET_SIZE`（每个 bucket 16 字节）。
+对照 4.2 的 LLDB 反汇编 `ldr x10, [x16, #0x10]`：`0x10` = 16 = `#CACHE`，取的正是 `cache` 字段（即融合字 `_bucketsAndMaybeMask`）；`ldp …, #-0x10` 里的 `0x10` 就是 `BUCKET_SIZE`（每个 bucket 16 字节）。
 
-### 3.1 取 isa → class（`GetClassFromIsa_p16`，:115，呼应 Part 1 的 ISA_MASK）
+### 4.1 取 isa → class（`GetClassFromIsa_p16`，:115，呼应 Part 1 的 ISA_MASK）
 
 ```objc
 ;; objc-msg-arm64.s:115  —— GetClassFromIsa_p16 宏（全文）
@@ -461,7 +928,7 @@ objc_msgSend:
   <+24>: autda  x16, x10                      ; ptrauth 解签
 ```
 
-### 3.2 CacheLookup：按 SEL 哈希定位 bucket（:336）
+### 4.2 CacheLookup：按 SEL 哈希定位 bucket（:336）
 
 整段宏逐字全文（保留 `HIGH_16 / HIGH_16_BIG_ADDRS / LOW_4` 全部分支与 preopt 路径）：
 
@@ -694,30 +1161,60 @@ LLookupPreopt\Function:
 #endif // CONFIG_USE_PREOPT_CACHES
 ```
 
-总的来说，这个过程就是：**用哈希定位 bucket，命中就直接跳转 IMP，扑空则回绕扫一圈、再不命中就走慢速查找**
+总的来说，这个过程就是：**用哈希定位 bucket，命中就直接跳转 IMP，扑空则回绕扫一圈、再不命中就走慢速查找**。
 
-CacheLookup是`objc_msgSend`快速路径的核心，每次 `[obj msg]` 调用,runtime 都要在类的方法缓存里找 selector 对应的 IMP(函数指针),这段宏就是这个查找过程的汇编实现。它的设计目标只有一个:**让缓存命中这条"热路径"快到极致**——因为绝大多数消息发送都会命中缓存。
+CacheLookup 是 `objc_msgSend` 快速路径的核心：每次 `[obj msg]`，runtime 都要在类的方法缓存里找 selector 对应的 IMP，这段宏就是该查找的汇编实现。设计目标只有一个——**让缓存命中这条「热路径」快到极致**，因为绝大多数消息发送都会命中。
 
-一、取 mask + buckets
-1. 分两步取出 mask(高16)、buckets(低48)。因为现代 64 位系统实际只用低 48 位寻址,高 16 位是空闲的,正好拿来塞 mask,省一次内存访问。
-2. 拿到mask后计算索引：普通版本直接 `_cmd & mask`(因为 SEL 本质是字符串地址,低位足够随机)。`SEL_HASH_SHIFT_XOR` 版本则先做一次 `sel ^ (sel >> 7)` 混淆再 `& mask`,目的是把高位信息搅进低位,**减少哈希冲突**,对应 C++ 源码里的 `cache_hash` 函数。`& mask` 这步利用了"桶数量永远是 2 的幂"这个前提,等价于对桶数取模,得到落在 `[0, mask]` 范围内的索引。
+上面那段宏含 `HIGH_16 / HIGH_16_BIG_ADDRS / LOW_4` 三套分支，下面只跟 **iOS 真机走的 `HIGH_16`** 这条主线，把它拆成「**三步定位 + 回绕兜底**」逐条讲（每步把宏里对应的几行摘出来，省得回滚看全文）。预优化缓存是系统类专属支线，放在末尾「四」单讲。
 
-二、定位起始 bucket,进入 do-while 探测
-1. `p10` 是数组基址,`p12` 是哈希索引,左移 4 位(`1+PTRSHIFT`)就是乘以 16(每个 bucket 16 字节)。`p13` 现在指向理论上该命中的那个桶。接着进入探测循环
-2. **开放寻址 + 线性探测**:
-- `ldp` 一条指令同时加载 imp(`p17`)和 sel(`p9`),并通过 `#-BUCKET_SIZE` 让指针**向低地址移动一格**。注意 ObjC 缓存的探测方向是==**从高地址往低地址**走的。
-- **命中**(`sel == _cmd`):跳到 `CacheHit`,这个宏会根据 `\Mode` 决定行为——NORMAL 模式直接 `br x17` 跳进 IMP 执行(并带指针认证),GETIMP 模式把 IMP 放进 x0 返回,LOOKUP 模式返回 IMP 供调试/instrumentation 用。
-- **撞到空槽**(`sel == 0`):说明这个 selector 从没缓存过,`cbz` 直接跳 `MissLabelDynamic` 走慢速查找(`__objc_msgSend_uncached`),它会去类的方法列表里真正查找,找到后再填回缓存。
-- **循环条件** `cmp p13, p10` + `b.hs 1b`:只要指针还没退到数组头部(`bucket >= buckets`),就继续往前探测。这就是 `do { } while (bucket >= buckets)` 的汇编形态。
+#### 一、取 mask + buckets，并用 `cache_hash` 算出起始下标
 
-三、扑空环绕：绕道表尾再扫一圈
-- 如果从哈希起点一路探测到了**数组头部**还没命中也没遇到空槽,不能就此放弃——因为目标可能由于哈希冲突被放到了数组的**尾部**(环形缓冲区语义)。于是要回绕到表尾继续
-- `mask` 正好等于"桶数 - 1",所以 `buckets + mask*16` 就是最后一个 bucket。同时把**最初的起点**算出来存到 `p12`,作为这一圈的停止边界——绕一整圈回到出发点就停。然后第二个探测循环
-- `ccmp`(条件比较)是个亮点:它把 `while (sel != 0 && bucket > first_probed)` 两个条件用一条指令优雅地串起来,避免了额外的分支。注释专门解释了为什么停止边界是"回到最初探测的桶"而非"数组第一个桶"——因为开启 `CACHE_ALLOW_FULL_UTILIZATION` 后缓存可以被填满(没有空槽),此时唯一可靠的终止条件就是"绕回出发点"。注释末尾还提醒:当起点恰好是最后一个槽时,初始桶可能被探测两次,这是可接受的边界情况。
+```armasm
+ldr  p11, [x16, #CACHE]        // p11 = mask|buckets（一条 ldr 取出融合字，#CACHE=0x10）
+eor  p12, p1, p1, LSR #7       // sel ^ (sel>>7)
+and  p12, p12, p11, LSR #48    // p12 = (sel^(sel>>7)) & mask = 起始槽下标
+```
 
-- 注意 `LLookupEnd` 和 `LLookupRecover` 标签就落在这里——前面讲的 restart 协议一旦触发,PC 就被弹到 `LLookupRecover`,而它紧接着就是 `b \MissLabelDynamic`,等于"出了任何岔子,统统走慢速查找重来",安全兜底。
+1. **一条 `ldr` 取出融合字**：`[x16, #CACHE]` 一次性读出 §3.1 的 `_bucketsAndMaybeMask`——高 16 位是 mask、低 48 位是 buckets 指针。HIGH_16 的精明之处是**不急着拆**：下一条算哈希时直接用 `p11, LSR #48` 顺手把 mask 移出来用，省掉一条独立的拆字指令（正是 §3.1 `maskZeroBits` 那条注释说的「一条指令顺手算出 `mask`」）。
+2. **算下标 = §3.3 的 `cache_hash`**：`SEL_HASH_SHIFT_XOR` 版先 `sel ^ (sel>>7)` 把高位搅进低位、**减少哈希冲突**，再 `& mask`。`& mask` 之所以等价于「对桶数取模」，是因为桶数恒为 2 的幂，结果必落在 `[0, mask]`。（非 XOR 版直接 `_cmd & mask`，因为 SEL 本质是字符串地址、低位已够随机。）
 
-四、预优化缓存路径
+#### 二、定位起始 bucket，进入 do-while 探测
+
+```armasm
+add p13, p10, p12, LSL #(1+PTRSHIFT)   // p13 = &buckets[idx]（下标 ×16，每个 bucket 16B）
+1: ldp p17, p9, [x13], #-BUCKET_SIZE    // {imp,sel} = *bucket；指针随即向低地址挪一格
+   cmp p9, p1                           //   sel == _cmd ?
+   b.ne 3f                              //     不等 → 去判空/继续探测
+2: CacheHit \Mode                       //   命中 → 见 §4.3
+3: cbz p9, \MissLabelDynamic            //   撞空槽(sel==0) → 慢速查找
+   cmp p13, p10                         // } while (bucket >= buckets)
+   b.hs 1b
+```
+
+下标 `<< (1+PTRSHIFT)` 即 `×16`（每个 bucket 16 字节），算出起始桶地址 `p13`，然后进探测循环。每一轮三种结局：
+- **命中**（`sel == _cmd`）：跳 `CacheHit`，按 `\Mode` 分流——NORMAL 直接 `br` 跳进 IMP、GETIMP 把 IMP 放 x0 返回、LOOKUP 返回 IMP 不跳（三模式详见 **§4.3**）。
+- **撞空槽**（`sel == 0`）：说明这个 selector 从没缓存过，`cbz` 直接跳 `_objc_msgSend_uncached` 走**慢速查找**（第二部分），找到后再回填缓存。
+- **都不是**：`ldp ..., #-BUCKET_SIZE` 已让指针**向低地址挪一格**——这正是 §3.3 `cache_next`（arm64 `i ? i-1 : mask`）的汇编落地。只要还没退到表头（`bucket >= buckets`）就回 `1:` 继续。注意 ObjC 缓存的探测方向是==**从高地址往低地址**==。
+
+#### 三、扑空回绕（wrap-around）：绕到表尾再扫一圈
+
+```armasm
+add p13, p10, p11, LSR #(48-(1+PTRSHIFT))  // p13 = 表尾最后一个 bucket
+add p12, p10, p12, LSL #(1+PTRSHIFT)       // p12 = 最初探测位置（绕回这里就停）
+4: ldp p17, p9, [x13], #-BUCKET_SIZE
+   cmp p9, p1
+   b.eq 2b                                 //   命中 → 回 CacheHit
+   cmp p9, #0
+   ccmp p13, p12, #0, ne                   // while (sel != 0 && bucket > first_probed)
+   b.hi 4b
+   b \MissLabelDynamic                      // 绕完整圈仍无 → 未命中
+```
+
+1. **为什么要回绕**：从哈希起点一路探到**表头**还没命中、也没撞空槽，不能就此放弃——目标可能因哈希冲突被放到了表**尾**（环形缓冲语义）。`mask` 正好是「桶数 − 1」，所以 `buckets + mask×16` 就是最后一个 bucket。
+2. **停止边界是「绕回最初探测的桶」而非「数组第一个桶」**：开启 `CACHE_ALLOW_FULL_UTILIZATION` 后缓存可被填满（没有空槽），此时唯一可靠的终止条件就是「绕回出发点」。`ccmp` 一条指令把 `sel != 0 && bucket > first_probed` 两个条件串起来，省掉一个分支。（边界：起点恰好是最后一个槽时，初始桶可能被探测两次，可接受。）
+3. **安全兜底**：`LLookupEnd` / `LLookupRecover` 标签就落在这里——前面讲的 restart 协议一旦触发，PC 被弹到 `LLookupRecover`，紧接着就是 `b \MissLabelDynamic`，等于「出任何岔子统统走慢速查找重来」。
+
+#### 四、预优化缓存路径（系统类专属支线，动态类不走）
 **只在 iOS 的 dyld 共享缓存里的系统类才会进**(入口是第①段 `HIGH_16` 分支里那个 `tbnz p11, #0` 判断最低位)
 
 普通动态类的方法缓存是**运行时**才建立的——第一次调用某个方法走慢速查找,找到后填回 `cache_t`,第二次才命中。但系统类(`NSObject`、`NSString`、`UIViewController`……)有个特殊性:
@@ -804,7 +1301,7 @@ br    x17                         // NORMAL 模式：直接跳进方法体执行
   <+32>: ldr  x10, [x16, #0x10]         ; x10 = cache 字段 = mask|buckets（#CACHE=0x10）
   <+36>: lsr  x11, x10, #48             ; x11 = mask（高 16 位）
   <+40>: and  x10, x10, #0xffffffffffff ; x10 = buckets（低 48 位）
-  <+44>: eor  x12, x1, x1, lsr #7       ; sel ^ (sel>>7)  —— 对应 cache_hash 的 SEL_HASH_SHIFT_XOR
+  <+44>: eor  x12, x1, x1, lsr #7       ; sel ^ (sel>>7)  —— 对应 §3.3 cache_hash 的 SEL_HASH_SHIFT_XOR
   <+48>: and  w12, w12, w11             ; x12 = hash & mask = 起始槽下标
   <+52>: add  x13, x10, x12, lsl #4     ; x13 = &buckets[idx]（每格 16B = BUCKET_SIZE）
 ;; ---------- do { 开放寻址探测 ----------
@@ -813,7 +1310,7 @@ br    x17                         // NORMAL 模式：直接跳进方法体执行
   <+64>: b.ne <+80>                     ;   不等 → 去判空 / 继续探测
 ;; ---------- CacheHit：命中 ----------
   <+68>: eor  x10, x10, x1              ; x10 = buckets ^ sel
-  <+72>: eor  x10, x10, x16             ; x10 = buckets ^ sel ^ cls  ← modifierForSEL（3 项！呼应 4.2）
+  <+72>: eor  x10, x10, x16             ; x10 = buckets ^ sel ^ cls  ← modifierForSEL（3 项！呼应 3.2）
   <+76>: brab x17, x10                  ; 用该 modifier 认证解签 IMP 并尾跳 → 直接进入方法实现（不返回）
 ;; ---------- 未命中 / 是否继续 ----------
   <+80>: cbz  x9, ...b40                ; 撞到空槽(sel==0) → _objc_msgSend_uncached（慢速查找，第二部分）
@@ -844,12 +1341,12 @@ do {
 } while (bucket >= buckets)               // 没越过表头就继续
 // 越过表头 → wrap 到表尾，再扫到「最初起始槽」为止；仍没有 → 未命中
 
-命中:  imp = auth(imp, buckets ^ sel ^ cls);  br imp   // 解签后尾跳，不留栈帧（§3.3 / §4.2）
+命中:  imp = auth(imp, buckets ^ sel ^ cls);  br imp   // 解签后尾跳，不留栈帧（§4.3 / §3.2）
 未命中: b _objc_msgSend_uncached                        // 转入 lookUpImpOrForward（第二部分）
 ```
 
 
-### 3.3 命中 `br IMP` / 未命中转入慢速查找（`CacheHit` :316）
+### 4.3 命中 `br IMP` / 未命中转入慢速查找（`CacheHit` :316）
 
 逐字全文（含 NORMAL / GETIMP / LOOKUP 三种模式）：
 
@@ -925,435 +1422,6 @@ sub   x0, x16, x17             // imp = isa - imp_offs
 
 ![[Objective-C-快速路径查找要点总结.html]]
 
-## 4. cache_t 数据结构（`objc-runtime-new.h:337`）
-
-### 4.1 `_bucketsAndMaybeMask`：指针与 mask 的融合
-
-`cache_t` 的**数据布局部分**，正文只展开 **arm64 真机（`HIGH_16`）** 这一支；`OUTLINED 32/64 位 / HIGH_16_BIG_ADDRS / LOW_4` 等其它平台分支不删、原文收进本节末尾的折叠块（iOS 真机用不到）。其后的访问器方法声明与 `FAST_CACHE_*` 快速分配标志属另一主题，本块到 mask 存储常量为止：
-
-![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260608182157685.png)
-
-
-```objc
-// objc-runtime-new.h:337  —— cache_t 字段（仅展开 arm64 真机 HIGH_16 分支，其余平台见文末折叠块）
-struct cache_t {
-private:
-    explicit_atomic<uintptr_t> _bucketsAndMaybeMask;  // buckets 指针，也可能顺便包含 mask
-    
-    //核心字段：arm64 上高 16 位 = mask，低 48 位 = buckets 指针（一字双用）
-    union {
-        // Note: _flags on ARM64 needs to line up with the unused bits of
-        // _originalPreoptCache because we access some flags (specifically
-        // FAST_CACHE_HAS_DEFAULT_CORE and FAST_CACHE_HAS_DEFAULT_AWZ) on
-        // unrealized classes with the assumption that they will start out
-        // as 0.
-        
-        struct {
-            //arm64 真机（HIGH_16）：注意没有独立 _mask！mask 在 _bucketsAndMaybeMask 高位
-            // Inline cache mask storage, 64-bit, we have occupied, flags, and
-            // empty space to line up flags with originalPreoptCache.
-            //
-            // Note: the assembly code for objc_release_xN knows about the
-            // location of _flags and the
-            // FAST_CACHE_HAS_CUSTOM_DEALLOC_INITIATION flag within. Any changes
-            // must be applied there as well.
-            uint32_t                   _disguisedPreoptCacheSignature;//4
-            uint16_t                   _occupied;// 2 bytes
-            uint16_t                   _flags;// 2 bytes
-            
-#   define CACHE_T_HAS_FLAGS 1
-        };
-        
-        //  这一段有关之前涉及的PAC机制，暂且可以不管
-        explicit_atomic<preopt_cache_t *, PTRAUTH_STR(originalPreoptCache, ptrauth_key_process_independent_data)> _originalPreoptCache;
-    };
-
-    // Simple constructor for testing purposes only.
-    cache_t() : _bucketsAndMaybeMask(0) {}
-
-    // —— 只展开 arm64 真机 HIGH_16 的 mask 存储常量；OUTLINED / BIG_ADDRS / LOW_4 见折叠块 ——
-#if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16
-    //arm64 真机的 mask 存储常量定义
-    // _bucketsAndMaybeMask is a buckets_t pointer in the low 48 bits
-
-    // How much the mask is shifted by.
-    static constexpr uintptr_t maskShift = 48;		//mask 放在第 48 位起的高 16 位
-
-    // Additional bits after the mask which must be zero. msgSend
-    // takes advantage of these additional bits to construct the value
-    // `mask << 4` from `_maskAndBuckets` in a single instruction.
-    static constexpr uintptr_t maskZeroBits = 4;	//紧邻 mask 的 4 位必须为 0，
-							// 让 msgSend 一条指令算出 mask<<4（见 3.2 的 LSR #(48-(1+PTRSHIFT))）
-
-    // The largest mask value we can store.
-    static constexpr uintptr_t maxMask = ((uintptr_t)1 << (64 - maskShift)) - 1;
-
-    // The mask applied to `_maskAndBuckets` to retrieve the buckets pointer.
-    static constexpr uintptr_t bucketsMask = ((uintptr_t)1 << (maskShift - maskZeroBits)) - 1;
-
-    // Ensure we have enough bits for the buckets pointer.
-    static_assert(bucketsMask >= OBJC_VM_MAX_ADDRESS,
-            "Bucket field doesn't have enough bits for arbitrary pointers.");
-
-#if CONFIG_USE_PREOPT_CACHES
-    static constexpr uintptr_t preoptBucketsMarker = 1ul;
-#if __has_feature(ptrauth_calls)
-    // 63..60: hash_mask_shift
-    // 59..55: hash_shift
-    // 54.. 1: buckets ptr + auth
-    //      0: always 1
-    static constexpr uintptr_t preoptBucketsMask = 0x007ffffffffffffe;
-    static inline uintptr_t preoptBucketsHashParams(const preopt_cache_t *cache) {
-        uintptr_t value = (uintptr_t)cache->shift << 55;
-        // masks have 11 bits but can be 0, so we compute
-        // the right shift for 0x7fff rather than 0xffff
-        return value | ((objc::mask16ShiftBits(cache->mask) - 1) << 60);
-    }
-#endif
-#endif // CONFIG_USE_PREOPT_CACHES
-#endif
-
-    // ……（以下为 mask()/buckets()/insert()/reallocate() 等方法声明，
-    //     以及 FAST_CACHE_* 快速分配标志位定义，属另一主题，本块略去）
-};
-```
-
-
-- explicit_atomic 是 objc runtime 自己封装的原子类型，保证多线程下的读写安全，但不加任何额外内存屏障开销，具体关于bucketsAndMaybeMask的内容我们下面再讲
-
-- **union 的对齐约束**：runtime 在类 realized 之前就需要读 `_flags`（含 `FAST_CACHE_HAS_DEFAULT_CORE`/AWZ），此时 `_originalPreoptCache` 还是 null（全零）。因此 union 的内存布局必须保证：`_originalPreoptCache == 0` 时，`_flags` 读出来也是 0——而这两个标志位的语义正好是"0 = 使用默认实现"，零初始化即正确初始值，无需额外处理。`_disguisedPreoptCacheSignature` 的唯一作用就是填充偏移，让 `_flags` 落在这个位置上。
-
-**为什么没有 `_mask`、却多了 `_disguisedPreoptCacheSignature`**
-
-​`_disguisedPreoptCacheSignature` 这个字段的名字非常刻意——"disguised"（伪装的）暗示它并不是一个普通的数据字段，而是一个结构性占位符，目的是把 `_occupied`（offset 4）和 `_flags`（offset 6）推到正确的内存位置，满足前面注释里说的对齐约束。
-
-具体来说，`_originalPreoptCache` 是一个经过 ptrauth 签名的指针，在 arm64 上指针的低几位有特定含义，高位用于存放签名。当这个指针不为 null 时，它的 bit 布局里某些位置是"未使用位"（unused bits），而 runtime 要求 `_flags` 在 `union` 内的偏移恰好落在这些未使用位上，这样两套身份才能安全共存而不互相干扰。`_disguisedPreoptCacheSignature` 占据前 4 字节，使得 `_flags` 落在 offset 6，正好满足这个约束。
-
-
-**`_originalPreoptCache`**：与上面 struct 共用内存：预优化缓存时这里是 preopt_cache_t*，`preopt_cache_t` 是 dyld 在构建 shared cache 时预先生成的方法哈希表，存放在只读内存里。一个类在被 realized 之前，如果 dyld 已经为它准备好了 preopt cache，那么 `_originalPreoptCache` 就指向那张预生成的表，runtime 可以直接用，省去了首次 realize 时重建缓存的开销。一旦类被 realized、开始正常运行，这块内存就切换到 `struct` 身份，用 `_occupied` 记录已填充的 bucket 数量，用 `_flags` 存放类的快速标志位。两种状态互斥，共用内存没有语义冲突
-
-> [!note]- 其它平台的 cache_t 布局（OUTLINED 32/64 位、HIGH_16_BIG_ADDRS、LOW_4 
->
-> **union 结构体的其余三个分支**
->
-> ```objc
-> #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && !__LP64__
->             // Outlined cache mask storage, 32-bit, we have mask and occupied.
->             explicit_atomic<mask_t>    _mask;// 4 bytes (mask_t = uint32_t)
->             uint16_t                   _occupied;// 2 bytes
-> #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED && __LP64__
->             // Outlined cache mask storage, 64-bit, we have mask, occupied, flags.
->             explicit_atomic<mask_t>    _mask;// 4 bytes
->             uint16_t                   _occupied;//  2 bytes
->             uint16_t                   _flags;// 2 bytes
-> #   define CACHE_T_HAS_FLAGS 1
-> #else
->             // Inline cache mask storage, 32-bit, we have occupied, flags.
->             uint16_t                   _occupied;
->             uint16_t                   _flags;
-> #   define CACHE_T_HAS_FLAGS 1
-> #endif
-> ```
->
-> - **OUTLINED 32 位**：这是最朴素的布局。`mask` 有自己独立的字段，不需要从 `_bucketsAndMaybeMask` 里提取。`_mask` 用 `explicit_atomic` 包装是因为缓存扩容时需要原子地替换它。这个分支没有 `_flags`，说明旧的 32 位路径不支持 `FAST_CACHE_*` 快速标志位机制，类的属性查询需要走更慢的路径。
-> - **OUTLINED 64 位（Mac 模拟器）**：在分支一的基础上加了 `_flags`，同时定义了 `CACHE_T_HAS_FLAGS`，启用快速标志位路径。`mask` 仍然是独立字段。这是你在 Mac 模拟器上调试时看到的布局，相对容易理解，也是很多 ObjC 源码分析文章的参考对象，但它和真机行为有本质差异。
-> - **32 位 inline**：最精简的布局。mask 存在 `_bucketsAndMaybeMask` 的低 4 位，所以这里也不需要独立的 `_mask` 字段。`union` 整体是 4 字节，比其他路径小一半。
->
-> **mask 存储常量的其余三个分支**
->
-> ```objc
-> #if CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_OUTLINED
->     // _bucketsAndMaybeMask is a buckets_t pointer
->     static constexpr uintptr_t bucketsMask = ~0ul;
->     static_assert(!CONFIG_USE_PREOPT_CACHES, "preoptimized caches not supported");
-> #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_HIGH_16_BIG_ADDRS
->     static constexpr uintptr_t maskShift = 48;
->     static constexpr uintptr_t maxMask = ((uintptr_t)1 << (64 - maskShift)) - 1;
->     static constexpr uintptr_t bucketsMask = ((uintptr_t)1 << maskShift) - 1;
->     static_assert(bucketsMask >= OBJC_VM_MAX_ADDRESS, "Bucket field doesn't have enough bits for arbitrary pointers.");
-> #if CONFIG_USE_PREOPT_CACHES
->     static constexpr uintptr_t preoptBucketsMarker = 1ul;
->     static constexpr uintptr_t preoptBucketsMask = bucketsMask & ~preoptBucketsMarker;
-> #endif
-> #elif CACHE_MASK_STORAGE == CACHE_MASK_STORAGE_LOW_4
->     // _bucketsAndMaybeMask is a buckets_t pointer in the top 28 bits
->     static constexpr uintptr_t maskBits = 4;
->     static constexpr uintptr_t maskMask = (1 << maskBits) - 1;
->     static constexpr uintptr_t bucketsMask = ~maskMask;
->     static_assert(!CONFIG_USE_PREOPT_CACHES, "preoptimized caches not supported");
-> #endif
-> ```
->
-> - **OUTLINED**：`_bucketsAndMaybeMask` 整个字段就是 buckets 指针，没有任何位域打包。mask 独立存放在 `union` 里的 `_mask` 字段。`static_assert(!CONFIG_USE_PREOPT_CACHES, ...)` 是一个编译期断言，直接禁止这个平台开启 preopt cache 支持。因为 OUTLINED 策略下 `_bucketsAndMaybeMask` 没有空闲位来放 `preoptBucketsMarker`，实现上无法区分普通指针和 preopt 指针，所以干脆在编译期就封死这条路。
-> - **HIGH_16_BIG_ADDRS**：和 `HIGH_16` 分支相比，这里**没有 `maskZeroBits`**，buckets 指针可以用到 bit 47，完整占据低 48 位。这个分支针对地址空间更大的 arm64 变体（比如某些 Apple Silicon Mac 配置），`OBJC_VM_MAX_ADDRESS` 更高，需要更多位来表示指针，所以不能像真机那样牺牲 4 位做优化。代价是 `msgSend` 里无法用单指令得到 `mask << 4`，需要额外一条 shift 指令。
->
-> **HIGH_16 内的非 PAC（A11 及更早）子分支**
->
-> ```objc
-> #else
->     // 63..53: hash_mask
->     // 52..48: hash_shift
->     // 47.. 1: buckets ptr
->     //      0: always 1
->     static constexpr uintptr_t preoptBucketsMask = 0x0000fffffffffffe;
->     static inline uintptr_t preoptBucketsHashParams(const preopt_cache_t *cache) {
->         return (uintptr_t)cache->hash_params << 48;
->     }
-> #endif
-> ```
->
-> - A11 及更早（无指针认证）走这支：hash 参数 `<< 48`，bit 63..53 放 hash_mask、52..48 放 hash_shift——和 PAC 版（63..60 mask 位数、59..55 hash_shift、`0x7fff >> mask_bits`）的打包方式不同。这与 §3.2 汇编 ② 里"只留 ARM64e 真机分支"的口径一致。
-
-
-而这套「融合字」的拆/装，C++ 侧有对应实现——和 3.2 的汇编一一镜像：
-
-```objc
-// objc-cache.mm（arm64 HIGH_16 分支）
-void cache_t::setBucketsAndMask(struct bucket_t *newBuckets, mask_t newMask) {   // :625 编码（装）
-    // mask 放高位、buckets 放低位，或成一个字
-    _bucketsAndMaybeMask.store(((uintptr_t)newMask << maskShift) | (uintptr_t)newBuckets,
-                               memory_order_release);
-    _occupied = 0;
-}
-
-mask_t cache_t::mask() const {                                                   // :637 取 mask（拆高位）
-    uintptr_t maskAndBuckets = _bucketsAndMaybeMask.load(memory_order_relaxed);
-    return maskAndBuckets >> maskShift;             //>>48，对应汇编 lsr p11,#48
-}
-
-struct bucket_t *cache_t::buckets() const {                                      // :671 取 buckets（拆低位）
-    uintptr_t addr = _bucketsAndMaybeMask.load(memory_order_relaxed);
-    return (bucket_t *)(addr & bucketsMask);        //& 低位掩码，对应汇编 and p10,…
-}
-```
-
-`setBucketsAndMask`（`(mask<<48)|buckets`）= 汇编看到的那个融合字是怎么写进去的；`mask()`（`>>48`）/`buckets()`（`& bucketsMask`）= 汇编 `lsr`/`and` 在 C++ 里的等价拆解。换言之第 3.2 节那几条指令，就是把这三个 C++ 函数手写进了汇编快速路径。
-
-**`buckets()` 为什么能从一个整数里「掏出」`bucket_t *`**——把上面那行 `addr & bucketsMask` 摊开看，arm64 HIGH_16 下 `_bucketsAndMaybeMask` 这一个字的位布局是：
-
-```
-位 63 ........ 48 | 47 .. 44 | 43 ............... 0
-   mask（16 位）   | 必为 0   |  buckets 指针（低 44 位）
-   └ maskShift=48           └ maskZeroBits=4
-```
-
-- **`bucketsMask` 是怎么来的**：`bucketsMask = (1 << (maskShift - maskZeroBits)) - 1 = (1 << 44) - 1`，即低 44 位全 1（`0x00000FFF_FFFFFFFF`）。`addr & bucketsMask` 把高 16 位的 mask 连同中间那 4 个保留位一起抹掉，剩下的就是纯指针，强转 `(bucket_t *)` 即得桶数组首地址——这是 `bucket_t` 在整套缓存读取里**唯一现身**的一刻。
-- **为什么在 4.1 的字段里看不到 `bucket_t`**：`_bucketsAndMaybeMask` 声明成 `uintptr_t`（整数）而非 `bucket_t *`；4.1 只给了 `bucketsMask`/`maskShift` 等「解码常量」（钥匙），真正执行 `& 掩码 + 强转` 的动作在这里的 `buckets()` 里。所以在 4.1 那段按 `bucket_t` 去搜，搜不到是必然的——钥匙在抽屉里，开门的手在这一节。
-- **`maskZeroBits = 4` 不是被浪费的 4 个位**：它垫在 mask（高 16 位）和指针区之间，专为 `objc_msgSend` 服务。msgSend 取 mask 时用的是 `LSR #44`（= `maskShift - maskZeroBits = 48 - 4`）而非 `LSR #48`，少右移 4 位，出来的值直接就是 `mask << 4`——而散列下标计算恰好需要 `mask << 4`（每个 bucket 16 = `1 << 4` 字节，即 §3.2 的 `BUCKET_SIZE`）。一条移位指令顺手把「取 mask」和「乘 bucket 大小」两件事一起做完，这正是把指针与 mask 打包进同一个字换来的性能红利。
-
-
-旧→新对照（objc4-756.2 → 951.1）：cache_t 三字段 → 融合字段
-
-这是缓存结构最有名的一次重构。旧版三个独立字段，新版融合成一个 `_bucketsAndMaybeMask`。
-
-旧（756.2，`objc-runtime-new.h:82`）：
-```objc
-struct cache_t {
-    struct bucket_t *_buckets;   // 桶数组指针（独立字段）
-    mask_t _mask;                // 容量掩码（独立字段）
-    mask_t _occupied;            // 已用槽数（独立字段）
-    ...
-    void expand();
-    struct bucket_t * find(SEL sel, id receiver);
-};
-```
-新（951.1，`:337`，arm64 走 HIGH_16）：
-```objc
-struct cache_t {
-    explicit_atomic<uintptr_t> _bucketsAndMaybeMask;  // 高16位=mask，低48位=buckets，一字双用
-    union {
-        struct { uint32_t _disguisedPreoptCacheSignature; uint16_t _occupied; uint16_t _flags; };
-        explicit_atomic<preopt_cache_t *> _originalPreoptCache;
-    };
-    ...
-};
-```
-三字段 变更为 一字段：`_mask` 不再单独存，挤进 `_bucketsAndMaybeMask` 的高 16 位（省一次内存读取，且第 3.2 节那条「一条 `ldr` 同时取出 mask 和 buckets」正因此成立）；新增的 union 是给 dyld 共享缓存「预优化缓存」让位。`_occupied` 保留。
-
-### 4.2 `bucket_t`：`{IMP, SEL}` 与 ptrauth（:214）
-
-逐字全文（含编码/解码/签名全部成员）：
-
-```objc
-// objc-runtime-new.h:214  —— bucket_t（全文）
-struct bucket_t {
-private:
-    // IMP-first is better for arm64e ptrauth and no worse for arm64.
-    // SEL-first is better for armv7* and i386 and x86_64.
-    //arm64e 的 ptrauth 更适合 IMP 在前；armv7*/i386/x86_64 则 SEL 在前更优
-#if __arm64__
-    explicit_atomic<uintptr_t> _imp;	//arm64：IMP 在前（利于 ptrauth），存「编码后」的实现地址
-    explicit_atomic<SEL> _sel;		//SEL：方法选择子，桶的查找键（命中判定就比它）
-#else
-    explicit_atomic<SEL> _sel;		//非 arm64：SEL 在前
-    explicit_atomic<uintptr_t> _imp;	//IMP：编码后的函数实现地址
-#endif
-
-    // Compute the ptrauth signing modifier from &_imp, newSel, and cls.
-    //`modifierForSEL` 把"这个 IMP 应该出现在哪里"这件事——哪个缓存数组、哪个方法、哪个类——压缩成一个整数，作为 ptrauth 签名的上下文标签，让每个 bucket 的签名都是唯一的，无法跨 bucket、跨 SEL、跨类复制。
-    uintptr_t modifierForSEL(bucket_t *base, SEL newSel, Class cls) const {	//算 IMP 的 ptrauth 签名修饰子
-        return (uintptr_t)base ^ (uintptr_t)newSel ^ (uintptr_t)cls;
-        //IMP 的签名修饰子 = buckets_base ^ sel ^ cls（命中时汇编里两条 eor 就是在重算它）
-    }
-
-    // Sign newImp, with &_imp, newSel, and cls as modifiers.
-    // 如果直接存裸指针，攻击者只要能写入 `cache_t` 所在的内存（比如通过堆溢出漏洞），就能把 `_imp` 改成任意地址，下次 `objc_msgSend` 命中这个 bucket 时就会跳到攻击者控制的地址，实现任意代码执行。
-    
-  // `encodeImp` 的存在就是为了防止这件事——**存入 `_imp` 的不是裸指针，而是经过某种变换的值，让攻击者即使能写内存，也无法构造出一个"看起来合法"的 `_imp` 值。​**
-    //把一个 IMP 转成一个可以安全存入 `_imp` 字段的整数值，三条路径只是"怎么转"的区别，输入输出的本质完全相同。
-    uintptr_t encodeImp(UNUSED_WITHOUT_PTRAUTH bucket_t *base, IMP newImp, UNUSED_WITHOUT_PTRAUTH SEL newSel, Class cls) const {	//写入缓存前：给 IMP 编码/签名
-        if (!newImp) return 0;		//空 IMP 存 0，不参与编码
-#if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_PTRAUTH
-        //arm64e：用 ptrauth 把 IMP 重新签名，修饰子带入 base^sel^cls
-        return (uintptr_t)
-        bitcast_auth_and_resign(void *, newImp,
-                                ptrauth_key_function_pointer,			//源密钥：通用函数指针
-                                ptrauth_function_pointer_type_discriminator(IMP),	//源判别子：IMP 类型
-                                ptrauth_key_process_dependent_code,		//目标密钥：进程相关代码
-                                modifierForSEL(base, newSel, cls));		//目标修饰子：base^sel^cls
-                                
-#elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
-        return (uintptr_t)newImp ^ (uintptr_t)cls;	//非 ptrauth 设备：用类指针 `cls` 对 IMP 做异或，结果存入 `_imp`。这不是密码学安全，但它能防止最简单的攻击：直接从内存里读出 `_imp` 的值，得到的是混淆后的整数，不是可以直接调用的函数地址。还原时再 XOR 一次 `cls` 即可，因为 `a ^ b ^ b = a`
-        
-#elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_NONE
-        return (uintptr_t)newImp;		//不编码：裸存 IMP（模拟器/部分调试配置）
-#else
-#error Unknown method cache IMP encoding.
-#endif
-    }
-
-public:
-    static inline size_t offsetOfSel() { return offsetof(bucket_t, _sel); }	//_sel 在结构体内的偏移（汇编/插入定位用）
-    
-    
-    inline SEL sel() const { return _sel.load(memory_order_relaxed); }		//原子读出 SEL（relaxed，无屏障）
-
-#if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
-#define MAYBE_UNUSED_ISA				//ISA_XOR 编码：解码要用到 cls，参数不能标 unused
-#else
-#define MAYBE_UNUSED_ISA __attribute__((unused))	//其它编码用不到 cls，标 unused 避免「未使用参数」告警
-#endif
-
-    inline IMP rawImp(MAYBE_UNUSED_ISA objc_class *cls) const {	//取 IMP「裸值」：解 XOR 混淆，但不验证 ptrauth 签名
-        uintptr_t imp = _imp.load(memory_order_relaxed);
-        if (!imp) return nil;			//空槽返回 nil
-#if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_PTRAUTH
-        //ptrauth：rawImp 不解签名，原样返回带签名位的指针
-#elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
-        imp ^= (uintptr_t)cls;			//还原 ISA_XOR：再异或一次 cls
-#elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_NONE
-#else
-#error Unknown method cache IMP encoding.
-#endif
-        return (IMP)imp;
-    }
-
-    inline IMP imp(UNUSED_WITHOUT_PTRAUTH bucket_t *base, Class cls) const {	//取可直接调用的 IMP：完整解码 + 验签
-        uintptr_t imp = _imp.load(memory_order_relaxed);
-        if (!imp) return nil;			//空槽返回 nil
-#if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_PTRAUTH
-        SEL sel = _sel.load(memory_order_relaxed);	//ptrauth：先读出 sel 以重算修饰子
-        return bitcast_auth_and_resign(IMP, imp,
-                                       ptrauth_key_process_dependent_code,		//源密钥：进程相关代码
-                                       modifierForSEL(base, sel, cls),			//源修饰子：base^sel^cls（用它验签）
-                                       ptrauth_key_function_pointer,			//目标密钥：通用函数指针
-                                       ptrauth_function_pointer_type_discriminator(IMP));	//目标判别子：IMP 类型
-#elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
-        return (IMP)(imp ^ (uintptr_t)cls);	//还原 IMP ^ cls
-#elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_NONE
-        return (IMP)imp;			//裸值直接返回
-#else
-#error Unknown method cache IMP encoding.
-#endif
-    }
-
-    inline void scribbleIMP(uintptr_t value) {	//用指定值覆写 _imp（缓存清空/标记无效用）
-        _imp.store(value, memory_order_relaxed);
-    }
-
-    template <Atomicity, IMPEncoding>		//模板参数决定：原子性（是否加锁/屏障）与 IMP 编码方式
-    void set(bucket_t *base, SEL newSel, IMP newImp, Class cls);	//把 {sel,imp} 落位到本桶（声明，实现在 .mm）
-};
-```
-
-arm64 上 IMP 在前、SEL 在后，所以 3.2 的 `ldp p17, p9`（先 imp 后 sel）顺序与此一致；命中时用 `modifierForSEL`（`buckets_base ^ sel ^ cls`）重算修饰子解签，正是 3.3 实测的两条 `eor`。
-
- 旧→新对照（756.2 → 951.1）：IMP 签名修饰子从 2 项到 3 项
-
-旧（756.2，`objc-runtime-new.h:51`）—— 裸字段，修饰子只有 `&_imp ^ sel` 两项：
-```objc
-#if __arm64__
-    uintptr_t _imp;          // 非 atomic 裸字段
-    SEL _sel;
-#endif
-    uintptr_t modifierForSEL(SEL newSel) const {
-        return (uintptr_t)&_imp ^ (uintptr_t)newSel;       // 仅 2 项
-    }
-```
-新（951.1，`:219` / `:227`）—— 原子字段，修饰子加入 `cls` 成 3 项：
-```objc
-#if __arm64__
-    explicit_atomic<uintptr_t> _imp;     // 改为原子字段
-    explicit_atomic<SEL> _sel;
-#endif
-    uintptr_t modifierForSEL(bucket_t *base, SEL newSel, Class cls) const {
-        return (uintptr_t)base ^ (uintptr_t)newSel ^ (uintptr_t)cls;   // 加入 cls，3 项
-    }
-```
-把 `cls` 拌进 ptrauth 修饰子，让同一个 IMP 在不同类的缓存里签名不同，跨类伪造更难——这也是第 3.3 节命中时汇编要算**两条** `eor`（`^sel`、`^cls`）的原因；756.2 时只需异或 `sel` 一项。字段也从裸 `uintptr_t` 升级为 `explicit_atomic` 配合无锁读。下面这条（818.2 → 951.1）则是同一行更晚的一次细化：
-
-### 🔄 旧→新对照（818.2 → 951.1）：IMP 签名加入「类型判别子」
-
-旧（818.2，`objc-runtime-new.h:234`）—— 判别子恒为 `0`：
-```objc
-ptrauth_auth_and_resign(newImp,
-                        ptrauth_key_function_pointer, 0,        // 判别子 = 0
-                        ptrauth_key_process_dependent_code,
-                        modifierForSEL(base, newSel, cls));
-```
-新（951.1，`:236`）—— 换成 IMP 类型判别子：
-```objc
-bitcast_auth_and_resign(void *, newImp,
-                        ptrauth_key_function_pointer,
-                        ptrauth_function_pointer_type_discriminator(IMP),  // 绑定到 IMP 类型
-                        ptrauth_key_process_dependent_code,
-                        modifierForSEL(base, newSel, cls));
-```
-把固定判别子 `0` 换成 `ptrauth_function_pointer_type_discriminator(IMP)`，签名绑定到「函数指针类型」，arm64e 上更难被跨类型伪造；951 还新增了配套的 `rawImp()` 取值方法（见上方 `bucket_t` 全文）。
-
-### 4.3 哈希与开放寻址探测（`cache_hash` :307 / `cache_next` :241）
-
-逐字全文：
-
-```objc
-// objc-cache.mm:240  —— cache_next（全文，含两种配置）
-#if CACHE_END_MARKER
-static inline mask_t cache_next(mask_t i, mask_t mask) {
-    return (i+1) & mask;			//带哨兵：向高地址探测，回绕到 0
-}
-#elif __arm64__
-static inline mask_t cache_next(mask_t i, mask_t mask) {
-    return i ? i-1 : mask;			//arm64：向低地址探测，到 0 则回绕到 mask（表尾）
-}
-#else
-#error unexpected configuration
-#endif
-
-// objc-cache.mm:304
-// Class points to cache. SEL is key. Cache buckets store SEL+IMP.
-// Caches are never built in the dyld shared cache.
-
-// objc-cache.mm:307  —— cache_hash（全文）
-static inline mask_t cache_hash(SEL sel, mask_t mask)
-{
-    uintptr_t value = (uintptr_t)sel;
-#if SEL_HASH_SHIFT_XOR
-    value ^= value >> 7;			//与汇编 eor p12,p1,p1,LSR #7 一一对应
-#endif
-    return (mask_t)(value & mask);
-}
-```
-
 ## 5. 缓存的写入与扩容（`objc-cache.mm`）
 
 > **注**：写入路径（`cache_t::insert`）并不在快速路径执行过程中触发——快速路径只读 cache。`insert` 的实际触发点是第二部分第 9 节：慢速查找成功后，`log_and_fill_cache` 回填缓存时才调用它。本节放在第一部分，是因为 cache 的读/写/结构三者放在一起对照阅读更方便，并非表示写入属于快速路径的执行流。
@@ -1372,6 +1440,8 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
     if (slowpath(!cls()->isInitialized())) {
         return;					//+initialize 没跑完不缓存
     }
+    
+    // `+initialize` 还没执行完的类不允许缓存方法。原因是 `+initialize` 可能通过 `method_setImplementation` 或 `class_addMethod` 动态修改方法列表，如果在这期间缓存了某个 IMP，`+initialize` 完成后 IMP 可能已经变了，缓存里存的就是过期数据。`slowpath` 告诉编译器这个分支极少走到，让分支预测器把资源集中在后面的热路径上。
 
     if (isConstantOptimizedCache()) {
         _objc_fatal("cache_t::insert() called with a preoptimized cache for %s",
@@ -1387,22 +1457,27 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
 
     ASSERT(sel != 0 && cls()->isInitialized());
 
+
     // Use the cache as-is if until we exceed our expected fill ratio.
     mask_t newOccupied = occupied() + 1;
     unsigned oldCapacity = capacity(), capacity = oldCapacity;
+    //空表首次分配，初始容量4
     if (slowpath(isConstantEmptyCache())) {
         // Cache is read-only. Replace it.
         if (!capacity) capacity = INIT_CACHE_SIZE;	//空表首次分配，INIT_CACHE_SIZE = 4
         reallocate(oldCapacity, capacity, /* freeOld */false);
     }
+    
     else if (fastpath(newOccupied + CACHE_END_MARKER <= cache_fill_ratio(capacity))) {
         // Cache is less than 3/4 or 7/8 full. Use it as-is.
         //装填率没到上限：原表直接用
     }
-#if CACHE_ALLOW_FULL_UTILIZATION
+    
+#if CACHE_ALLOW_FULL_UTILIZATION，对于容量极小的表（`FULL_UTILIZATION_CACHE_SIZE` 通常是 8），扩容的内存分配开销相对于节省的内存来说不划算，所以允许填得更满一些，推迟扩容时机。
     else if (capacity <= FULL_UTILIZATION_CACHE_SIZE && newOccupied + CACHE_END_MARKER <= capacity) {
         // Allow 100% cache utilization for small buckets. Use it as-is.
     }
+    
 #endif
     else {
         capacity = capacity ? capacity * 2 : INIT_CACHE_SIZE;	//超阈值 → 容量翻倍
@@ -1411,6 +1486,13 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
         }
         reallocate(oldCapacity, capacity, true);		//扩容并释放旧表
     }
+// 容量翻倍是动态哈希表的标准策略，保证容量始终是 2 的幂次（这对 `cache_hash` 的 `& mask` 取模操作至关重要）。`MAX_CACHE_SIZE` 防止无限增长。`freeOld = true` 表示扩容完成后释放旧表。
+
+//`reallocate` 内部只分配一张**新的空** `bucket_t[]` 数组，**旧表整张丢弃、不迁移**——源码注释写得很直白：`// Cache's old contents are not propagated.`（详见 §5.2）。旧条目不会被重新哈希搬过去，而是靠之后的 miss 慢速查找**重新 `insert`** 懒填回来。扩容后 `buckets()` 返回的 `base` 地址变了，旧条目里 IMP 的 ptrauth 签名都含**旧 `base`**，本就随旧表一起被丢弃；重填时由 `insert` 用**新 `base`** 重新签名落位。这正是 `modifierForSEL` 把 `base` 纳入 discriminator 的好处：**换表即让旧签名自然失效，无需任何额外的失效机制**。
+
+---
+
+//哈希定位起点
 
     bucket_t *b = buckets();
     mask_t m = capacity - 1;
@@ -1422,13 +1504,14 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
     do {
         if (fastpath(b[i].sel() == 0)) {
             incrementOccupied();
-            b[i].set<Atomic, Encoded>(b, sel, imp, cls());	//空槽：落位 + 按 4.2 签名
+            b[i].set<Atomic, Encoded>(b, sel, imp, cls());	
+            //**命中空槽（`sel() == 0`）​**：找到了可以插入的位置。`incrementOccupied()` 把 `_occupied` 加一，然后 `b[i].set<Atomic, Encoded>(b, sel, imp, cls())` 把这条记录写入 bucket。
             return;
         }
         if (b[i].sel() == sel) {
             // The entry was added to the cache by some other thread
             // before we grabbed the cacheUpdateLock.
-            return;						//别的线程已填同一 sel
+            return;						// **命中同一 SEL（`sel() == sel`）​**：说明另一个线程在我们拿到锁之前已经插入了同一个方法。直接返回，不重复插入。这是一个经典的"加锁后再检查"（check-after-lock）模式——加锁前的状态可能已经被其他线程改变，加锁后必须重新验证。
         }
     } while (fastpath((i = cache_next(i, m)) != begin));	//开放寻址，绕一圈回起点才停
 
@@ -1436,6 +1519,9 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
 #endif // !DEBUG_TASK_THREADS
 }
 ```
+
+
+![[cache_t-insert-交互式流程演示.html]]
 
 ### 5.2 `reallocate`：翻倍扩容、丢弃旧表不迁移（:808）
 
@@ -1446,6 +1532,7 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
 ALWAYS_INLINE
 void cache_t::reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld)
 {
+	// 取旧表，分配新表
     bucket_t *oldBuckets = buckets();
     bucket_t *newBuckets = allocateBuckets(newCapacity);
 
@@ -1457,16 +1544,22 @@ void cache_t::reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld)
 
     ASSERT(newCapacity > 0);
     ASSERT((uintptr_t)(mask_t)(newCapacity-1) == newCapacity-1);
-
+	// 第一个断言防止分配零容量的表，这是一个基本的合法性检查。
+	// 第二个断言：它验证 `newCapacity - 1` 这个值能被 `mask_t`（`uint32_t` 或 `uint16_t`，取决于平台）无损地表示。因为 `mask = newCapacity - 1` 会被存入 `_bucketsAndMaybeMask` 的高 16 位（arm64 HIGH_16 路径），如果 `newCapacity - 1` 超过了 `mask_t` 的表示范围，高位会被截断，存入的 mask 就是错误的值，哈希表的所有操作都会出错。这个断言在编译期就把这个约束固化下来，防止 `MAX_CACHE_SIZE` 被设置成超出 `mask_t` 范围的值。
+	
     setBucketsAndMask(newBuckets, newCapacity - 1);
-
+    //它把新的 buckets 指针和新的 mask 按照位域协议打包，原子地写入 `_bucketsAndMaybeMask`。
+    
     if (freeOld) {
         collect_free(oldBuckets, oldCapacity);		//延迟回收旧表（可能有线程在读）
     }
 }
 ```
 
-### 🔄 旧→新对照（756.2 → 951.1）：缓存写入从「三个自由函数」到「一个 insert 方法」
+
+
+
+旧→新对照（756.2 → 951.1）：缓存写入从「三个自由函数」到「一个 insert 方法」
 
 旧（756.2）把写入拆成多块：`cache_fill_nolock()`（自由函数，`objc-cache.mm:556`）判 3/4 装填 → 满了调 `cache_t::expand()`（`:539`，`oldCapacity*2` 翻倍）→ 再 `cache_t::find()`（`:519`，开放寻址找空槽 / 同 sel）落位。
 ```objc
@@ -1483,7 +1576,7 @@ do {
 
 ### 5.3 装填因子与留空策略
 
-`insert` 里 `cache_fill_ratio(capacity)`（默认 3/4）就是装填因子上限；3.2 探测循环靠 `cbz p9` 撞空槽判定 miss——3/4 装填上限通常保证有空槽；但启用 `CACHE_ALLOW_FULL_UTILIZATION` 时小容量表（`capacity <= FULL_UTILIZATION_CACHE_SIZE`）可达 100%，此时 wrap-around 靠「绕回出发点」而非「撞空槽」终止（正是 §3.2 引用的那条注释所解释的）。
+`insert` 里 `cache_fill_ratio(capacity)`（默认 3/4）就是装填因子上限；4.2 探测循环靠 `cbz p9` 撞空槽判定 miss——3/4 装填上限通常保证有空槽；但启用 `CACHE_ALLOW_FULL_UTILIZATION` 时小容量表（`capacity <= FULL_UTILIZATION_CACHE_SIZE`）可达 100%，此时 wrap-around 靠「绕回出发点」而非「撞空槽」终止（正是 §4.2 引用的那条注释所解释的）。
 
 ---
 
@@ -1909,7 +2002,7 @@ log_and_fill_cache(Class cls, IMP imp, SEL sel, id receiver, Class implementer)
 }
 ```
 
-回填后下一次同样的消息就在第 3 节快速路径命中。**LLDB 实测**：`[d bark]` 第一次停在 `lookUpImpOrForward`，第二次**没有再停**（命中直接 `brab`），两行 `woof` 连续打印、进程干净退出：
+回填后下一次同样的消息就在第 4 节快速路径命中。**LLDB 实测**：`[d bark]` 第一次停在 `lookUpImpOrForward`，第二次**没有再停**（命中直接 `brab`），两行 `woof` 连续打印、进程干净退出：
 
 ```text
 (lldb) continue          # bark 第二次
@@ -2180,6 +2273,6 @@ lookUpImpOrForward(miss)
 
 一条消息的命运：`objc_msgSend`（汇编 cache 命中→尾跳）→ miss 则 `lookUpImpOrForward`（当前类方法表→沿 superclass 链，命中即 `insert` 回填缓存）→ 仍无则动态解析一次 → 再无则 `_objc_msgForward` 交给 CF `___forwarding___` 跑转发三部曲 → 全不接则 `doesNotRecognizeSelector:` 抛异常崩溃。
 
-与 Part 1 的呼应：第 3.1 节取 isa→class 用的 **ISA_MASK `0x7ffffffffffff8`**、bucket 里 IMP 的 ptrauth，都接着 Part 1 的 isa 走位与指针签名往下讲。
+与 Part 1 的呼应：第 4.1 节取 isa→class 用的 **ISA_MASK `0x7ffffffffffff8`**、bucket 里 IMP 的 ptrauth，都接着 Part 1 的 isa 走位与指针签名往下讲。
 
 承接下一篇：缓存结构（`cache_t` 融合字、扩容丢弃策略）与方法列表（`method_t` small/big、相对偏移、分类覆盖）值得单开一篇细挖；以及 `super` 调用走的 `objc_msgSendSuper2`（本篇汇编 :715 已露面）如何改查找起点。

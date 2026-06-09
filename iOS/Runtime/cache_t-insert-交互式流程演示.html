@@ -1,0 +1,309 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>show_widget</title>
+</head>
+<body>
+
+<style>
+:root{
+--primary:#F3A04C;--accent:#E58522;--background:#F4F4F6;--panel-bg:#FEFDFC;--card-bg:#fff;
+--success:#40B43E;--warning:#EBA400;--destructive:#E65C53;--primary-foreground:#fff;
+--text-primary:rgba(0,0,0,.8);--text-secondary:rgba(0,0,0,.5);--text-tertiary:rgba(0,0,0,.35);
+--intensity-4:rgba(0,0,0,.04);--intensity-6:rgba(0,0,0,.06);--intensity-8:rgba(0,0,0,.08);
+--intensity-12:rgba(0,0,0,.12);--intensity-20:rgba(0,0,0,.2);--intensity-35:rgba(0,0,0,.35);
+--input-shadow:rgba(0,0,0,.08);
+font-family:ui-sans-serif,system-ui,-apple-system,sans-serif
+}
+@media(prefers-color-scheme:dark){:root{
+--background:#232324;--panel-bg:#2A2A2B;--card-bg:#2E2E2E;--primary-foreground:#000;
+--text-primary:rgba(255,255,255,.85);--text-secondary:rgba(255,255,255,.5);--text-tertiary:rgba(255,255,255,.35);
+--intensity-4:rgba(255,255,255,.04);--intensity-6:rgba(255,255,255,.06);--intensity-8:rgba(255,255,255,.08);
+--intensity-12:rgba(255,255,255,.12);--intensity-20:rgba(255,255,255,.2);--intensity-35:rgba(255,255,255,.35);
+--input-shadow:rgba(0,0,0,.4)
+}}
+*{box-sizing:border-box;margin:0;padding:0}
+button{cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+</style>
+
+<div style="display:block;width:100%;color:var(--text-primary);font-size:13px;line-height:1.5;">
+
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+  <span style="font-size:15px;font-weight:600;">cache_t::insert 流程演示</span>
+  <span style="height:20px;display:inline-flex;align-items:center;border:.5px solid rgba(243,160,76,.4);border-radius:999px;background:rgba(243,160,76,.12);color:var(--accent);padding:0 8px;font-size:10px;font-weight:500;">可交互</span>
+</div>
+
+<div style="display:grid;grid-template-columns:200px minmax(0,1fr);gap:12px;margin-bottom:16px;">
+  <div style="background:var(--panel-bg);border:.5px solid var(--intensity-8);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;">
+    <div style="font-size:11px;font-weight:500;color:var(--text-secondary);margin-bottom:2px;">模拟参数</div>
+    <div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">缓存容量</div>
+      <select id="capSel" style="width:100%;height:32px;border:.5px solid var(--intensity-8);border-radius:8px;background:var(--intensity-4);color:var(--text-primary);padding:0 8px;font-size:12px;outline:none;">
+        <option value="0">空表（未分配）</option>
+        <option value="4" selected>4 slots</option>
+        <option value="8">8 slots</option>
+        <option value="16">16 slots</option>
+      </select>
+    </div>
+    <div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">已占用 slots</div>
+      <select id="occSel" style="width:100%;height:32px;border:.5px solid var(--intensity-8);border-radius:8px;background:var(--intensity-4);color:var(--text-primary);padding:0 8px;font-size:12px;outline:none;">
+        <option value="0" selected>0</option>
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="6">6（8槽用）</option>
+        <option value="12">12（16槽用）</option>
+      </select>
+    </div>
+    <div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">插入的 SEL（十六进制）</div>
+      <input id="selInput" type="text" value="0x1a2b3c40" style="width:100%;height:32px;border:.5px solid var(--intensity-8);border-radius:8px;background:var(--intensity-4);color:var(--text-primary);padding:0 8px;font-size:11px;font-family:monospace;outline:none;">
+    </div>
+    <button id="runBtn" style="height:34px;border:0;border-radius:10px;background:var(--primary);color:var(--primary-foreground);font-size:12px;font-weight:500;">运行 insert</button>
+    <button id="resetBtn" style="height:34px;border:.5px solid var(--intensity-8);border-radius:10px;background:var(--intensity-6);color:var(--text-primary);font-size:12px;">重置</button>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:10px;">
+    <div id="stepArea" style="background:var(--card-bg);border:.5px solid var(--intensity-8);border-radius:14px;padding:14px;min-height:120px;">
+      <div style="font-size:11px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;">执行步骤</div>
+      <div id="stepList" style="display:flex;flex-direction:column;gap:6px;">
+        <div style="font-size:12px;color:var(--text-tertiary);">点击「运行 insert」开始模拟</div>
+      </div>
+    </div>
+    <div id="bucketArea" style="background:var(--card-bg);border:.5px solid var(--intensity-8);border-radius:14px;padding:14px;">
+      <div style="font-size:11px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;">bucket[] 状态</div>
+      <div id="bucketVis" style="font-size:12px;color:var(--text-tertiary);">尚未分配</div>
+    </div>
+  </div>
+</div>
+
+<div style="background:var(--panel-bg);border:.5px solid var(--intensity-8);border-radius:14px;padding:14px;">
+  <div style="font-size:11px;font-weight:500;color:var(--text-secondary);margin-bottom:10px;">容量决策规则（cache_fill_ratio = 3/4）</div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+    <div id="rule0" style="border-radius:8px;padding:10px;border:.5px solid var(--intensity-8);background:var(--intensity-4);">
+      <div style="font-size:10px;font-weight:500;margin-bottom:3px;">空表</div>
+      <div style="font-size:10px;color:var(--text-secondary);">分配 4 slots</div>
+    </div>
+    <div id="rule1" style="border-radius:8px;padding:10px;border:.5px solid var(--intensity-8);background:var(--intensity-4);">
+      <div style="font-size:10px;font-weight:500;margin-bottom:3px;">占用 &lt; 3/4</div>
+      <div style="font-size:10px;color:var(--text-secondary);">直接插入</div>
+    </div>
+    <div id="rule2" style="border-radius:8px;padding:10px;border:.5px solid var(--intensity-8);background:var(--intensity-4);">
+      <div style="font-size:10px;font-weight:500;margin-bottom:3px;">小表满载</div>
+      <div style="font-size:10px;color:var(--text-secondary);">≤8槽豁免</div>
+    </div>
+    <div id="rule3" style="border-radius:8px;padding:10px;border:.5px solid var(--intensity-8);background:var(--intensity-4);">
+      <div style="font-size:10px;font-weight:500;margin-bottom:3px;">超阈值</div>
+      <div style="font-size:10px;color:var(--text-secondary);">容量 × 2</div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+(function(){
+  var FILL_RATIO = 0.75;
+  var CACHE_END_MARKER = 1;
+  var FULL_UTIL_SIZE = 8;
+
+  function cacheHash(sel, mask){
+    var v = sel;
+    v = (v ^ (v >>> 7)) >>> 0;
+    return v & mask;
+  }
+
+  function cacheNext(i, mask){
+    return i ? i - 1 : mask;
+  }
+
+  function highlight(id, color){
+    var rules = ['rule0','rule1','rule2','rule3'];
+    rules.forEach(function(r){
+      var el = document.getElementById(r);
+      el.style.background = 'var(--intensity-4)';
+      el.style.borderColor = 'var(--intensity-8)';
+      el.style.color = 'var(--text-primary)';
+    });
+    if(id !== null){
+      var el = document.getElementById(id);
+      el.style.background = color + '22';
+      el.style.borderColor = color + '88';
+    }
+  }
+
+  function addStep(steps, text, type){
+    var colors = {ok:'var(--success)', warn:'var(--warning)', err:'var(--destructive)', info:'var(--accent)', dim:'var(--text-tertiary)'};
+    var icons = {ok:'✓', warn:'⚠', err:'✕', info:'→', dim:'·'};
+    steps.push({text:text, type:type||'info', color:colors[type||'info'], icon:icons[type||'info']});
+  }
+
+  function renderSteps(steps){
+    var el = document.getElementById('stepList');
+    el.innerHTML = '';
+    steps.forEach(function(s, idx){
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:flex-start;gap:6px;font-size:11px;opacity:0;transition:opacity .2s;';
+      row.innerHTML = '<span style="color:'+s.color+';font-weight:500;flex-shrink:0;margin-top:1px;">'+s.icon+'</span>'
+        + '<span style="color:var(--text-primary);font-family:monospace;">'+s.text+'</span>';
+      el.appendChild(row);
+      setTimeout(function(r){ r.style.opacity='1'; }, idx * 80, row);
+    });
+  }
+
+  function renderBuckets(buckets, capacity, highlightIdx, insertIdx){
+    var el = document.getElementById('bucketVis');
+    if(capacity === 0){ el.innerHTML = '<span style="color:var(--text-tertiary);font-size:12px;">尚未分配</span>'; return; }
+    var html = '<div style="display:flex;gap:4px;flex-wrap:wrap;">';
+    for(var i=0;i<capacity;i++){
+      var bg = 'var(--intensity-4)';
+      var border = 'var(--intensity-12)';
+      var label = buckets[i] ? buckets[i] : '—';
+      var textColor = buckets[i] ? 'var(--text-primary)' : 'var(--text-tertiary)';
+      if(i === insertIdx){ bg='rgba(64,180,62,.18)'; border='rgba(64,180,62,.5)'; textColor='var(--success)'; }
+      else if(i === highlightIdx && highlightIdx !== insertIdx){ bg='rgba(229,133,34,.15)'; border='rgba(229,133,34,.4)'; }
+      html += '<div style="border-radius:8px;border:.5px solid '+border+';background:'+bg+';padding:6px 8px;min-width:52px;text-align:center;">'
+        + '<div style="font-size:9px;color:var(--text-tertiary);margin-bottom:2px;">['+i+']</div>'
+        + '<div style="font-size:10px;font-weight:500;color:'+textColor+';font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60px;">'+label+'</div>'
+        + '</div>';
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  var state = {
+    capacity: 4,
+    occupied: 0,
+    buckets: [],
+    ran: false
+  };
+
+  function reset(){
+    state = { capacity: 4, occupied: 0, buckets: [], ran: false };
+    document.getElementById('stepList').innerHTML = '<div style="font-size:12px;color:var(--text-tertiary);">点击「运行 insert」开始模拟</div>';
+    renderBuckets([], 0, -1, -1);
+    highlight(null);
+    document.getElementById('capSel').disabled = false;
+    document.getElementById('occSel').disabled = false;
+  }
+
+  function run(){
+    var capVal = parseInt(document.getElementById('capSel').value);
+    var occVal = parseInt(document.getElementById('occSel').value);
+    var selStr = document.getElementById('selInput').value.trim();
+    var selVal = parseInt(selStr, 16);
+    if(isNaN(selVal)){ selVal = 0x1a2b3c40; }
+
+    var steps = [];
+    var capacity = capVal;
+    var occupied = occVal;
+    var buckets = [];
+    for(var i=0;i<capacity;i++) buckets.push(null);
+
+    var newOccupied = occupied + 1;
+    var finalCapacity = capacity;
+    var hitRule = -1;
+    var didReallocate = false;
+
+    addStep(steps, 'insert(sel=0x'+selVal.toString(16)+') 开始', 'info');
+    addStep(steps, 'newOccupied = occupied('+occupied+') + 1 = '+newOccupied, 'dim');
+
+    if(capacity === 0){
+      hitRule = 0;
+      finalCapacity = 4;
+      buckets = new Array(4).fill(null);
+      addStep(steps, '空表 → reallocate(0, 4, freeOld=false)', 'warn');
+      addStep(steps, '分配 4 个 bucket 槽位', 'ok');
+      highlight('rule0','#EBA400');
+    } else if(newOccupied + CACHE_END_MARKER <= Math.floor(capacity * FILL_RATIO)){
+      hitRule = 1;
+      addStep(steps, newOccupied+' + '+CACHE_END_MARKER+' ≤ '+Math.floor(capacity*FILL_RATIO)+' (3/4×'+capacity+')', 'ok');
+      addStep(steps, '装填率未达上限，直接插入', 'ok');
+      highlight('rule1','#40B43E');
+    } else if(capacity <= FULL_UTIL_SIZE && newOccupied + CACHE_END_MARKER <= capacity){
+      hitRule = 2;
+      addStep(steps, '小表(≤'+FULL_UTIL_SIZE+')满载豁免，直接插入', 'ok');
+      highlight('rule2','#58B2DC');
+    } else {
+      hitRule = 3;
+      finalCapacity = capacity * 2;
+      buckets = new Array(finalCapacity).fill(null);
+      addStep(steps, '超阈值 → capacity '+capacity+' × 2 = '+finalCapacity, 'warn');
+      addStep(steps, 'reallocate('+capacity+', '+finalCapacity+', freeOld=true)', 'warn');
+      addStep(steps, '旧表整张丢弃、不迁移（old contents not propagated），新表为空靠后续 miss 懒重填', 'err');
+      highlight('rule3','#E65C53');
+      didReallocate = true;
+    }
+
+    var mask = finalCapacity - 1;
+    var begin = cacheHash(selVal, mask);
+    addStep(steps, 'cache_hash: 0x'+selVal.toString(16)+' ^ (>>7) & 0x'+mask.toString(16)+' = '+begin, 'info');
+    addStep(steps, 'begin = '+begin+'，开始探测', 'info');
+
+    var i = begin;
+    var insertIdx = -1;
+    var probeCount = 0;
+    do {
+      probeCount++;
+      if(buckets[i] === null){
+        buckets[i] = 'sel_'+selVal.toString(16).slice(-4);
+        insertIdx = i;
+        addStep(steps, 'b['+i+'].sel()==0 → 空槽！写入 {sel, encodeImp(imp)}', 'ok');
+        addStep(steps, 'incrementOccupied() → occupied='+(occupied+1), 'ok');
+        break;
+      } else {
+        addStep(steps, 'b['+i+'] 已占用，cache_next → '+(i?i-1:mask), 'dim');
+        i = cacheNext(i, mask);
+      }
+      if(probeCount > finalCapacity){ addStep(steps,'bad_cache！（不可达）','err'); break; }
+    } while(i !== begin);
+
+    renderSteps(steps);
+    renderBuckets(buckets, finalCapacity, begin, insertIdx);
+    document.getElementById('capSel').disabled = true;
+    document.getElementById('occSel').disabled = true;
+  }
+
+  document.getElementById('runBtn').addEventListener('click', run);
+  document.getElementById('resetBtn').addEventListener('click', reset);
+
+  renderBuckets([], 0, -1, -1);
+})();
+</script>
+<script data-tabbit-widget-diagnostics="true">
+(function(){
+  if (window.__tabbitWidgetDiagnosticsInstalled) return;
+  window.__tabbitWidgetDiagnosticsInstalled = true;
+  window.__TABBIT_WIDGET_ERRORS__ = window.__TABBIT_WIDGET_ERRORS__ || [];
+  function emit(level, args) {
+    var payload = {
+      type: "tabbit_widget_diagnostics",
+      level: level,
+      message: Array.prototype.slice.call(args || []).map(function(item) {
+        if (item && item.stack) return item.stack;
+        if (typeof item === "string") return item;
+        try { return JSON.stringify(item); } catch (_) { return String(item); }
+      }).join(" "),
+      timestamp: Date.now()
+    };
+    window.__TABBIT_WIDGET_ERRORS__.push(payload);
+    try { window.parent && window.parent.postMessage(payload, "*"); } catch (_) {}
+  }
+  var originalError = console.error;
+  console.error = function() {
+    emit("error", arguments);
+    return originalError && originalError.apply(console, arguments);
+  };
+  window.addEventListener("error", function(event) {
+    emit("error", [event.message || "Script error", event.filename || "", event.lineno || ""]);
+  });
+  window.addEventListener("unhandledrejection", function(event) {
+    emit("unhandledrejection", [event.reason || "Unhandled promise rejection"]);
+  });
+})();
+</script>
+</body>
+</html>
