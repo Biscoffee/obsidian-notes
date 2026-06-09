@@ -1190,13 +1190,17 @@ private:
 #endif
 
     // Compute the ptrauth signing modifier from &_imp, newSel, and cls.
+    //`modifierForSEL` 把"这个 IMP 应该出现在哪里"这件事——哪个缓存数组、哪个方法、哪个类——压缩成一个整数，作为 ptrauth 签名的上下文标签，让每个 bucket 的签名都是唯一的，无法跨 bucket、跨 SEL、跨类复制。
     uintptr_t modifierForSEL(bucket_t *base, SEL newSel, Class cls) const {	//算 IMP 的 ptrauth 签名修饰子
         return (uintptr_t)base ^ (uintptr_t)newSel ^ (uintptr_t)cls;
         //IMP 的签名修饰子 = buckets_base ^ sel ^ cls（命中时汇编里两条 eor 就是在重算它）
     }
 
     // Sign newImp, with &_imp, newSel, and cls as modifiers.
-    // 把一个 IMP 转成一个可以安全存入 `_imp` 字段的整数值，三条路径只是"怎么转"的区别，输入输出的本质完全相同。
+    // 如果直接存裸指针，攻击者只要能写入 `cache_t` 所在的内存（比如通过堆溢出漏洞），就能把 `_imp` 改成任意地址，下次 `objc_msgSend` 命中这个 bucket 时就会跳到攻击者控制的地址，实现任意代码执行。
+    
+  // `encodeImp` 的存在就是为了防止这件事——**存入 `_imp` 的不是裸指针，而是经过某种变换的值，让攻击者即使能写内存，也无法构造出一个"看起来合法"的 `_imp` 值。​**
+    //把一个 IMP 转成一个可以安全存入 `_imp` 字段的整数值，三条路径只是"怎么转"的区别，输入输出的本质完全相同。
     uintptr_t encodeImp(UNUSED_WITHOUT_PTRAUTH bucket_t *base, IMP newImp, UNUSED_WITHOUT_PTRAUTH SEL newSel, Class cls) const {	//写入缓存前：给 IMP 编码/签名
         if (!newImp) return 0;		//空 IMP 存 0，不参与编码
 #if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_PTRAUTH
@@ -1220,6 +1224,8 @@ private:
 
 public:
     static inline size_t offsetOfSel() { return offsetof(bucket_t, _sel); }	//_sel 在结构体内的偏移（汇编/插入定位用）
+    
+    
     inline SEL sel() const { return _sel.load(memory_order_relaxed); }		//原子读出 SEL（relaxed，无屏障）
 
 #if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
@@ -1227,6 +1233,7 @@ public:
 #else
 #define MAYBE_UNUSED_ISA __attribute__((unused))	//其它编码用不到 cls，标 unused 避免「未使用参数」告警
 #endif
+
     inline IMP rawImp(MAYBE_UNUSED_ISA objc_class *cls) const {	//取 IMP「裸值」：解 XOR 混淆，但不验证 ptrauth 签名
         uintptr_t imp = _imp.load(memory_order_relaxed);
         if (!imp) return nil;			//空槽返回 nil
