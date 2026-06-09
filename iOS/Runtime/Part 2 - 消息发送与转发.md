@@ -1029,6 +1029,7 @@ private:
 
 具体来说，`_originalPreoptCache` 是一个经过 ptrauth 签名的指针，在 arm64 上指针的低几位有特定含义，高位用于存放签名。当这个指针不为 null 时，它的 bit 布局里某些位置是"未使用位"（unused bits），而 runtime 要求 `_flags` 在 `union` 内的偏移恰好落在这些未使用位上，这样两套身份才能安全共存而不互相干扰。`_disguisedPreoptCacheSignature` 占据前 4 字节，使得 `_flags` 落在 offset 6，正好满足这个约束。
 
+
 **`_originalPreoptCache`**：与上面 struct 共用内存：预优化缓存时这里是 preopt_cache_t*，`preopt_cache_t` 是 dyld 在构建 shared cache 时预先生成的方法哈希表，存放在只读内存里。一个类在被 realized 之前，如果 dyld 已经为它准备好了 preopt cache，那么 `_originalPreoptCache` 就指向那张预生成的表，runtime 可以直接用，省去了首次 realize 时重建缓存的开销。一旦类被 realized、开始正常运行，这块内存就切换到 `struct` 身份，用 `_occupied` 记录已填充的 bucket 数量，用 `_flags` 存放类的快速标志位。两种状态互斥，共用内存没有语义冲突
 
 > [!note]- 其它平台的 cache_t 布局（OUTLINED 32/64 位、HIGH_16_BIG_ADDRS、LOW_4 
@@ -1128,6 +1129,18 @@ struct bucket_t *cache_t::buckets() const {                                     
 
 `setBucketsAndMask`（`(mask<<48)|buckets`）= 汇编看到的那个融合字是怎么写进去的；`mask()`（`>>48`）/`buckets()`（`& bucketsMask`）= 汇编 `lsr`/`and` 在 C++ 里的等价拆解。换言之第 3.2 节那几条指令，就是把这三个 C++ 函数手写进了汇编快速路径。
 
+**`buckets()` 为什么能从一个整数里「掏出」`bucket_t *`**——把上面那行 `addr & bucketsMask` 摊开看，arm64 HIGH_16 下 `_bucketsAndMaybeMask` 这一个字的位布局是：
+
+```
+位 63 ........ 48 | 47 .. 44 | 43 ............... 0
+   mask（16 位）   | 必为 0   |  buckets 指针（低 44 位）
+   └ maskShift=48           └ maskZeroBits=4
+```
+
+- **`bucketsMask` 是怎么来的**：`bucketsMask = (1 << (maskShift - maskZeroBits)) - 1 = (1 << 44) - 1`，即低 44 位全 1（`0x00000FFF_FFFFFFFF`）。`addr & bucketsMask` 把高 16 位的 mask 连同中间那 4 个保留位一起抹掉，剩下的就是纯指针，强转 `(bucket_t *)` 即得桶数组首地址——这是 `bucket_t` 在整套缓存读取里**唯一现身**的一刻。
+- **为什么在 4.1 的字段里看不到 `bucket_t`**：`_bucketsAndMaybeMask` 声明成 `uintptr_t`（整数）而非 `bucket_t *`；4.1 只给了 `bucketsMask`/`maskShift` 等「解码常量」（钥匙），真正执行 `& 掩码 + 强转` 的动作在这里的 `buckets()` 里。所以在 4.1 那段按 `bucket_t` 去搜，搜不到是必然的——钥匙在抽屉里，开门的手在这一节。
+- **`maskZeroBits = 4` 不是被浪费的 4 个位**：它垫在 mask（高 16 位）和指针区之间，专为 `objc_msgSend` 服务。msgSend 取 mask 时用的是 `LSR #44`（= `maskShift - maskZeroBits = 48 - 4`）而非 `LSR #48`，少右移 4 位，出来的值直接就是 `mask << 4`——而散列下标计算恰好需要 `mask << 4`（每个 bucket 16 = `1 << 4` 字节，即 §3.2 的 `BUCKET_SIZE`）。一条移位指令顺手把「取 mask」和「乘 bucket 大小」两件事一起做完，这正是把指针与 mask 打包进同一个字换来的性能红利。
+
 
 旧→新对照（objc4-756.2 → 951.1）：cache_t 三字段 → 融合字段
 
@@ -1167,54 +1180,57 @@ struct bucket_t {
 private:
     // IMP-first is better for arm64e ptrauth and no worse for arm64.
     // SEL-first is better for armv7* and i386 and x86_64.
+    //arm64e 的 ptrauth 更适合 IMP 在前；armv7*/i386/x86_64 则 SEL 在前更优
 #if __arm64__
-    explicit_atomic<uintptr_t> _imp;	//arm64：IMP 在前（利于 ptrauth）
-    explicit_atomic<SEL> _sel;
+    explicit_atomic<uintptr_t> _imp;	//arm64：IMP 在前（利于 ptrauth），存「编码后」的实现地址
+    explicit_atomic<SEL> _sel;		//SEL：方法选择子，桶的查找键（命中判定就比它）
 #else
-    explicit_atomic<SEL> _sel;
-    explicit_atomic<uintptr_t> _imp;
+    explicit_atomic<SEL> _sel;		//非 arm64：SEL 在前
+    explicit_atomic<uintptr_t> _imp;	//IMP：编码后的函数实现地址
 #endif
 
     // Compute the ptrauth signing modifier from &_imp, newSel, and cls.
-    uintptr_t modifierForSEL(bucket_t *base, SEL newSel, Class cls) const {
+    uintptr_t modifierForSEL(bucket_t *base, SEL newSel, Class cls) const {	//算 IMP 的 ptrauth 签名修饰子
         return (uintptr_t)base ^ (uintptr_t)newSel ^ (uintptr_t)cls;
         //IMP 的签名修饰子 = buckets_base ^ sel ^ cls（命中时汇编里两条 eor 就是在重算它）
     }
 
     // Sign newImp, with &_imp, newSel, and cls as modifiers.
-    uintptr_t encodeImp(UNUSED_WITHOUT_PTRAUTH bucket_t *base, IMP newImp, UNUSED_WITHOUT_PTRAUTH SEL newSel, Class cls) const {
-        if (!newImp) return 0;
+    uintptr_t encodeImp(UNUSED_WITHOUT_PTRAUTH bucket_t *base, IMP newImp, UNUSED_WITHOUT_PTRAUTH SEL newSel, Class cls) const {	//写入缓存前：给 IMP 编码/签名
+        if (!newImp) return 0;		//空 IMP 存 0，不参与编码
 #if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_PTRAUTH
+        //arm64e：用 ptrauth 把 IMP 重新签名，修饰子带入 base^sel^cls
         return (uintptr_t)
         bitcast_auth_and_resign(void *, newImp,
-                                ptrauth_key_function_pointer,
-                                ptrauth_function_pointer_type_discriminator(IMP),
-                                ptrauth_key_process_dependent_code,
-                                modifierForSEL(base, newSel, cls));
+                                ptrauth_key_function_pointer,			//源密钥：通用函数指针
+                                ptrauth_function_pointer_type_discriminator(IMP),	//源判别子：IMP 类型
+                                ptrauth_key_process_dependent_code,		//目标密钥：进程相关代码
+                                modifierForSEL(base, newSel, cls));		//目标修饰子：base^sel^cls
 #elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
         return (uintptr_t)newImp ^ (uintptr_t)cls;	//非 ptrauth 设备：IMP ^ cls 简单混淆
 #elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_NONE
-        return (uintptr_t)newImp;
+        return (uintptr_t)newImp;		//不编码：裸存 IMP（模拟器/部分调试配置）
 #else
 #error Unknown method cache IMP encoding.
 #endif
     }
 
 public:
-    static inline size_t offsetOfSel() { return offsetof(bucket_t, _sel); }
-    inline SEL sel() const { return _sel.load(memory_order_relaxed); }
+    static inline size_t offsetOfSel() { return offsetof(bucket_t, _sel); }	//_sel 在结构体内的偏移（汇编/插入定位用）
+    inline SEL sel() const { return _sel.load(memory_order_relaxed); }		//原子读出 SEL（relaxed，无屏障）
 
 #if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
-#define MAYBE_UNUSED_ISA
+#define MAYBE_UNUSED_ISA				//ISA_XOR 编码：解码要用到 cls，参数不能标 unused
 #else
-#define MAYBE_UNUSED_ISA __attribute__((unused))
+#define MAYBE_UNUSED_ISA __attribute__((unused))	//其它编码用不到 cls，标 unused 避免「未使用参数」告警
 #endif
-    inline IMP rawImp(MAYBE_UNUSED_ISA objc_class *cls) const {
+    inline IMP rawImp(MAYBE_UNUSED_ISA objc_class *cls) const {	//取 IMP「裸值」：解 XOR 混淆，但不验证 ptrauth 签名
         uintptr_t imp = _imp.load(memory_order_relaxed);
-        if (!imp) return nil;
+        if (!imp) return nil;			//空槽返回 nil
 #if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_PTRAUTH
+        //ptrauth：rawImp 不解签名，原样返回带签名位的指针
 #elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
-        imp ^= (uintptr_t)cls;
+        imp ^= (uintptr_t)cls;			//还原 ISA_XOR：再异或一次 cls
 #elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_NONE
 #else
 #error Unknown method cache IMP encoding.
@@ -1222,31 +1238,31 @@ public:
         return (IMP)imp;
     }
 
-    inline IMP imp(UNUSED_WITHOUT_PTRAUTH bucket_t *base, Class cls) const {
+    inline IMP imp(UNUSED_WITHOUT_PTRAUTH bucket_t *base, Class cls) const {	//取可直接调用的 IMP：完整解码 + 验签
         uintptr_t imp = _imp.load(memory_order_relaxed);
-        if (!imp) return nil;
+        if (!imp) return nil;			//空槽返回 nil
 #if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_PTRAUTH
-        SEL sel = _sel.load(memory_order_relaxed);
+        SEL sel = _sel.load(memory_order_relaxed);	//ptrauth：先读出 sel 以重算修饰子
         return bitcast_auth_and_resign(IMP, imp,
-                                       ptrauth_key_process_dependent_code,
-                                       modifierForSEL(base, sel, cls),
-                                       ptrauth_key_function_pointer,
-                                       ptrauth_function_pointer_type_discriminator(IMP));
+                                       ptrauth_key_process_dependent_code,		//源密钥：进程相关代码
+                                       modifierForSEL(base, sel, cls),			//源修饰子：base^sel^cls（用它验签）
+                                       ptrauth_key_function_pointer,			//目标密钥：通用函数指针
+                                       ptrauth_function_pointer_type_discriminator(IMP));	//目标判别子：IMP 类型
 #elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
-        return (IMP)(imp ^ (uintptr_t)cls);
+        return (IMP)(imp ^ (uintptr_t)cls);	//还原 IMP ^ cls
 #elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_NONE
-        return (IMP)imp;
+        return (IMP)imp;			//裸值直接返回
 #else
 #error Unknown method cache IMP encoding.
 #endif
     }
 
-    inline void scribbleIMP(uintptr_t value) {
+    inline void scribbleIMP(uintptr_t value) {	//用指定值覆写 _imp（缓存清空/标记无效用）
         _imp.store(value, memory_order_relaxed);
     }
 
-    template <Atomicity, IMPEncoding>
-    void set(bucket_t *base, SEL newSel, IMP newImp, Class cls);
+    template <Atomicity, IMPEncoding>		//模板参数决定：原子性（是否加锁/屏障）与 IMP 编码方式
+    void set(bucket_t *base, SEL newSel, IMP newImp, Class cls);	//把 {sel,imp} 落位到本桶（声明，实现在 .mm）
 };
 ```
 
