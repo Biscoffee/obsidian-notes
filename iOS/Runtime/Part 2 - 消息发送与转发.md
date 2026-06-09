@@ -1196,6 +1196,7 @@ private:
     }
 
     // Sign newImp, with &_imp, newSel, and cls as modifiers.
+    // 把一个 IMP 转成一个可以安全存入 `_imp` 字段的整数值，三条路径只是"怎么转"的区别，输入输出的本质完全相同。
     uintptr_t encodeImp(UNUSED_WITHOUT_PTRAUTH bucket_t *base, IMP newImp, UNUSED_WITHOUT_PTRAUTH SEL newSel, Class cls) const {	//写入缓存前：给 IMP 编码/签名
         if (!newImp) return 0;		//空 IMP 存 0，不参与编码
 #if CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_PTRAUTH
@@ -1206,8 +1207,10 @@ private:
                                 ptrauth_function_pointer_type_discriminator(IMP),	//源判别子：IMP 类型
                                 ptrauth_key_process_dependent_code,		//目标密钥：进程相关代码
                                 modifierForSEL(base, newSel, cls));		//目标修饰子：base^sel^cls
+                                
 #elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_ISA_XOR
-        return (uintptr_t)newImp ^ (uintptr_t)cls;	//非 ptrauth 设备：IMP ^ cls 简单混淆
+        return (uintptr_t)newImp ^ (uintptr_t)cls;	//非 ptrauth 设备：用类指针 `cls` 对 IMP 做异或，结果存入 `_imp`。这不是密码学安全，但它能防止最简单的攻击：直接从内存里读出 `_imp` 的值，得到的是混淆后的整数，不是可以直接调用的函数地址。还原时再 XOR 一次 `cls` 即可，因为 `a ^ b ^ b = a`
+        
 #elif CACHE_IMP_ENCODING == CACHE_IMP_ENCODING_NONE
         return (uintptr_t)newImp;		//不编码：裸存 IMP（模拟器/部分调试配置）
 #else
