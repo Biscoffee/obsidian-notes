@@ -1587,33 +1587,58 @@ do {
 
 ```armasm
 ;; objc-msg-arm64.s:720  —— MethodTableLookup / uncached / msgForward（全文）
+// objc-msg-arm64.s:720 —— 慢速查找宏定义与未缓存消息发送入口
+
+// 宏定义：MethodTableLookup
+// 职责：离开汇编环境，进入 C 语言环境（Runtime）遍历方法列表查找 IMP
 .macro MethodTableLookup
 
-	SAVE_REGS MSGSEND			//保存参数寄存器（要调 C 函数，得守约定）
+	// 因为即将调用的 _lookUpImpOrForward 是 C 函数，需遵循 ARM64 过程调用标准（PCS）。
+	// C 函数内部会破坏通用寄存器。这里将 x0(receiver)、x1(sel) 等关键状态压入栈中。
+	SAVE_REGS MSGSEND
 
-	// lookUpImpOrForward(obj, sel, cls, LOOKUP_INITIALIZE | LOOKUP_RESOLVER)
-	// receiver and selector already in x0 and x1
-	mov	x2, x16				//arg2 = cls
-	mov	x3, #3				//arg3 = 3 = INITIALIZE|RESOLVER
+	// 准备参数（ABI 约定）：
+	// _lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
+	// x0 和 x1 已经在进入 __objc_msgSend 时就存好了 receiver 和 selector。
+	
+	mov	x2, x16				// 参数 3 (x2) = cls。x16 在快速路径失败时已存好当前类。
+	mov	x3, #3				// 参数 4 (x3) = 3。
+							// 对应 (LOOKUP_INITIALIZE | LOOKUP_RESOLVER)
+							// 含义：查找前确保类已初始化，找不到时尝试动态解析（resolveInstanceMethod:）。
+
+	// 跨界调用：
+	// 跳转到 C 语言实现的慢速查找函数。这是整个查找逻辑中最耗时的部分。
 	bl	_lookUpImpOrForward
 
-	// IMP in x0
-	mov	x17, x0				//慢速查找结果 IMP 回到 x17
+	// 处理返回值：
+	// C 函数返回值统一存放在 x0。此时 x0 里的值就是查找到的 IMP（函数地址）。
+	mov	x17, x0				// 将 IMP 转移到临时寄存器 x17，腾出 x0。
 
+	// 恢复现场：
+	// 从栈中弹出之前保存的寄存器。x0 重新变回最初的 receiver（self），
+	// 这样稍后执行 IMP 时，方法内部的 self 参数才是正确的。
 	RESTORE_REGS MSGSEND
 
 .endmacro
 
+// 静态入口：__objc_msgSend_uncached
+// 触发场景：CacheLookup（快速路径）未命中，或需要强制走慢速查找时跳转至此。
 	STATIC_ENTRY __objc_msgSend_uncached
 	UNWIND __objc_msgSend_uncached, FrameWithNoSaves
 
-	// THIS IS NOT A CALLABLE C FUNCTION
-	// Out-of-band p15 is the class to search
+	// 特别说明：此函数不可由 C 直接调用。
+	// 此时 x15 寄存器（带外参数）应存放着需要搜索的类。
 
+	// 调用上方定义的宏，完成 IMP 的深度搜索（并同步写入 cache_t）
 	MethodTableLookup
-	TailCallFunctionPointer x17		//拿到 IMP 后尾跳过去（含转发占位 IMP）
+	
+	// 最终跳转：
+	// 使用尾调用（Tail Call）跳转到 x17 存着的 IMP。
+	// 这不会增加调用栈深度，IMP 执行完后直接返回给最初调用消息发送的地方。
+	TailCallFunctionPointer x17
 
 	END_ENTRY __objc_msgSend_uncached
+
 ```
 
 ## 6. 入口：加锁 + realize / +initialize（:7624）
