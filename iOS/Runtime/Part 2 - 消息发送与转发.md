@@ -1804,14 +1804,16 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
 }
 ```
 
+`lookUpImpOrForward` 是 Objective-C 运行时消息发送机制中**慢速查找路径**的核心实现，`objc_msgSend` 在汇编层的快速缓存（Cache）中未能命中目标方法时，便会进入这个函数，由它负责完成从继承链查找到缓存回填的完整闭环。
 
+函数接收消息接收者 `inst`、选择子 `sel`、目标类 `cls` 以及行为标志位 `behavior`，最终返回一个可执行的函数指针 `IMP`。它的核心使命是：**用尽一切手段找到方法实现，实在找不到就交给转发系统**。整个过程全程持有 `runtimeLock` 全局锁，保证"查找 + 缓存回填"对"方法增删"操作的原子性，避免多线程竞争导致缓存脏写。
 
-
+![[lookUpImpOrForward-流程图 (1).html]]
 
 
 旧→新对照（756.2 → 951.1）：查找函数的签名与「乐观缓存查找」
 
-旧（756.2，`objc-runtime-new.mm:5264`）—— Class 在前、三个 bool 参数；函数**开头自带一次乐观缓存查找**；对外入口是包装函数 `_class_lookupMethodAndLoadCache3`：
+旧版 `lookUpImpOrForward` 函数体中仍有进锁前的 optimistic cache lookup 分支；但 `_class_lookupMethodAndLoadCache3` 调用它时传入 `NO/*cache*/`，所以该入口不会执行这次预查缓存。
 ```objc
 IMP _class_lookupMethodAndLoadCache3(id obj, SEL sel, Class cls) {      // :5245 旧对外入口
     return lookUpImpOrForward(cls, sel, obj, YES/*initialize*/, NO/*cache*/, YES/*resolver*/);
@@ -1838,7 +1840,7 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)       // :7624
 ```
 三个 bool → 一个 `behavior` 位掩码（`LOOKUP_INITIALIZE | LOOKUP_RESOLVER | LOOKUP_NIL | LOOKUP_NOCACHE`，更易扩展）；旧的 `triedResolver` 布尔也被 `behavior ^= LOOKUP_RESOLVER` 取代。下面这条（818.2 → 951.1）是更晚的一处增量：
 
-**🔄 旧→新对照（818.2 → 951.1）：`lookUpImpOrForward` 新增「禁用类」短路**
+旧→新对照（818.2 → 951.1）：`lookUpImpOrForward` 新增「禁用类」短路
 
 951 在取锁、realize 之后、进入查找主循环之前，**多了一段**把「被禁用的类」按 nil 处理的短路（818.2 此处直接进 `for` 主循环）：
 ```objc
@@ -1856,6 +1858,7 @@ if (!cls || !cls->ISA()) {
 }
 ```
 另外两处小改：818.2 的 `Method meth = getMethodNoSuper_nolock(...)` 在 951 改为具体类型 `method_t *meth = ...`；818.2 紧跟其后的 `lookupMethodInClassAndLoadCache`（`.cxx_construct/.cxx_destruct` 专用）在 951 此处已被挪走。
+
 
 ## 7. 在当前类找方法
 

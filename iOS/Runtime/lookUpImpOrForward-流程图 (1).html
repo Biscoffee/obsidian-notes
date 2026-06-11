@@ -1,0 +1,293 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>show_widget</title>
+</head>
+<body>
+<style>
+:root{
+--primary:#F3A04C;--accent:#E58522;--background:#F4F4F6;--panel-bg:#FEFDFC;--card-bg:#fff;
+--tooltip-bg:#454545;--success:#40B43E;--warning:#EBA400;--destructive:#E65C53;
+--destructive-hover:#D14B42;--primary-foreground:#fff;--text-primary:rgba(0,0,0,.8);
+--text-secondary:rgba(0,0,0,.5);--text-tertiary:rgba(0,0,0,.35);--intensity-0:rgba(0,0,0,0);
+--intensity-3:rgba(0,0,0,.03);--intensity-4:rgba(0,0,0,.04);--intensity-6:rgba(0,0,0,.06);
+--intensity-8:rgba(0,0,0,.08);--intensity-12:rgba(0,0,0,.12);--intensity-16:rgba(0,0,0,.16);
+--intensity-20:rgba(0,0,0,.2);--intensity-35:rgba(0,0,0,.35);--intensity-60:rgba(0,0,0,.6);
+--input-shadow:rgba(0,0,0,.08);--radius-sm:8px;--radius-md:10px;--radius-lg:14px;--radius-xl:18px;
+font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+}
+@media (prefers-color-scheme:dark){
+:root{
+--background:#232324;--panel-bg:#332D28;--card-bg:#2E2E2E;--tooltip-bg:#BABABA;
+--primary-foreground:#000;--text-primary:rgba(255,255,255,.8);--text-secondary:rgba(255,255,255,.5);
+--text-tertiary:rgba(255,255,255,.35);--intensity-0:rgba(255,255,255,0);
+--intensity-3:rgba(255,255,255,.03);--intensity-4:rgba(255,255,255,.04);
+--intensity-6:rgba(255,255,255,.06);--intensity-8:rgba(255,255,255,.08);
+--intensity-12:rgba(255,255,255,.12);--intensity-16:rgba(255,255,255,.16);
+--intensity-20:rgba(255,255,255,.2);--intensity-35:rgba(255,255,255,.35);
+--intensity-60:rgba(255,255,255,.6);--input-shadow:rgba(0,0,0,.28)
+}
+}
+*{box-sizing:border-box}
+</style>
+
+<div style="display:block;width:100%;color:var(--text-primary);padding:20px 16px 28px;">
+
+<div style="font-size:15px;font-weight:600;margin-bottom:4px;">lookUpImpOrForward 执行流程</div>
+<div style="font-size:12px;color:var(--text-secondary);margin-bottom:20px;">objc-runtime-new.mm · 慢速查找路径</div>
+
+<svg width="100%" viewBox="0 0 680 920" role="img" aria-label="lookUpImpOrForward流程图">
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#E58522" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arrow-success" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#40B43E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arrow-danger" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#E65C53" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+<style>
+.t{font:400 13px ui-sans-serif,system-ui;fill:var(--text-primary,rgba(0,0,0,.8))}
+.th{font:500 13px ui-sans-serif,system-ui;fill:var(--text-primary,rgba(0,0,0,.8))}
+.ts{font:400 11px ui-sans-serif,system-ui;fill:var(--text-secondary,rgba(0,0,0,.5))}
+.tlabel{font:500 11px ui-sans-serif,system-ui;fill:var(--text-secondary,rgba(0,0,0,.5))}
+.box{fill:var(--card-bg,#fff);stroke:var(--intensity-12,rgba(0,0,0,.12));stroke-width:.5}
+.panel{fill:var(--panel-bg,#FEFDFC);stroke:var(--intensity-8,rgba(0,0,0,.08));stroke-width:.5}
+.arr{fill:none;stroke:var(--intensity-35,rgba(0,0,0,.35));stroke-width:1.5;marker-end:url(#arrow)}
+.arr-accent{fill:none;stroke:#E58522;stroke-width:1.5;marker-end:url(#arrow-accent)}
+.arr-success{fill:none;stroke:#40B43E;stroke-width:1.5;marker-end:url(#arrow-success)}
+.arr-danger{fill:none;stroke:#E65C53;stroke-width:1.5;marker-end:url(#arrow-danger)}
+.dash{fill:none;stroke:var(--intensity-20,rgba(0,0,0,.2));stroke-width:.5;stroke-dasharray:4 4}
+@media (prefers-color-scheme:dark){
+.t,.th{fill:rgba(255,255,255,.8)}
+.ts{fill:rgba(255,255,255,.5)}
+.tlabel{fill:rgba(255,255,255,.5)}
+.box{fill:#2E2E2E;stroke:rgba(255,255,255,.12)}
+.panel{fill:#332D28;stroke:rgba(255,255,255,.08)}
+.arr{stroke:rgba(255,255,255,.35)}
+.dash{stroke:rgba(255,255,255,.2)}
+}
+</style>
+
+<!-- ===== PHASE BACKGROUND BANDS ===== -->
+<!-- Phase 1 band -->
+<rect x="28" y="28" width="624" height="148" rx="12" fill="rgba(243,160,76,0.06)" stroke="#F3A04C" stroke-width="0.5" stroke-dasharray="5 4"/>
+<text x="44" y="46" class="tlabel" font-weight="600" fill="#E58522">Phase 1 · 安全校验与准备</text>
+
+<!-- Phase 2 band -->
+<rect x="28" y="196" width="624" height="336" rx="12" fill="rgba(88,178,220,0.06)" stroke="#58B2DC" stroke-width="0.5" stroke-dasharray="5 4"/>
+<text x="44" y="214" class="tlabel" font-weight="600" fill="#58B2DC">Phase 2 · 继承链递归查找</text>
+
+<!-- Phase 3 band -->
+<rect x="28" y="552" width="624" height="100" rx="12" fill="rgba(180,129,187,0.06)" stroke="#B481BB" stroke-width="0.5" stroke-dasharray="5 4"/>
+<text x="44" y="570" class="tlabel" font-weight="600" fill="#B481BB">Phase 3 · 动态方法解析</text>
+
+<!-- Phase 4 band -->
+<rect x="28" y="672" width="624" height="100" rx="12" fill="rgba(64,180,62,0.06)" stroke="#40B43E" stroke-width="0.5" stroke-dasharray="5 4"/>
+<text x="44" y="690" class="tlabel" font-weight="600" fill="#40B43E">Phase 4 · 缓存回填与返回</text>
+
+<!-- ===== ENTRY NODE ===== -->
+<rect x="240" y="56" width="200" height="40" rx="20" fill="#F3A04C" stroke="none"/>
+<text x="340" y="81" text-anchor="middle" dominant-baseline="central" font="500 13px ui-sans-serif,system-ui" fill="#fff">objc_msgSend 快速路径 Miss</text>
+
+<!-- Arrow entry -> check init -->
+<line x1="340" y1="96" x2="340" y2="116" class="arr"/>
+
+<!-- ===== CHECK INIT ===== -->
+<rect x="220" y="116" width="240" height="40" rx="10" class="box"/>
+<text x="340" y="136" text-anchor="middle" dominant-baseline="central" class="th">类是否已初始化？</text>
+
+<!-- yes -> lock -->
+<line x1="340" y1="156" x2="340" y2="176" class="arr"/>
+<text x="348" y="170" class="tlabel">是</text>
+
+<!-- no -> set NOCACHE (right side) -->
+<line x1="460" y1="136" x2="540" y2="136" class="arr-accent"/>
+<text x="462" y="130" class="tlabel" fill="#E58522">否</text>
+<rect x="540" y="116" width="100" height="40" rx="8" fill="rgba(229,133,34,0.12)" stroke="#E58522" stroke-width="0.5"/>
+<text x="590" y="136" text-anchor="middle" dominant-baseline="central" class="ts" fill="#E58522">设 NOCACHE</text>
+<!-- rejoin -->
+<line x1="590" y1="156" x2="590" y2="176" x2="590" y2="176" class="arr-accent"/>
+<path d="M590 176 L590 186 L340 186" fill="none" stroke="#E58522" stroke-width="1.5" marker-end="url(#arrow-accent)"/>
+
+<!-- ===== LOCK + SAFETY ===== -->
+<rect x="220" y="176" width="240" height="40" rx="10" class="box"/>
+<text x="340" y="196" text-anchor="middle" dominant-baseline="central" class="th">runtimeLock.lock() · checkIsKnownClass</text>
+
+<!-- Arrow to phase2 -->
+<line x1="340" y1="216" x2="340" y2="236" class="arr"/>
+
+<!-- ===== CLASS VALID CHECK ===== -->
+<rect x="220" y="236" width="240" height="40" rx="10" class="box"/>
+<text x="340" y="256" text-anchor="middle" dominant-baseline="central" class="th">cls 是否有效？</text>
+
+<!-- nil branch left -->
+<line x1="220" y1="256" x2="100" y2="256" class="arr-danger"/>
+<text x="136" y="250" class="tlabel" fill="#E65C53">无效/nil</text>
+<rect x="40" y="236" width="60" height="40" rx="8" fill="rgba(230,92,83,0.10)" stroke="#E65C53" stroke-width="0.5"/>
+<text x="70" y="256" text-anchor="middle" dominant-baseline="central" class="ts" fill="#E65C53">returnNil</text>
+<line x1="70" y1="276" x2="70" y2="760" class="arr-danger"/>
+<path d="M70 760 L70 776 L240 776" fill="none" stroke="#E65C53" stroke-width="1.5" marker-end="url(#arrow-danger)"/>
+
+<!-- valid -> loop -->
+<line x1="340" y1="276" x2="340" y2="296" class="arr"/>
+<text x="348" y="290" class="tlabel">有效</text>
+
+<!-- ===== LOOP START LABEL ===== -->
+<text x="340" y="314" text-anchor="middle" class="ts">↓ 继承链循环（attempts 计数器保护）</text>
+
+<!-- ===== SEARCH SELF ===== -->
+<rect x="200" y="320" width="280" height="40" rx="10" class="box"/>
+<text x="340" y="340" text-anchor="middle" dominant-baseline="central" class="th">本类方法表二分查找 getMethodNoSuper</text>
+
+<!-- found -> done (right) -->
+<line x1="480" y1="340" x2="570" y2="340" class="arr-success"/>
+<text x="486" y="334" class="tlabel" fill="#40B43E">命中</text>
+<rect x="570" y="320" width="64" height="40" rx="8" fill="rgba(64,180,62,0.12)" stroke="#40B43E" stroke-width="0.5"/>
+<text x="602" y="340" text-anchor="middle" dominant-baseline="central" class="ts" fill="#40B43E">→ done</text>
+<line x1="602" y1="360" x2="602" y2="706" class="arr-success"/>
+<path d="M602 706 L602 716 L480 716" fill="none" stroke="#40B43E" stroke-width="1.5" marker-end="url(#arrow-success)"/>
+
+<!-- not found -> check superclass -->
+<line x1="340" y1="360" x2="340" y2="380" class="arr"/>
+<text x="348" y="374" class="tlabel">未命中</text>
+
+<!-- ===== SUPERCLASS EXISTS? ===== -->
+<rect x="210" y="380" width="260" height="40" rx="10" class="box"/>
+<text x="340" y="400" text-anchor="middle" dominant-baseline="central" class="th">父类是否存在？(getSuperclass)</text>
+
+<!-- no superclass -> forward_imp -->
+<line x1="210" y1="400" x2="100" y2="400" class="arr-danger"/>
+<text x="116" y="394" class="tlabel" fill="#E65C53">nil (到顶)</text>
+<rect x="40" y="380" width="60" height="40" rx="8" fill="rgba(230,92,83,0.10)" stroke="#E65C53" stroke-width="0.5"/>
+<text x="70" y="400" text-anchor="middle" dominant-baseline="central" class="ts" fill="#E65C53">forward_imp</text>
+<line x1="70" y1="420" x2="70" y2="580" class="arr-danger"/>
+<path d="M70 580 L70 596 L200 596" fill="none" stroke="#E65C53" stroke-width="1.5" marker-end="url(#arrow-danger)"/>
+
+<!-- yes -> check parent cache -->
+<line x1="340" y1="420" x2="340" y2="440" class="arr"/>
+<text x="348" y="434" class="tlabel">存在</text>
+
+<!-- ===== PARENT CACHE ===== -->
+<rect x="200" y="440" width="280" height="40" rx="10" class="box"/>
+<text x="340" y="460" text-anchor="middle" dominant-baseline="central" class="th">查父类缓存 cache_getImp(curClass)</text>
+
+<!-- cache hit real imp -> done -->
+<line x1="480" y1="460" x2="570" y2="460" class="arr-success"/>
+<text x="482" y="454" class="tlabel" fill="#40B43E">命中真实 IMP</text>
+<path d="M602 460 L602 360" fill="none" stroke="#40B43E" stroke-width="1.5" stroke-dasharray="4 3"/>
+<line x1="570" y1="460" x2="602" y2="460" class="arr-success"/>
+<text x="578" y="454" class="ts" fill="#40B43E">→ done</text>
+
+<!-- cache hit forward_imp -> break -->
+<line x1="200" y1="460" x2="100" y2="460" class="arr-accent"/>
+<text x="104" y="454" class="tlabel" fill="#E58522">命中 forward_imp</text>
+<rect x="40" y="440" width="60" height="40" rx="8" fill="rgba(229,133,34,0.10)" stroke="#E58522" stroke-width="0.5"/>
+<text x="70" y="460" text-anchor="middle" dominant-baseline="central" class="ts" fill="#E58522">break</text>
+<path d="M70 480 L70 596 L200 596" fill="none" stroke="#E58522" stroke-width="1.5" marker-end="url(#arrow-accent)"/>
+
+<!-- cache miss -> loop back up -->
+<line x1="340" y1="480" x2="340" y2="500" class="arr"/>
+<text x="348" y="494" class="tlabel">未命中</text>
+
+<!-- ===== ATTEMPTS CHECK ===== -->
+<rect x="210" y="500" width="260" height="40" rx="10" class="box"/>
+<text x="340" y="520" text-anchor="middle" dominant-baseline="central" class="th">attempts-- == 0？(继承链成环?)</text>
+
+<!-- fatal -->
+<line x1="470" y1="520" x2="560" y2="520" class="arr-danger"/>
+<text x="472" y="514" class="tlabel" fill="#E65C53">是</text>
+<rect x="560" y="500" width="80" height="40" rx="8" fill="rgba(230,92,83,0.10)" stroke="#E65C53" stroke-width="0.5"/>
+<text x="600" y="520" text-anchor="middle" dominant-baseline="central" class="ts" fill="#E65C53">_objc_fatal</text>
+
+<!-- no -> loop back to search self -->
+<path d="M340 540 L340 548 L170 548 L170 340 L200 340" fill="none" stroke="var(--intensity-35,rgba(0,0,0,.35))" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="5 3"/>
+<text x="152" y="444" class="tlabel" text-anchor="middle" transform="rotate(-90,152,444)">继续向上</text>
+
+<!-- ===== PHASE 3: RESOLVER ===== -->
+<rect x="200" y="580" width="280" height="48" rx="10" class="box"/>
+<text x="340" y="598" text-anchor="middle" dominant-baseline="central" class="th">LOOKUP_RESOLVER 允许？</text>
+<text x="340" y="616" text-anchor="middle" dominant-baseline="central" class="ts">resolveInstanceMethod / resolveClassMethod</text>
+
+<!-- resolver yes -> recurse -->
+<line x1="480" y1="604" x2="570" y2="604" class="arr-accent"/>
+<text x="482" y="598" class="tlabel" fill="#E58522">是</text>
+<rect x="570" y="584" width="80" height="40" rx="8" fill="rgba(229,133,34,0.10)" stroke="#E58522" stroke-width="0.5"/>
+<text x="610" y="604" text-anchor="middle" dominant-baseline="central" class="ts" fill="#E58522">重新查找</text>
+<path d="M650 604 L660 604 L660 80 L450 80" fill="none" stroke="#E58522" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arrow-accent)"/>
+
+<!-- resolver no -> done with forward -->
+<line x1="340" y1="628" x2="340" y2="700" class="arr"/>
+<text x="348" y="668" class="tlabel">否（forward_imp）</text>
+
+<!-- ===== PHASE 4: DONE ===== -->
+<rect x="200" y="700" width="280" height="48" rx="10" fill="rgba(64,180,62,0.10)" stroke="#40B43E" stroke-width="0.5"/>
+<text x="340" y="718" text-anchor="middle" dominant-baseline="central" class="th" fill="#40B43E">done: log_and_fill_cache</text>
+<text x="340" y="736" text-anchor="middle" dominant-baseline="central" class="ts">LOOKUP_NOCACHE 未设置时回填缓存</text>
+
+<!-- done -> unlock -> return -->
+<line x1="340" y1="748" x2="340" y2="768" class="arr"/>
+
+<rect x="220" y="768" width="240" height="40" rx="10" class="box"/>
+<text x="340" y="788" text-anchor="middle" dominant-baseline="central" class="th">runtimeLock.unlock()</text>
+
+<line x1="340" y1="808" x2="340" y2="828" class="arr"/>
+
+<rect x="240" y="828" width="200" height="40" rx="20" fill="#40B43E" stroke="none"/>
+<text x="340" y="848" text-anchor="middle" dominant-baseline="central" font="500 13px ui-sans-serif,system-ui" fill="#fff">return IMP</text>
+
+<!-- ===== LEGEND ===== -->
+<rect x="40" y="848" width="160" height="52" rx="8" class="panel"/>
+<text x="52" y="864" class="ts">图例</text>
+<line x1="52" y1="876" x2="72" y2="876" class="arr-success"/>
+<text x="76" y="880" class="ts" fill="#40B43E">命中/成功</text>
+<line x1="52" y1="892" x2="72" y2="892" class="arr-danger"/>
+<text x="76" y="896" class="ts" fill="#E65C53">失败/转发</text>
+<line x1="120" y1="876" x2="140" y2="876" class="arr-accent"/>
+<text x="144" y="880" class="ts" fill="#E58522">特殊路径</text>
+<line x1="120" y1="892" x2="140" y2="892" class="arr"/>
+<text x="144" y="896" class="ts">主流程</text>
+
+</svg>
+</div>
+<script data-tabbit-widget-diagnostics="true">
+(function(){
+  if (window.__tabbitWidgetDiagnosticsInstalled) return;
+  window.__tabbitWidgetDiagnosticsInstalled = true;
+  window.__TABBIT_WIDGET_ERRORS__ = window.__TABBIT_WIDGET_ERRORS__ || [];
+  function emit(level, args) {
+    var payload = {
+      type: "tabbit_widget_diagnostics",
+      level: level,
+      message: Array.prototype.slice.call(args || []).map(function(item) {
+        if (item && item.stack) return item.stack;
+        if (typeof item === "string") return item;
+        try { return JSON.stringify(item); } catch (_) { return String(item); }
+      }).join(" "),
+      timestamp: Date.now()
+    };
+    window.__TABBIT_WIDGET_ERRORS__.push(payload);
+    try { window.parent && window.parent.postMessage(payload, "*"); } catch (_) {}
+  }
+  var originalError = console.error;
+  console.error = function() {
+    emit("error", arguments);
+    return originalError && originalError.apply(console, arguments);
+  };
+  window.addEventListener("error", function(event) {
+    emit("error", [event.message || "Script error", event.filename || "", event.lineno || ""]);
+  });
+  window.addEventListener("unhandledrejection", function(event) {
+    emit("unhandledrejection", [event.reason || "Unhandled promise rejection"]);
+  });
+})();
+</script>
+</body>
+</html>
