@@ -1583,14 +1583,17 @@ do {
 
 # 第二部分 · 慢速查找（lookUpImpOrForward）
 
-快速路径 miss 后，`__objc_msgSend_uncached`（:737）通过 `MethodTableLookup`（:720）调进 C++ 的 `lookUpImpOrForward`。三段逐字全文：
+
+
+快速路径 miss 后，`__objc_msgSend_uncached`（:737）通过 `MethodTableLookup`（:720）调进 C++ 的 `lookUpImpOrForward`。
+
+这段代码是 Objective-C 运行时（Runtime）处理方法查找的核心“慢速路径”逻辑。它描述了当程序在快速缓存中找不到某个方法时，如何从高效的汇编环境平滑切换到复杂的 C 语言环境，去进行一次深度的“全量搜索”。​
 
 ```armasm
 ;; objc-msg-arm64.s:720  —— MethodTableLookup / uncached / msgForward（全文）
 // objc-msg-arm64.s:720 —— 慢速查找宏定义与未缓存消息发送入口
 
-// 宏定义：MethodTableLookup
-// 职责：离开汇编环境，进入 C 语言环境（Runtime）遍历方法列表查找 IMP
+// 宏定义：MethodTableLookup，离开汇编环境，进入 C 语言环境（Runtime）遍历方法列表查找 IMP
 .macro MethodTableLookup
 
 	// 因为即将调用的 _lookUpImpOrForward 是 C 函数，需遵循 ARM64 过程调用标准（PCS）。
@@ -1613,8 +1616,7 @@ do {
 	// 处理返回值：
 	// C 函数返回值统一存放在 x0。此时 x0 里的值就是查找到的 IMP（函数地址）。
 	mov	x17, x0				// 将 IMP 转移到临时寄存器 x17，腾出 x0。
-
-	// 恢复现场：
+	
 	// 从栈中弹出之前保存的寄存器。x0 重新变回最初的 receiver（self），
 	// 这样稍后执行 IMP 时，方法内部的 self 参数才是正确的。
 	RESTORE_REGS MSGSEND
@@ -1641,7 +1643,7 @@ do {
 
 ```
 
-## 6. 入口：加锁 + realize / +initialize（:7624）
+## 6. lookUpImpOrForward：加锁 + realize / +initialize（:7624）
 
 `lookUpImpOrForward` 是整条慢速链的中枢，逐字全文：
 
