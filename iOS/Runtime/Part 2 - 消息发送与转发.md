@@ -1764,6 +1764,7 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
         // Superclass cache.
         imp = cache_getImp(curClass, sel);		//溯一层先查父类缓存
         if (slowpath(imp == forward_imp)) {
+        //  如果在父类缓存里查到的是 `forward_imp`（转发牌子）：说明这个方法之前就被判过“死刑”，`break` 停止搜索（但先不缓存，要留给后面的 resolver 一次机会）。
             // Found a forward:: entry in a superclass.
             // Stop searching, but don't cache yet; call method
             // resolver for this class first.
@@ -1771,7 +1772,7 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
         }
         if (fastpath(imp)) {
             // Found the method in a superclass. Cache it in this class.
-            goto done;					//父类缓存命中 → 回填本类
+            goto done;					//父类缓存命中真实的IMP → 回填本类
         }
     }
 
@@ -1783,26 +1784,32 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
     }
 
  done:
-    if (fastpath((behavior & LOOKUP_NOCACHE) == 0)) {
+    if (fastpath((behavior & LOOKUP_NOCACHE) == 0)) {  //检测是否允许缓存
 #if CONFIG_USE_PREOPT_CACHES
+//   预优化缓存的处理
         while (cls->cache.isConstantOptimizedCache(/* strict */true)) {
             cls = cls->cache.preoptFallbackClass();
         }
 #endif
-        log_and_fill_cache(cls, imp, sel, inst, curClass);	//第 9 节：回填缓存，闭环
+        log_and_fill_cache(cls, imp, sel, inst, curClass);	//回填缓存，闭环
     }
 #if CONFIG_USE_PREOPT_CACHES
  done_unlock:
 #endif
     runtimeLock.unlock();
-    if (slowpath((behavior & LOOKUP_NIL) && imp == forward_imp)) {
+    if (slowpath((behavior & LOOKUP_NIL) && imp == forward_imp)) {  
         return nil;
     }
     return imp;
 }
 ```
 
-**🔄 旧→新对照（756.2 → 951.1）：查找函数的签名与「乐观缓存查找」**
+
+
+
+
+
+旧→新对照（756.2 → 951.1）：查找函数的签名与「乐观缓存查找」
 
 旧（756.2，`objc-runtime-new.mm:5264`）—— Class 在前、三个 bool 参数；函数**开头自带一次乐观缓存查找**；对外入口是包装函数 `_class_lookupMethodAndLoadCache3`：
 ```objc
