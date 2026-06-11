@@ -1651,8 +1651,8 @@ do {
 // objc-runtime-new.mm:7624  —— lookUpImpOrForward（全文）
 IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
 {
-    const IMP forward_imp = (IMP)_objc_msgForward_impcache;	//转发占位 IMP（见第 11 节）
-    IMP imp = nil;
+    const IMP forward_imp = (IMP)_objc_msgForward_impcache;	//转发占位 IMP
+    IMP imp = nil;   // 最终要返回的函数实现地址
     Class curClass;
 
     lockdebug::assert_unlocked(&runtimeLock.get());
@@ -1697,7 +1697,7 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
     //必要时 realize（铺开 ro/rw、方法表排序）并触发 +initialize
     // runtimeLock may have been dropped but is now locked again
     lockdebug::assert_locked(&runtimeLock.get());
-    curClass = cls;
+    curClass = cls;   // 把curClass设为最开始接受信息的类cls
 
     // The code used to lookup the class's cache again right after
     // we take the lock but for the vast majority of the cases
@@ -1707,7 +1707,7 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
     // kind of cache lookup is class_getInstanceMethod().
 
     // Has this class been disabled? Act like a message to nil.
-    if (!cls || !cls->ISA()) {
+    if (!cls || !cls->ISA()) {   // 边界保护，如果类不存在或者已被禁用，就把 `imp` 设为 `_objc_returnNil`， 然后 goto done直接跳到收尾，相当于把消息当作发给 `nil` 来处理，不崩溃，安静返回空。
 #if __arm64__
         imp = _objc_returnNil;
         goto done;
@@ -1731,7 +1731,7 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
 #endif
     }
 
-    for (unsigned attempts = unreasonableClassCount();;) {
+    for (unsigned attempts = unreasonableClassCount();;) {   //设一个最大尝试次数
         if (curClass->cache.isConstantOptimizedCache(/* strict */true)) {
 #if CONFIG_USE_PREOPT_CACHES
             imp = cache_getImp(curClass, sel);		//预优化缓存分支
@@ -1740,7 +1740,7 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
 #endif
         } else {
             // curClass method list.
-            method_t *meth = getMethodNoSuper_nolock(curClass, sel);	//7.1：查当前类方法表
+            method_t *meth = getMethodNoSuper_nolock(curClass, sel);	//  在当前类 `curClass` 自己的方法列表里找**（`NoSuper` 表示不找父类）。因为方法表排过序，这里是二分查找，很快。
             if (meth) {
                 imp = meth->imp(false);
                 goto done;				//找到 → 去回填缓存
@@ -1749,18 +1749,20 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
             if (slowpath((curClass = curClass->getSuperclass()) == nil)) {
                 // No implementation found, and method resolver didn't help.
                 // Use forwarding.
-                imp = forward_imp;			//到顶(NSObject 之上=nil)还没有 → 转发
+                imp = forward_imp;			//先把 `curClass` 更新为它的父类，然后判断这个父类是不是 `nil`。
+// 如果父类是 `nil`，说明已经爬到了继承链的顶端（`NSObject` 再往上就是 nil）还没找到。那就把 `imp` 设成那块“转发”牌子 `forward_imp`​，然后 `break` 退出循环。
                 break;
             }
         }
 
         // Halt if there is a cycle in the superclass chain.
+        // 如果减到 0 还没结束，说明继承链成环了（内存损坏），直接 `_objc_fatal` 崩溃报错
         if (slowpath(--attempts == 0)) {
             _objc_fatal("Memory corruption in class list.");
         }
 
         // Superclass cache.
-        imp = cache_getImp(curClass, sel);		//第 8 节：上溯一层先查父类缓存
+        imp = cache_getImp(curClass, sel);		//溯一层先查父类缓存
         if (slowpath(imp == forward_imp)) {
             // Found a forward:: entry in a superclass.
             // Stop searching, but don't cache yet; call method
@@ -1774,10 +1776,10 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
     }
 
     // No implementation found. Try method resolver once.
-
-    if (slowpath(behavior & LOOKUP_RESOLVER)) {
-        behavior ^= LOOKUP_RESOLVER;			//第 10 节：只给一次动态解析机会
-        return resolveMethod_locked(inst, sel, cls, behavior);
+    //  尝试动态方法解析，能执行到这里（循环外），说明整条继承链都找完了，没找到
+    if (slowpath(behavior & LOOKUP_RESOLVER)) {  // 检测是否允许动态解析
+        behavior ^= LOOKUP_RESOLVER;			//只给一次动态解析机会，防止无限递归
+        return resolveMethod_locked(inst, sel, cls, behavior);// 如果在resolveInstanceMethod 里面addMethod把方法补上了，就重新查找一遍并返回结果
     }
 
  done:
