@@ -1740,12 +1740,12 @@ IMP lookUpImpOrForward(id inst, SEL sel, Class cls, int behavior)
 #endif
         } else {
             // curClass method list.
-            method_t *meth = getMethodNoSuper_nolock(curClass, sel);	//  在当前类 `curClass` 自己的方法列表里找**（`NoSuper` 表示不找父类）。因为方法表排过序，这里是二分查找，很快。
+            method_t *meth = getMethodNoSuper_nolock(curClass, sel);	//  在当前类 `curClass` 自己的方法列表里找（`NoSuper` 表示不找父类）。因为方法表排过序，这里是二分查找，很快。
             if (meth) {
                 imp = meth->imp(false);
                 goto done;				//找到 → 去回填缓存
             }
-
+            //  如果找自己失败，转头找向自己的父类
             if (slowpath((curClass = curClass->getSuperclass()) == nil)) {
                 // No implementation found, and method resolver didn't help.
                 // Use forwarding.
