@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Objective-C 动态方法解析全流程梳理</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: #0d1117; color: #e6edf3; line-height: 1.7;
+    padding: 32px 24px; max-width: 1100px; margin: 0 auto;
+  }
+  h1 {
+    font-size: 26px; color: #58a6ff; border-bottom: 2px solid #30363d;
+    padding-bottom: 12px; margin-bottom: 8px;
+  }
+  .subtitle { color: #8b949e; font-size: 14px; margin-bottom: 28px; }
+  h2 {
+    font-size: 19px; color: #f0883e; margin: 32px 0 14px;
+    padding-left: 12px; border-left: 4px solid #f0883e;
+  }
+  h3 { font-size: 16px; color: #d2a8ff; margin: 18px 0 10px; }
+  p { margin: 8px 0; color: #c9d1d9; font-size: 14.5px; }
+  code {
+    background: #161b22; color: #79c0ff; padding: 2px 6px;
+    border-radius: 4px; font-family: "SF Mono", Consolas, monospace;
+    font-size: 13px;
+  }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 14px 16px; overflow-x: auto; margin: 10px 0;
+    font-family: "SF Mono", Consolas, monospace; font-size: 13px;
+    color: #e6edf3;
+  }
+  pre .kw { color: #ff7b72; }
+  pre .fn { color: #d2a8ff; }
+  pre .str { color: #a5d6ff; }
+  pre .cm { color: #8b949e; font-style: italic; }
+
+  /* 流程图 */
+  .flow { display: flex; flex-direction: column; gap: 0; margin: 18px 0; }
+  .stage {
+    background: linear-gradient(135deg, #1f2937, #161b22);
+    border: 1px solid #30363d; border-radius: 10px;
+    padding: 14px 18px; position: relative;
+  }
+  .stage.s1 { border-left: 5px solid #3fb950; }
+  .stage.s2 { border-left: 5px solid #f0883e; }
+  .stage.s3 { border-left: 5px solid #f85149; }
+  .stage-title { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+  .stage.s1 .stage-title { color: #3fb950; }
+  .stage.s2 .stage-title { color: #f0883e; }
+  .stage.s3 .stage-title { color: #f85149; }
+  .arrow {
+    text-align: center; color: #8b949e; font-size: 20px; padding: 4px 0;
+    line-height: 1;
+  }
+
+  /* 表格 */
+  table {
+    width: 100%; border-collapse: collapse; margin: 14px 0;
+    background: #161b22; border-radius: 8px; overflow: hidden;
+    font-size: 13.5px;
+  }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #30363d; }
+  th { background: #21262d; color: #58a6ff; font-weight: 600; }
+  td { color: #c9d1d9; }
+  tr:last-child td { border-bottom: none; }
+
+  /* 调用链 */
+  .chain {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 16px; font-family: "SF Mono", Consolas, monospace;
+    font-size: 13px; line-height: 1.9; margin: 14px 0;
+  }
+  .chain .l { color: #c9d1d9; }
+  .chain .h { color: #f0883e; font-weight: 700; }
+  .chain .a { color: #8b949e; }
+  .chain .c { color: #6a737d; font-style: italic; }
+
+  /* 关键点卡片 */
+  .key {
+    background: rgba(88, 166, 255, 0.08);
+    border-left: 3px solid #58a6ff;
+    padding: 10px 14px; margin: 10px 0; border-radius: 0 6px 6px 0;
+  }
+  .key b { color: #58a6ff; }
+  .warn {
+    background: rgba(248, 81, 73, 0.08);
+    border-left: 3px solid #f85149;
+    padding: 10px 14px; margin: 10px 0; border-radius: 0 6px 6px 0;
+  }
+  .warn b { color: #f85149; }
+
+  .footer {
+    text-align: center; color: #6e7681; font-size: 12px;
+    margin-top: 40px; padding-top: 16px; border-top: 1px solid #30363d;
+  }
+  .footer a { color: #58a6ff; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<h1>Objective-C 动态方法解析全流程梳理</h1>
+<p class="subtitle">基于 objc4 源码 · resolveMethod_locked / resolveInstanceMethod 详解</p>
+
+<h2>一、定位：消息发送的"三阶段"模型</h2>
+<p>Objective-C 的 <code>objc_msgSend</code> 在 cache 未命中后会进入慢路径，整个慢路径分三个阶段，每一阶段都是上一阶段失败后的"最后机会"。<b>动态方法解析</b>处于第二阶段。</p>
+
+<div class="flow">
+  <div class="stage s1">
+    <div class="stage-title">① 常规查找(Method Lookup)</div>
+    <p>从 <code>cls</code> 沿 <code>superclass</code> 链向上,逐层调用 <code>getMethodNoSuper_nolock</code> 在方法表中二分查找 SEL。找到则写入缓存返回 IMP。</p>
+  </div>
+  <div class="arrow">▼ 一路到 NSObject 仍未找到</div>
+  <div class="stage s2">
+    <div class="stage-title">② 动态方法解析(Dynamic Resolution)</div>
+    <p>给类发送 <code>+resolveInstanceMethod:</code> 或 <code>+resolveClassMethod:</code>,让类有机会用 <code>class_addMethod</code> 动态注册方法。<b>本文重点</b>。</p>
+  </div>
+  <div class="arrow">▼ 类未处理或注册失败</div>
+  <div class="stage s3">
+    <div class="stage-title">③ 消息转发(Message Forwarding)</div>
+    <p>依次尝试 <code>forwardingTargetForSelector:</code>(快速转发)、<code>forwardInvocation:</code>(完整转发)。仍失败则 <code>doesNotRecognizeSelector:</code> 抛异常。</p>
+  </div>
+</div>
+
+<h2>二、完整调用链路</h2>
+<div class="chain">
+<span class="l">objc_msgSend(receiver, sel, ...)</span> <span class="c">// 汇编,先查 cache_t</span><br>
+&nbsp;&nbsp;<span class="a">↓ cache miss</span><br>
+<span class="l">lookUpImpOrForward(...)</span> <span class="c">// C 慢路径入口,加 runtimeLock</span><br>
+&nbsp;&nbsp;<span class="a">↓ 沿继承链查找全部失败</span><br>
+&nbsp;&nbsp;<span class="a">↓ 且 behavior 含 LOOKUP_RESOLVER 位</span><br>
+<span class="h">resolveMethod_locked(inst, sel, cls, behavior)</span> <span class="c">// ← 入口</span><br>
+&nbsp;&nbsp;<span class="a">↓ runtimeLock.unlock() 解锁</span><br>
+&nbsp;&nbsp;<span class="a">↓ 区分 cls 是否元类</span><br>
+<span class="h">resolveInstanceMethod / resolveClassMethod</span> <span class="c">// ← 实际发消息</span><br>
+&nbsp;&nbsp;<span class="a">↓ objc_msgSend(cls, @selector(resolveInstanceMethod:), sel)</span><br>
+&nbsp;&nbsp;<span class="a">↓ 用户代码可能调用 class_addMethod</span><br>
+<span class="l">lookUpImpOrForwardTryCache(...)</span> <span class="c">// 重新查找,behavior 已去 RESOLVER 位</span><br>
+&nbsp;&nbsp;<span class="a">↓ 命中 → 返回新 IMP / 未命中 → forward_imp</span>
+</div>
+
+<h2>三、resolveMethod_locked 关键设计</h2>
+
+<h3>3.1 解锁:避免重入死锁</h3>
+<pre><span class="kw">static</span> NEVER_INLINE IMP
+<span class="fn">resolveMethod_locked</span>(id inst, SEL sel, Class cls, <span class="kw">int</span> behavior) {
+    lockdebug::assert_locked(&runtimeLock.get());
+    runtimeLock.<span class="fn">unlock</span>();   <span class="cm">// ← 关键:发 OC 消息前必须解锁</span>
+    ...
+}</pre>
+<div class="warn">
+<b>为何必须解锁?</b> 接下来要给类发 <code>+resolveInstanceMethod:</code>,用户的实现里通常会调用 <code>class_addMethod</code>,而 <code>class_addMethod</code> 内部要重新加 <code>runtimeLock</code>。若不解锁则<b>自死锁</b>。这是所有"系统库回调用户代码"场景的通用原则——<b>锁外回调</b>。
+</div>
+
+<h3>3.2 元类 vs 普通类:双重尝试</h3>
+<table>
+<tr><th>cls 类型</th><th>解析路径</th><th>对应消息</th></tr>
+<tr><td>普通类</td><td>resolveInstanceMethod</td><td>+resolveInstanceMethod:</td></tr>
+<tr><td rowspan="2">元类(类方法)</td><td>① 先 resolveClassMethod</td><td>+resolveClassMethod:</td></tr>
+<tr><td>② 仍失败再 resolveInstanceMethod</td><td>+resolveInstanceMethod:</td></tr>
+</table>
+<div class="key">
+<b>为何元类要试两次?</b> 类方法本质是元类的实例方法。早期只有 <code>resolveInstanceMethod:</code>,后来才加 <code>resolveClassMethod:</code> 让语义清晰,但运行时必须兼容老写法,所以两条路径都要试。
+</div>
+
+<h2>四、resolveInstanceMethod 关键设计</h2>
+
+<h3>4.1 预检查:类是否实现了解析方法</h3>
+<pre><span class="kw">if</span> (!<span class="fn">lookUpImpOrNilTryCache</span>(cls, resolve_sel, cls-><span class="fn">ISA</span>(<span class="kw">true</span>))) {
+    <span class="kw">return</span>;   <span class="cm">// 没实现就直接跳过,省掉一次完整 msgSend</span>
+}</pre>
+<p>用 <code>lookUpImpOrNilTryCache</code> 先<b>试探性查询</b>,找不到返回 nil 而非触发转发。绝大多数类不会覆写 <code>+resolveInstanceMethod:</code>,这一步避免了无谓的消息发送。<code>ISA(true)</code> 中的 <code>true</code> 是 arm64e 的指针认证(PAC)校验。</p>
+
+<h3>4.2 真正发消息:用函数指针而非 [...] 语法</h3>
+<pre>BOOL (*msg)(Class, SEL, SEL) = (<span class="kw">typeof</span>(msg))objc_msgSend;
+<span class="kw">bool</span> resolved = <span class="fn">msg</span>(cls, resolve_sel, sel);</pre>
+<p>把 <code>objc_msgSend</code> cast 成具体签名直接调用,避免 <code>[cls performSelector:]</code> 等语法糖带来的额外查找。这次调用是<b>用户代码执行点</b>,典型实现:</p>
+<pre><span class="kw">+ (BOOL)</span><span class="fn">resolveInstanceMethod:</span>(SEL)sel {
+    <span class="kw">if</span> (sel == <span class="fn">@selector</span>(dynamicMethod)) {
+        <span class="fn">class_addMethod</span>(self, sel, (IMP)dynamicIMP, <span class="str">"v@:"</span>);
+        <span class="kw">return</span> YES;
+    }
+    <span class="kw">return</span> [super <span class="fn">resolveInstanceMethod:</span>sel];
+}</pre>
+
+<h3>4.3 验证:以实际查找结果为准</h3>
+<pre>IMP imp = <span class="fn">lookUpImpOrNilTryCache</span>(inst, sel, cls);
+<span class="cm">// 不信任 BOOL 返回值,必须真的能查到 imp 才算解析成功</span></pre>
+<div class="warn">
+<b>防御性思维:</b> 开发者可能返回 YES 但忘了 <code>class_addMethod</code>,也可能返回 NO 但通过别的路径加上了。运行时<b>以实际状态为准</b>,并在 <code>PrintResolving</code> 开启时打印警告:"returned YES, but no new implementation was found"。
+</div>
+
+<h2>五、解析后的回流:状态转换的精妙</h2>
+<pre><span class="kw">return</span> <span class="fn">lookUpImpOrForwardTryCache</span>(inst, sel, cls, behavior);
+<span class="cm">// 这次 behavior 已去掉 LOOKUP_RESOLVER 位</span></pre>
+<table>
+<tr><th>情况</th><th>结果</th></tr>
+<tr><td>解析成功,方法已加入</td><td>重查命中,写入 cache,下次走快路径</td></tr>
+<tr><td>解析失败</td><td>因 RESOLVER 位已清除,<b>不再递归</b>进入解析,直接返回 <code>_objc_msgForward_impcache</code> 进入转发</td></tr>
+</table>
+<div class="key">
+<b>关键状态机:</b> behavior 中的 <code>LOOKUP_RESOLVER</code> 位扮演"是否还有解析机会"的标志。第一次进入慢路径时它为 1,调用解析后清零再查。这个一次性开关是防止<b>无限递归解析</b>的核心。
+</div>
+
+<h2>六、设计哲学总结</h2>
+
+<h3>动态性 vs 性能的妥协</h3>
+<p>动态解析是<b>懒加载</b>机制——只有真正找不到方法时才让用户介入,找到后通过 cache 固化,下次走快路径。完全动态会让查找开销大,完全静态又失去 OC 灵活性,这是平衡点。</p>
+
+<h3>三阶段层层兜底</h3>
+<p>常规查找 → 动态解析 → 消息转发,每层都是上层失败后的逃生口。开发者可在任意一层介入,这种分层扩展机制让 KVO、NSProxy、Method Swizzling 等高级特性得以优雅实现。</p>
+
+<h3>锁的精确管理</h3>
+<p>函数命名约定 <code>_locked</code> 后缀显式声明锁状态契约,Debug 期 <code>assert_locked</code>/<code>assert_unlocked</code> 双重保障。涉及用户回调必须解锁——这是大型 C++ 代码库管理锁状态的标准做法。</p>
+
+<h3>防御式编程</h3>
+<p>不信任用户的 BOOL 返回值,以实际查找结果为准;预检查类是否实现解析方法以省掉无谓 msgSend;PrintResolving 开关帮助排查"返回 YES 却没加方法"的常见 bug。每处细节都体现了对"用户代码可能出错"的防御性思维。</p>
+
+<div class="footer">Made with Tabbit · <a href="https://tabbit-ai.com">tabbit-ai.com</a></div>
+
+<script data-tabbit-widget-diagnostics="true">
+(function(){
+  if (window.__tabbitWidgetDiagnosticsInstalled) return;
+  window.__tabbitWidgetDiagnosticsInstalled = true;
+  window.__TABBIT_WIDGET_ERRORS__ = window.__TABBIT_WIDGET_ERRORS__ || [];
+  function emit(level, args) {
+    var payload = {
+      type: "tabbit_widget_diagnostics",
+      level: level,
+      message: Array.prototype.slice.call(args || []).map(function(item) {
+        if (item && item.stack) return item.stack;
+        if (typeof item === "string") return item;
+        try { return JSON.stringify(item); } catch (_) { return String(item); }
+      }).join(" "),
+      timestamp: Date.now()
+    };
+    window.__TABBIT_WIDGET_ERRORS__.push(payload);
+    try { window.parent && window.parent.postMessage(payload, "*"); } catch (_) {}
+  }
+  var originalError = console.error;
+  console.error = function() {
+    emit("error", arguments);
+    return originalError && originalError.apply(console, arguments);
+  };
+  window.addEventListener("error", function(event) {
+    emit("error", [event.message || "Script error", event.filename || "", event.lineno || ""]);
+  });
+  window.addEventListener("unhandledrejection", function(event) {
+    emit("unhandledrejection", [event.reason || "Unhandled promise rejection"]);
+  });
+})();
+</script></body>
+</html>
