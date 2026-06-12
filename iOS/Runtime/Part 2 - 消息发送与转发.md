@@ -1864,7 +1864,7 @@ if (!cls || !cls->ISA()) {
 
 ### 7.1 `getMethodNoSuper_nolock` 遍历方法列表（:7290）
 
-逐字全文：
+在不向父类查找的前提下，于本类方法表里按SEL查找方法实现：
 
 ```objc
 // objc-runtime-new.mm:7290  —— getMethodNoSuper_nolock（全文）
@@ -1873,6 +1873,7 @@ getMethodNoSuper_nolock(Class cls, SEL sel)
     lockdebug::assert_locked(&runtimeLock.get());
 
     ASSERT(cls->isRealized());
+    // realize == class_rw_t 已构建、方法/属性/协议列表已经从只读段拷贝出来并可被运行时增删。未 realize 的类直接查方法是没有意义的，因为 `data()` 返回的内容还没有展开
     // fixme nil cls?
     // fixme nil sel?
 
@@ -1881,14 +1882,16 @@ getMethodNoSuper_nolock(Class cls, SEL sel)
 
     if (auto *relativeList = alternates.relativeList)
         return getMethodFromRelativeList(relativeList, sel);
+        // 该函数内部会按相对偏移解出真实地址，再做线性或二分查找（已排序的方法表会走二分）。这条分支命中通常意味着类来自系统镜像或被链接器做了相对化处理。
 
     if (alternates.list)
-        return getMethodFromListArray(&alternates.list, 1, sel);	//单个方法表
+        return getMethodFromListArray(&alternates.list, 1, sel);	
+        //  把单张表的地址当作长度为 1 的数组传入（&alternates.list, 1），`getMethodFromListArray` 内部会对每张 list 调用底层的 `findMethodInSortedMethodList` 或线性扫描。
 
     if (auto *array = alternates.array) {
         auto listAlternates = array->listAlternates();
         if (listAlternates.oneList)
-            return getMethodFromListArray(&listAlternates.oneList, 1, sel);
+            return getMethodFromListArray(&listAlternates.oneList, 1, sel);   // 退化为单表查找
         if (auto innerArray = listAlternates.array)
             return getMethodFromListArray(innerArray, listAlternates.arrayCount, sel);
         if (auto *relativeList = listAlternates.listList)
