@@ -1902,9 +1902,9 @@ getMethodNoSuper_nolock(Class cls, SEL sel)
 }
 ```
 
-### 7.2 已排序表二分查找 `findMethodInSortedMethodList`（:7062 → :7006）
 
-逐字全文（含模板实现、`compare`、按 small/big 分发的入口）：
+
+### 7.2 已排序表二分查找 `findMethodInSortedMethodList`（:7062 → :7006）
 
 ```objc
 // objc-runtime-new.mm:7006  —— 二分查找实现（全文）
@@ -1912,10 +1912,10 @@ findMethodInSortedMethodList(SEL key, const method_list_t *list, const compareFu
 {
     ASSERT(list);
 
-    auto first = list->begin();
-    auto base = first;
+    auto first = list->begin(); //记录启始位置
+    auto base = first;  //左断点，不断右移
 
-    uint32_t count;
+    uint32_t count;  // 区间元素数量
 
     // When to stop the binary search and move to a linear search.
     const uint32_t threshold = 4;			//区间缩到 ≤4 改线性扫更快
@@ -1924,6 +1924,7 @@ findMethodInSortedMethodList(SEL key, const method_list_t *list, const compareFu
         auto probe = base + (count >> 1);
 
         int comparison = compare(probe);
+        
         if (comparison == 0) {
             // `probe` is a match.
             // Rewind looking for the *first* occurrence of this value.
@@ -1931,6 +1932,11 @@ findMethodInSortedMethodList(SEL key, const method_list_t *list, const compareFu
             while (probe > first && compare(probe - 1) == 0) {
                 probe--;				//回退到首个相等项，保证分类覆盖取到分类版本
             }
+            //当 category 给宿主类添加了一个与原方法同名的方法时，attachCategories 会把 category 的方法列表前置插入到宿主类的方法列表数组里。在 `fixupMethodList` 对列表排序后，相同 SEL 的多个实现会连续排列在一起，而 category 版本因为被前置，排序后会位于原版本之前（地址更小）​。
+
+//二分查找的命中点 `probe` 可能落在这一组相等项的任意位置，不一定是最前面那个。如果直接返回 `probe`，可能返回的是原版本而非 category 版本，导致覆盖语义失效。
+
+//向左回退的循环保证了**一定返回第一个（地址最小的）相等项**，也就是 category 覆盖后的版本。这个回退在最坏情况下（同名 category 非常多）是线性的，但实际工程中同一 SEL 的重复数量极少超过个位数，开销可以忽略。
             return &*probe;
         }
 
@@ -1938,14 +1944,21 @@ findMethodInSortedMethodList(SEL key, const method_list_t *list, const compareFu
             base = probe + 1;
             count--;
         }
+        
+        // comparison < 0的分支是空的
     }
+    
+    
+
 
     // Once we've shrunk the range enough, it's faster to do a linear search.
+    // 当区间缩小到 <= 4时，切换为线性扫描，至于为什么是4，他是一个经验值
     while (count-- > 0) {
         auto comparison = compare(base);
         if (comparison == 0)
             return &*base;
         if (comparison < 0)
+            // 因为方法表是按 SEL 地址值升序排列的，comparison < 0 意味着当前 base 指向的方法名地址已经大于 key，后续所有元素只会更大，不可能再有匹配。因此可以立即返回 `nil`，而不需要扫完剩余的元素。
             return nil;
         base++;
     }
