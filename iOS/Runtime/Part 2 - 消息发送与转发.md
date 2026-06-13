@@ -2140,7 +2140,7 @@ resolveMethod_locked(id inst, SEL sel, Class cls, int behavior)
     else {   // 元类
         // try [nonMetaClass resolveClassMethod:sel]
         // and [cls resolveInstanceMethod:sel]
-        resolveClassMethod(inst, sel, cls);  //先调用 resolveClassMethod，给"原类的元类的元类"发 +resolveClassMethod:
+        resolveClassMethod(inst, sel, cls);  //先调用 resolveClassMethod，实际会拿到非元类并发送 [Foo resolveClassMethod:sel]
         if (!lookUpImpOrNilTryCache(inst, sel, cls)) {
             resolveInstanceMethod(inst, sel, cls);
             // 如果第一次解析没成功（用 lookUpImpOrNilTryCache 检查缓存里有没有），还要再调用 resolveInstanceMethod ——因为类方法在元类视角下就是实例方法，开发者也可能直接覆写元类的 +resolveInstanceMethod: 来处理。
@@ -2154,187 +2154,40 @@ resolveMethod_locked(id inst, SEL sel, Class cls, int behavior)
 }
 ```
 
-# Objective-C 动态方法解析:三个容易让人困惑的细节
+### 10.1 三个容易绕住的细节
 
-> 本文整理自对 objc4 源码 `resolveMethod_locked` 与 `resolveInstanceMethod` 的研读笔记,聚焦动态方法解析流程中三个最容易让人卡住的细节:类方法解析的消息接收者、元类的"双重身份"导致的兼容性设计,以及解析后那次"重查"背后隐藏的状态机。
+读到这里，动态方法解析看起来只有一句话：找不到方法时，先给类一次补方法的机会。但源码真正绕人的地方不在「会不会调用 resolver」，而在下面三个细节。
 
-一、`+resolveClassMethod:` 到底发给了谁?
-
-**问题**
-
-当 `cls` 是元类(说明在解析一个类方法)时,运行时调用 `resolveClassMethod`,这条消息的实际接收者是哪个对象?
-
- **解答**
-
-要回答这个问题,先要把 Objective-C 的元类模型梳理清楚。每个对象都有 `isa` 指针指向它的"类",这个关系是递归的:
-
-| 对象 | isa 指向 |
-|------|---------|
-| 实例 `obj` | 类 `Foo` |
-| 类 `Foo` | 元类 `meta(Foo)` |
-| 元类 `meta(Foo)` | 根元类 `meta(NSObject)` |
-| 根元类 | 自己 |
-
-**关键规则**:实例方法存在"类"里,类方法存在"元类"里。所以 `-instanceMethod` 是 `Foo` 的方法,`+classMethod` 实际上存在 `meta(Foo)` 里。
-
-当运行时要解析 `Foo` 的某个类方法时,`cls` 参数是 `meta(Foo)`。但 `+resolveClassMethod:` 的实际发送目标**不是元类,而是原类 `Foo`**:
+第一，解析类方法时，`+resolveClassMethod:` 的接收者不是元类，而是原类本身。也就是说，当运行时正在解析 `Foo` 的某个类方法时，传进来的 `cls` 确实是 `meta(Foo)`，因为类方法本来就存在元类的方法表里；但 `resolveClassMethod` 内部会先通过 `_class_getNonMetaClass(cls, inst)` 拿回非元类 `Foo`，再发送：
 
 ```objc
 [Foo resolveClassMethod:sel]
 ```
 
-`resolveClassMethod` 函数内部大致是这样:
+这也是 Objective-C 元类模型里最容易混的一点：**消息接收者**和**方法所在的容器**不是同一件事。`+resolveClassMethod:` 这条消息发给的是 `Foo`，但查找这条类方法时仍然会沿着 `Foo -> meta(Foo)` 这条 isa 链去元类的方法表里找实现。
+
+第二，类方法解析失败后，运行时还会再尝试一次 `resolveInstanceMethod`。乍看很怪：类方法都没解析出来，为什么又去问实例方法解析器？原因还是元类的双重身份。站在 `Foo` 的角度看，`meta(Foo)` 是类方法的容器；但站在 `meta(Foo)` 自己的角度看，它也是一个类，里面的方法就是它自己的「实例方法」。所以「给 `Foo` 加类方法」和「给 `meta(Foo)` 加实例方法」描述的是同一份实现，只是视角不同。
+
+这段双重尝试本质上是在兼容两种写法：
 
 ```objc
-Class nonmeta = _class_getNonMetaClass(cls, inst);  // 由 meta(Foo) 拿到 Foo
-msg(nonmeta, @selector(resolveClassMethod:), sel);  // [Foo resolveClassMethod:sel]
-```
-
-这条消息的查找路径走的是标准 isa 链:从 `Foo` 出发,经过 `Foo` 的 isa(也就是 `meta(Foo)`),在元类的方法表里找 `resolveClassMethod:`,最终落到 `NSObject` 的默认实现或开发者的覆写版本。
-
-**核心结论**:`+resolveClassMethod:` 是发给非元类对象 `Foo` 的,查找时自然走过元类的方法表,但接收者本身是非元类。理解这一点的关键是分清"消息接收者"和"方法定义所在的容器"是两个不同的概念。
-
-## 二、为什么类方法解析失败后还要再调 `resolveInstanceMethod`?
-
-### **问题**
-
-源码里有这样一段双重尝试逻辑:
-
-```objc
-else {  // cls 是元类
-    resolveClassMethod(inst, sel, cls);
-    if (!lookUpImpOrNilTryCache(inst, sel, cls)) {
-        resolveInstanceMethod(inst, sel, cls);
-    }
+resolveClassMethod(inst, sel, cls);       // 新写法：问 [Foo resolveClassMethod:]
+if (!lookUpImpOrNilTryCache(inst, sel, cls)) {
+    resolveInstanceMethod(inst, sel, cls); // 兼容写法：把 meta(Foo) 当作类，再问它的实例方法解析器
 }
 ```
 
-为什么解析类方法失败后要回退去调 `resolveInstanceMethod`?这两个看起来语义不同的方法为什么能互相替代?
+中间那次 `lookUpImpOrNilTryCache` 很关键。运行时不完全相信 resolver 的返回值，而是重新看一眼方法表里是否真的多出了这个 SEL：如果 `+resolveClassMethod:` 返回了 `YES`，但开发者根本没有 `class_addMethod`，那就不能算解析成功。
 
-### **解答**
-
-这是**元类的双重视角**与 **API 历史演进**叠加产生的兼容性设计。
-
-#### 元类的双重身份
-
-同一个 `meta(Foo)`,在两种视角下行为不同:
-
-| 视角 | 看到的内容 |
-|------|---------|
-| 站在 `Foo` 的角度 | meta(Foo) 是"类方法的容器" |
-| 站在 meta(Foo) 自己的角度 | meta(Foo) 就是一个普通的类,里面装的方法都是它自己的"实例方法" |
-
-也就是说:**在 `Foo` 里写一个 `+classMethod`,等价于在 `meta(Foo)` 里写一个"实例方法"**。两种说法描述的是同一份代码,只是站在不同对象的角度命名。
-
-#### API 演进史
-
-- **早期**:OC 2.0 刚加入动态解析机制时,只有 `+resolveInstanceMethod:`。开发者要解析类方法,只能利用元类视角——**给元类(把它当类看)覆写 `+resolveInstanceMethod:`**。
-- **后来**:苹果发现这种写法太绕,新增了 `+resolveClassMethod:`,让开发者直接在原类上覆写,语义更清晰。
-- **结果**:两种写法并存,运行时必须同时兼容。
-
-#### 双重尝试的逻辑
-
-```objc
-resolveClassMethod(inst, sel, cls);   // ① 新写法:[Foo resolveClassMethod:]
-if (!lookUpImpOrNilTryCache(...)) {
-    resolveInstanceMethod(inst, sel, cls);  // ② 老写法:[meta(Foo) resolveInstanceMethod:]
-}
-```
-
-第一次走新 API,如果开发者用现代写法覆写了 `+resolveClassMethod:`,这里就会成功。中间用 `lookUpImpOrNilTryCache` 检查类的方法表里是否真的多出了 SEL——**不信任 BOOL 返回值,以实际状态为准**。如果第一次没成功,再把 `meta(Foo)` 当作普通类去问它"你的实例方法解析器要不要处理这个 SEL?",这是给老代码留的兼容入口。
-
-#### 两种写法的对比示例
-
-```objc
-// 新写法(推荐):覆写 Foo 自己的 resolveClassMethod:
-@implementation Foo
-+ (BOOL)resolveClassMethod:(SEL)sel {
-    if (sel == @selector(dynamicClassMethod)) {
-        Class meta = object_getClass(self);
-        class_addMethod(meta, sel, (IMP)impl, "v@:");
-        return YES;
-    }
-    return [super resolveClassMethod:sel];
-}
-@end
-```
-
-老写法则是在元类上覆写 `+resolveInstanceMethod:`,因为类方法在元类视角下就是实例方法。两种写法都能正确解析类方法,运行时的双重尝试就是为了**两种写法都能 work**。
-
-## 三、解析后那次"重查"有几个微妙的不同?
-
-### **问题**
-
-`resolveMethod_locked` 末尾有这么一行:
+第三，resolver 跑完后末尾这句「重查」不是简单重复刚才那次查找：
 
 ```objc
 return lookUpImpOrForwardTryCache(inst, sel, cls, behavior);
 ```
 
-它和"最开始那次失败的查找"看起来都是在同一个 `(inst, sel, cls)` 上做查找,有什么区别?为什么这次能避免无限递归?
+它至少带着三层变化。其一，如果 resolver 里调用了 `class_addMethod`，方法已经进了 `cls` 的方法列表；这次重查就能把新 IMP 找出来，并顺手填进 cache，下一次同样的消息就能回到汇编快路径。其二，进入 resolver 前，`LOOKUP_RESOLVER` 这个标志位已经被清掉了；所以如果重查仍然失败，运行时不会再递归触发动态解析，而是直接返回 `_objc_msgForward_impcache`，进入后面的消息转发。其三，resolver 执行期间 `runtimeLock` 是释放的，别的线程可能已经先一步完成解析并写入缓存，所以这里用的是带 `TryCache` 的版本，回来先看一眼 cache，miss 了再重新进慢速查找。
 
-### **解答**
-
-不同点 1:缓存可能已被填充,大概率走快路径
-
-第一次进入 `lookUpImpOrForward` 时,`cls->cache` 里没有这个 SEL(否则 `objc_msgSend` 早就在汇编层命中了)。但经过 `+resolveInstanceMethod:` 后:
-
-- 如果开发者调用了 `class_addMethod`,**新方法已经被加进 `cls` 的方法列表**(`class_rw_t` 的 methods)。
-- 但缓存还没写——`class_addMethod` 只改方法列表,不主动填缓存。
-- 这次重查走慢路径时能在方法列表里找到目标,然后 `log_and_fill_cache` 把它写进缓存。
-
-所以重查的副产品是**完成了缓存的初次填充**。下次同样的 `(cls, sel)` 组合,`objc_msgSend` 就能直接在汇编层命中缓存,完全不再走慢路径——动态解析的成本被均摊到只发生一次。
-
-不同点 2:behavior 已去掉 `LOOKUP_RESOLVER` 位
-
-这是最关键的一点,直接关系到防止无限递归。
-
-`behavior` 是 `lookUpImpOrForward` 的标志位参数,其中 `LOOKUP_RESOLVER` 位的语义是:**"如果常规查找失败,允许触发动态方法解析"**。
-
-| 时刻 | RESOLVER 位 | 含义 |
-|------|------------|------|
-| 第一次进入慢路径 | 1 | "还没试过解析,失败了允许触发" |
-| 解析器执行后重查 | 0 | "已经给过机会了,这次失败就直接转发" |
-
-`lookUpImpOrForward` 在调用 `resolveMethod_locked` 之前,会把 RESOLVER 位清零再透传。所以重查时如果再失败(开发者的 `+resolveInstanceMethod:` 返回 YES 但实际没加方法,典型 bug),`lookUpImpOrForward` 在常规查找失败后**不会再次进入解析器**,直接返回 `_objc_msgForward_impcache` 走转发。
-
-如果没有这个清位机制,会形成无限递归:解析失败→查找→失败→再解析→再失败……直到栈溢出。**`LOOKUP_RESOLVER` 这个一次性开关是 objc 运行时防止解析循环的核心保护**。
-
-不同点 3:从 `lookUpImpOrForward` 变成了 `lookUpImpOrForwardTryCache`
-
-注意函数名后缀 `TryCache`,这两个变体的入口策略不同:
-
-| 函数 | 行为 |
-|------|------|
-| `lookUpImpOrForward` | 直接进慢路径,跳过 cache 检查 |
-| `lookUpImpOrForwardTryCache` | 先尝试 cache,miss 才走慢路径 |
-
-重查用 `TryCache` 版本是因为**在解析器执行期间,运行时锁是释放的,其他线程可能已经在另一条路径上把这个 SEL 缓存好了**(比如另一个线程同时查同一个方法,先一步完成解析并填了缓存)。带 `TryCache` 的版本能利用这种并发场景下的顺手成果,避免重复走慢路径。
-
-这是并发系统里很常见的微优化:**释放锁的间隙里世界可能已经变了,重新进入时先快速检查当前状态**。
-
-不同点 4:运行时锁状态的转换
-
-第一次查找时,锁是从外部一路持有进来的;重查这次,锁已经被 `resolveMethod_locked` 显式 `unlock()` 过(为了避免发 OC 消息时重入死锁)。所以:
-
-- `lookUpImpOrForwardTryCache` 进入后会**自己重新获取 `runtimeLock`**(走慢路径时)。
-- 这一段无锁窗口期是给用户解析器代码用的,出去后立刻补回锁。
-
-这种"持锁→释放→回调用户→重新持锁"的模式叫做 **lock yielding**,是运行时安全调用用户代码的标准做法。
-
-#### 四点协同的最终效果
-
-把四点放在一起看,这次重查保证了三种结果都能正确收敛:
-
-- **解析成功**:重查命中方法列表,填充缓存,返回新 IMP。下次走快路径。
-- **解析失败**:重查再次 miss,因 RESOLVER 位清零直接走转发,不会递归。
-- **并发场景**:其他线程已填缓存,`TryCache` 直接命中,无需慢路径。
-
-## 写在最后
-
-这三个问题串起来其实回答了 Objective-C 动态方法解析里最容易让人困惑的三个层面:**对象模型层面**(消息接收者究竟是谁)、**API 演进层面**(为什么有看似冗余的双重尝试)、**状态机层面**(一行重查代码背后的多维状态切换)。理解了这三点,objc_msgSend 从快路径到慢路径再到消息转发的整个闭环,就能在脑子里形成一张完整的状态转移图。
-
-源码读到这种程度的好处是:再看 KVO、Method Swizzling、NSProxy 这些进阶特性时,会发现它们都是在这套机制的不同切入点上做文章,理解成本骤降。系统级代码值得反复研读的原因正在于此——**它的每一个细节都不是随意写的,背后都有性能、正确性、兼容性、并发安全的具体约束在驱动设计**。
+把这三点合起来看，动态解析这一步其实是一个很克制的「一次机会」：给开发者补方法的窗口，但不相信口头承诺，只认方法表里的真实变化；补上了就填缓存回快路径，补不上就关掉 resolver 开关，干净地滑向消息转发。
 
 
 
