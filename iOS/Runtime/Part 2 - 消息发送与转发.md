@@ -2097,8 +2097,8 @@ static void resolveInstanceMethod(id inst, SEL sel, Class cls)
         // Resolver not implemented.
         return;					//类没实现 +resolveInstanceMethod: 就直接跳过
     }
-
-
+    
+    
     BOOL (*msg)(Class, SEL, SEL) = (typeof(msg))objc_msgSend;
     bool resolved = msg(cls, resolve_sel, sel);	//给元类发 +resolveInstanceMethod:（一次机会）
 
@@ -2153,6 +2153,13 @@ resolveMethod_locked(id inst, SEL sel, Class cls, int behavior)
     //解析后再查一遍；这次 behavior 已去掉 RESOLVER 位 → 仍无则返回 forward_imp 转发
 }
 ```
+
+| 参数     | 含义             | 用途                               |
+| ------ | -------------- | -------------------------------- |
+| `inst` | 实际的消息接收者(实例对象) | 重查时用来定位真正的查找起点                   |
+| `sel`  | 找不到的方法选择子      | 作为参数传给 `+resolveInstanceMethod:` |
+| `cls`  | 当前查找所在的类       | `+resolveInstanceMethod:` 的接收者   |
+
 
 ### 10.1 三个容易绕住的细节
 
