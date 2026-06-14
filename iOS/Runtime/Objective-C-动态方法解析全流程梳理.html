@@ -120,7 +120,7 @@
   <div class="arrow">▼ 类未处理或注册失败</div>
   <div class="stage s3">
     <div class="stage-title">③ 消息转发(Message Forwarding)</div>
-    <p>依次尝试 <code>forwardingTargetForSelector:</code>(快速转发)、<code>forwardInvocation:</code>(完整转发)。仍失败则 <code>doesNotRecognizeSelector:</code> 抛异常。</p>
+    <p>依次尝试 <code>forwardingTargetForSelector:</code>(快速转发)、<code>methodSignatureForSelector:</code> + <code>forwardInvocation:</code>(完整转发)。仍失败则 <code>doesNotRecognizeSelector:</code> 抛异常。</p>
   </div>
 </div>
 

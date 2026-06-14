@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Objective-C 消息转发全流程梳理</title>
+<style>
+:root {
+  --bg: #17191d;
+  --panel: #202329;
+  --panel-2: #15171b;
+  --line: #343946;
+  --line-2: #4a5262;
+  --text: #eceff4;
+  --muted: #b9c0ce;
+  --dim: #8791a3;
+  --green: #63c7a0;
+  --blue: #7db7ff;
+  --pink: #ef8fb3;
+  --red: #ff8b88;
+  --amber: #f3bc6b;
+  --violet: #b7a4ff;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+}
+
+.wrap {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 22px 16px 26px;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: clamp(20px, 3vw, 30px);
+  line-height: 1.18;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.lead {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 280px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.map {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(260px, 1.1fr) minmax(260px, 1.15fr) minmax(220px, 0.9fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.lane {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.lane-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.lane-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.node,
+.result {
+  display: block;
+  width: 100%;
+  min-height: 78px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.node:hover,
+.result:hover,
+.node.active,
+.result.active {
+  border-color: var(--accent);
+  background: #252a33;
+}
+
+.node.active,
+.result.active {
+  transform: translateY(-1px);
+}
+
+.fn {
+  display: block;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.desc {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tag {
+  display: inline-flex;
+  margin-top: 9px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent), transparent 84%);
+  color: var(--accent);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+
+.connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.branch {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.branch-label {
+  padding: 7px 9px;
+  border: 1px dashed var(--line-2);
+  border-radius: 8px;
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.note-panel {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.note-title {
+  font-family: var(--mono);
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.note-source {
+  margin-left: auto;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.note-body {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 14px;
+  padding: 14px;
+}
+
+.note-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.mini-list {
+  display: grid;
+  gap: 8px;
+}
+
+.mini {
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mini b {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.foot {
+  margin-top: 12px;
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+[data-kind="objc"] { --accent: var(--blue); }
+[data-kind="libobjc"] { --accent: var(--green); }
+[data-kind="cf"] { --accent: var(--pink); }
+[data-kind="choice"] { --accent: var(--amber); }
+[data-kind="fail"] { --accent: var(--red); }
+[data-kind="done"] { --accent: var(--violet); }
+
+@media (max-width: 940px) {
+  .topbar { flex-direction: column; }
+  .legend { justify-content: flex-start; min-width: 0; }
+  .map { grid-template-columns: 1fr 1fr; }
+  .note-body { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .wrap { padding: 16px 10px 20px; }
+  .map { grid-template-columns: 1fr; }
+  .node, .result { min-height: auto; }
+  .note-head { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .note-source { margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .node,
+  .result {
+    transition: none;
+  }
+  .node.active,
+  .result.active {
+    transform: none;
+  }
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="topbar">
+    <div>
+      <h1>消息转发全流程</h1>
+      <p class="lead">从慢速查找确认找不到 IMP 开始，libobjc 只负责交棒，CoreFoundation 的 <code>___forwarding___</code> 负责调度三部曲，开发者在三个回调点决定消息是被接住、改道，还是最终崩溃。</p>
+    </div>
+    <div class="legend" aria-label="图例">
+      <span class="pill"><span class="dot" style="background: var(--green)"></span>libobjc 边界</span>
+      <span class="pill"><span class="dot" style="background: var(--pink)"></span>CF 调度</span>
+      <span class="pill"><span class="dot" style="background: var(--blue)"></span>开发者可覆写</span>
+      <span class="pill"><span class="dot" style="background: var(--amber)"></span>签名探测</span>
+      <span class="pill"><span class="dot" style="background: var(--red)"></span>失败出口</span>
+    </div>
+  </div>
+
+  <section class="map" aria-label="Objective-C 消息转发流程图">
+    <div class="lane">
+      <div class="lane-head">1. libobjc 找不到方法</div>
+      <div class="lane-body">
+        <button class="node active" data-step="miss" data-kind="libobjc">
+          <span class="fn">lookUpImpOrForward</span>
+          <span class="desc">当前类、父类链、动态解析都没有拿到 IMP。</span>
+          <span class="tag">miss</span>
+        </button>
+        <div class="connector">↓ 返回占位 IMP</div>
+        <button class="node" data-step="impcache" data-kind="libobjc">
+          <span class="fn">_objc_msgForward_impcache</span>
+          <span class="desc">可被放入 cache 的转发入口，执行时立刻跳到 _objc_msgForward。</span>
+          <span class="tag">cache placeholder</span>
+        </button>
+        <div class="connector">↓</div>
+        <button class="node" data-step="forward" data-kind="libobjc">
+          <span class="fn">_objc_msgForward</span>
+          <span class="desc">读取 __objc_forward_handler，尾调用真正的转发处理器。</span>
+          <span class="tag">handoff</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="lane">
+      <div class="lane-head">2. CoreFoundation 接管</div>
+      <div class="lane-body">
+        <button class="node" data-step="handler" data-kind="cf">
+          <span class="fn">__objc_forward_handler</span>
+          <span class="desc">带 CF 的进程里通常指向 CoreFoundation 的转发实现。</span>
+          <span class="tag">global hook</span>
+        </button>
+        <div class="connector">↓</div>
+        <button class="node" data-step="cf" data-kind="cf">
+          <span class="fn">___forwarding___</span>
+          <span class="desc">闭源调度器，按顺序调用快速转发、完整转发和兜底崩溃。</span>
+          <span class="tag">dispatcher</span>
+        </button>
+        <div class="connector">↓ 先问能不能换 receiver</div>
+        <button class="node" data-step="fast" data-kind="objc">
+          <span class="fn">forwardingTargetForSelector:</span>
+          <span class="desc">快速转发：返回另一个对象，整条消息以新 receiver 重新开始。</span>
+          <span class="tag">12.1</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="lane">
+      <div class="lane-head">3. 开发者机会与签名探测</div>
+      <div class="lane-body">
+        <div class="branch-label">如果返回值既不是 nil 也不是 self：重新进入 objc_msgSend，消息被转给新对象。</div>
+        <button class="result" data-step="fastdone" data-kind="done">
+          <span class="fn">新 receiver 处理消息</span>
+          <span class="desc">适合简单代理：Cat 不会 bark，就把 bark 交给 Dog。</span>
+          <span class="tag">handled</span>
+        </button>
+        <div class="connector">nil / self ↓</div>
+        <button class="node" data-step="signature" data-kind="objc">
+          <span class="fn">methodSignatureForSelector:</span>
+          <span class="desc">完整转发第一步：提供类型签名，否则无法构造 NSInvocation。</span>
+          <span class="tag">12.2</span>
+        </button>
+        <div class="connector">默认签名探测可能触发 ↓</div>
+        <button class="node" data-step="signatureProbe" data-kind="choice">
+          <span class="fn">class_getInstanceMethod</span>
+          <span class="desc">NSObject/super 签名探测路径可能再次进入 lookUpImpOrForward。</span>
+          <span class="tag">14</span>
+        </button>
+        <div class="connector">signature != nil ↓</div>
+        <button class="node" data-step="invocation" data-kind="objc">
+          <span class="fn">forwardInvocation:</span>
+          <span class="desc">拿到 NSInvocation 后，可以记录、改参数、延迟或转给其他对象。</span>
+          <span class="tag">NSInvocation</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="lane">
+      <div class="lane-head">4. 收敛结果</div>
+      <div class="lane-body">
+        <button class="result" data-step="fulldone" data-kind="done">
+          <span class="fn">invokeWithTarget:</span>
+          <span class="desc">完整转发成功，调用者像收到正常返回一样继续执行。</span>
+          <span class="tag">handled</span>
+        </button>
+        <div class="connector">signature == nil 或无人处理 ↓</div>
+        <button class="result" data-step="dnr" data-kind="fail">
+          <span class="fn">doesNotRecognizeSelector:</span>
+          <span class="desc">最终失败出口，常见表现是 unrecognized selector 异常。</span>
+          <span class="tag">12.3</span>
+        </button>
+        <div class="branch">
+          <div class="branch-label">objc4 里的实现会 _objc_fatal。</div>
+          <div class="branch-label">带 CF 时通常命中 CF 版本，抛 NSInvalidArgumentException。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="note-panel" aria-live="polite">
+    <div class="note-head">
+      <div class="note-title" id="detail-title">lookUpImpOrForward</div>
+      <div class="note-source" id="detail-source">libobjc</div>
+    </div>
+    <div class="note-body">
+      <p class="note-copy" id="detail-copy">当前类、父类链和动态方法解析都没有提供实现时，慢速查找会返回转发占位 IMP。注意这不是“找到方法”，而是把消息送往转发系统的标记。</p>
+      <div class="mini-list" id="detail-list">
+        <div class="mini"><b>对应正文：</b>第 10 节之后进入第三部分。</div>
+        <div class="mini"><b>关键判断：</b>resolver 也失败，LOOKUP_RESOLVER 已关闭。</div>
+        <div class="mini"><b>下一步：</b>返回 _objc_msgForward_impcache。</div>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot">读图顺序：先看四条泳道，再点击节点看细节。绿色是 libobjc 的边界工作，粉色是 CoreFoundation 的闭源调度，蓝色是业务代码可以覆写的 Objective-C 方法，黄色是完整转发里的签名探测支线。</p>
+</main>
+
+<script>
+const details = {
+  miss: {
+    title: "lookUpImpOrForward",
+    source: "libobjc slow path",
+    copy: "当前类方法表、superclass 链和动态方法解析都失败后，慢速查找不再继续猜测，而是把 imp 设置成 forward_imp。这一步把普通查找和消息转发明确分开。",
+    list: ["对应正文：第 10 节之后进入消息转发。", "关键判断：resolver 已经给过一次机会。", "下一步：返回 _objc_msgForward_impcache。"]
+  },
+  impcache: {
+    title: "_objc_msgForward_impcache",
+    source: "objc-msg-arm64.s",
+    copy: "这是能放进方法缓存里的转发占位入口。它不展开任何转发逻辑，执行时直接 b 到 __objc_msgForward。",
+    list: ["作用：让 cache 也能表达“这个 selector 走转发”。", "不是：真正的三部曲实现。", "下一步：跳到 _objc_msgForward。"]
+  },
+  forward: {
+    title: "_objc_msgForward",
+    source: "objc-msg-arm64.s",
+    copy: "汇编从 __objc_forward_handler 取出全局转发处理器，并用尾调用把原始参数带过去。这里必须保留 self、_cmd 和所有未知参数。",
+    list: ["作用：libobjc 到上层转发系统的交棒点。", "原因：方法签名未知，不能随便拆参数。", "下一步：进入 CF 安装的 handler。"]
+  },
+  handler: {
+    title: "__objc_forward_handler",
+    source: "runtime hook",
+    copy: "这是一个全局 hook。纯 libobjc 环境里可以是默认处理器，带 CoreFoundation 的进程里通常被换成 CF 的转发实现。",
+    list: ["边界：libobjc 只调用 handler。", "关键：handler 后面的调度不在 objc4 开源源码里。", "下一步：CoreFoundation ___forwarding___。"]
+  },
+  cf: {
+    title: "___forwarding___",
+    source: "CoreFoundation",
+    copy: "这是把三部曲串起来的闭源调度器。LLDB 调用栈里能看到它依次触发快速转发、完整转发和兜底崩溃。",
+    list: ["先问：forwardingTargetForSelector:。", "再问：methodSignatureForSelector:。", "最后：doesNotRecognizeSelector:。"]
+  },
+  fast: {
+    title: "forwardingTargetForSelector:",
+    source: "NSObject / developer override",
+    copy: "快速转发只换 receiver，不创建 NSInvocation。返回另一个对象时，同一条消息会以新对象作为 receiver 重新发送。",
+    list: ["返回 nil：继续完整转发。", "返回 self：等于没有处理。", "返回其他对象：重启消息发送流程。"]
+  },
+  fastdone: {
+    title: "新 receiver 处理消息",
+    source: "fast forwarding result",
+    copy: "这是最轻量的成功路径。适合把某一类消息统一交给内部对象、代理对象或兼容层处理。",
+    list: ["例子：Cat 收到 bark，转给 Dog。", "优点：少一次 NSInvocation 构造。", "限制：不能改参数，也不适合多路分发。"]
+  },
+  signature: {
+    title: "methodSignatureForSelector:",
+    source: "developer override",
+    copy: "完整转发必须先拿到方法签名。没有签名，系统不知道参数和返回值怎么打包，也就无法构造 NSInvocation。",
+    list: ["返回签名：进入 forwardInvocation:。", "返回 nil：进入 doesNotRecognizeSelector:。", "默认/super 路径可能继续做 class_getInstanceMethod 探测。"]
+  },
+  signatureProbe: {
+    title: "class_getInstanceMethod",
+    source: "objc-runtime-new.mm",
+    copy: "当 methodSignatureForSelector: 落到 NSObject/super 的默认签名探测路径时，class_getInstanceMethod 会以 LOOKUP_RESOLVER 再次进入 lookUpImpOrForward。这就是第 14 节说的第二次动态方法决议。",
+    list: ["不是原消息重发：这是为了拿 NSMethodSignature。", "关键调用：lookUpImpOrForward(nil, sel, cls, LOOKUP_RESOLVER)。", "调试判断：栈上会多出 methodSignatureForSelector: / class_getInstanceMethod。"]
+  },
+  invocation: {
+    title: "forwardInvocation:",
+    source: "developer override",
+    copy: "这里拿到的是一次被对象化的调用。你可以改 target、改参数、延迟执行、记录日志，或者按业务规则分发给多个对象。",
+    list: ["常用 API：invokeWithTarget:。", "适合：代理、多路分发、消息记录。", "注意：methodSignatureForSelector: 必须先返回有效签名。"]
+  },
+  fulldone: {
+    title: "invokeWithTarget:",
+    source: "NSInvocation",
+    copy: "当 forwardInvocation: 里成功 invoke 到其他对象时，这次消息就算被完整转发接住了。调用者不会知道中间换过路径。",
+    list: ["成功条件：有签名，有处理者。", "返回值：由 invocation 按原始方法签名带回。", "成本：比快速转发更高。"]
+  },
+  dnr: {
+    title: "doesNotRecognizeSelector:",
+    source: "failure exit",
+    copy: "快速转发和完整转发都没人接手时，系统走到兜底失败出口。正常 App 里通常表现为 NSInvalidArgumentException。",
+    list: ["objc4：默认实现是 _objc_fatal。", "CoreFoundation：替换成抛异常的版本。", "开发者用法：抽象父类可主动调用它表示必须覆写。"]
+  }
+};
+
+function selectStep(step) {
+  const data = details[step];
+  if (!data) return;
+  document.querySelectorAll(".node, .result").forEach((node) => {
+    node.classList.toggle("active", node.dataset.step === step);
+  });
+  document.getElementById("detail-title").textContent = data.title;
+  document.getElementById("detail-source").textContent = data.source;
+  document.getElementById("detail-copy").textContent = data.copy;
+  document.getElementById("detail-list").innerHTML = data.list
+    .map((item) => {
+      const [label, rest] = item.split("：");
+      return `<div class="mini"><b>${label}：</b>${rest || ""}</div>`;
+    })
+    .join("");
+}
+
+document.querySelectorAll("[data-step]").forEach((node) => {
+  node.addEventListener("click", () => selectStep(node.dataset.step));
+});
+</script>
+</body>
+</html>

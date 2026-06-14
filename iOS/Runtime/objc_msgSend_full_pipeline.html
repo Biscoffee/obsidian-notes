@@ -260,7 +260,7 @@
       <span class="phase-label phase-slow">慢速路径 Slow Path</span>
       <div class="node-card" id="n-lookup" onclick="selectNode('lookup')">
         <div class="node-title">lookUpImpOrForward(obj, sel, cls, ...)</div>
-        <div class="node-sub">objc-runtime-new.mm:6274 · C++ 层核心查找</div>
+        <div class="node-sub">objc-runtime-new.mm:7672 · C++ 层核心查找</div>
       </div>
     </div>
 
@@ -273,7 +273,7 @@
       </div>
     </div>
 
-    <div class="conn"><div class="conn-line" style="min-height:8px"></div><span class="conn-arrow">↓</span><span class="conn-label">未找到 → 爬 superclass_t 链</span><div class="conn-line" style="min-height:4px"></div><span class="conn-arrow">↓</span></div>
+    <div class="conn"><div class="conn-line" style="min-height:8px"></div><span class="conn-arrow">↓</span><span class="conn-label">未找到 → 爬 superclass 链</span><div class="conn-line" style="min-height:4px"></div><span class="conn-arrow">↓</span></div>
 
     <!-- branch: found vs not found -->
     <div class="branch-row">
@@ -440,7 +440,7 @@
     <div class="section-wrap">
       <span class="phase-label phase-crash">崩溃 Crash</span>
       <div class="crash-card" id="n-crash" onclick="selectNode('crash')">
-        <div class="crash-title">doesNotRecognizeSelector: → _objc_fatal()</div>
+        <div class="crash-title">doesNotRecognizeSelector: → 异常 / _objc_fatal</div>
         <div class="crash-sub">unrecognized selector sent to instance 0x... ‖ EXC_BAD_INSTRUCTION / SIGABRT</div>
       </div>
     </div>
@@ -470,7 +470,7 @@ const DATA = {
     fn:'ENTRY _objc_msgSend',
     file:'objc-msg-arm64.s',
     desc:'ARM64 汇编快速入口。首先用 cbz 检查 self == nil（直接 ret），否则从 isa 提取 class 指针（含 ISA_MASK 掩码），立即跳入 CacheLookup NORMAL。整个 fast path 均在汇编层完成，不经过 C++ 函数调用约定。',
-    code:`<span class="cc">// objc-msg-arm64.s (objc4-818+)</span>
+    code:`<span class="cc">// objc-msg-arm64.s (objc4-951.7)</span>
 <span class="cf">ENTRY _objc_msgSend</span>
     cmp   x0, #0             <span class="cc">// nil check (tagged pointer-aware)</span>
     b.le  LNilOrTagged        <span class="cc">// ≤0 → nil/tagged pointer</span>
@@ -484,7 +484,7 @@ const DATA = {
     fn:'CacheLookup NORMAL',
     file:'objc-msg-arm64.s · cache_t.h',
     desc:'在汇编中直接访问 cache_t 的 _bucketsAndMaybeMask 字段。通过 sel & mask 计算初始 bucket 下标，线性探测直到找到匹配 sel 或遇到空槽。全程无锁，无 C++ 函数调用开销。',
-    code:`<span class="cc">// cache_t 内存布局 (objc4-818, arm64)</span>
+    code:`<span class="cc">// cache_t 内存布局 (objc4-951.7, arm64)</span>
 <span class="ck">struct</span> <span class="cf">cache_t</span> {
 <span class="ck">private</span>:
     <span class="ck">explicit_atomic</span>&lt;uintptr_t&gt; _bucketsAndMaybeMask; <span class="cc">// [63:0]</span>
@@ -529,51 +529,46 @@ const DATA = {
     phase:'快速路径 → 慢速路径', phaseClass:'phase-slow',
     fn:'__objc_msgSend_uncached',
     file:'objc-msg-arm64.s',
-    desc:'Cache miss 时汇编调用 __objc_msgSend_uncached，它保存所有参数寄存器（stash），然后调用 C++ 层的 _lookUpImpTrap，再进入 lookUpImpOrForward。',
+    desc:'Cache miss 时汇编调用 __objc_msgSend_uncached，它保存所有参数寄存器（stash），通过 MethodTableLookup 直接调用 C++ 层的 _lookUpImpOrForward。',
     code:`<span class="cc">// Cache miss 跌落</span>
 <span class="cf">STATIC_ENTRY</span> __objc_msgSend_uncached
 <span class="cf">UNWIND</span> __objc_msgSend_uncached, FrameWithNoSaves
-    <span class="cc">// 调用 C++ 查找</span>
-    bl    <span class="cf">_lookUpImpOrForwardTrap</span>
+    <span class="cc">// MethodTableLookup 调用 C++ 查找</span>
+    bl    <span class="cf">_lookUpImpOrForward</span>
 <span class="cf">END_ENTRY</span> __objc_msgSend_uncached`,
     tags:['保存 x0-x8 参数寄存器','过渡到 C++ 层','MethodTableLookup 宏','lookUpImpOrForward']
   },
   lookup: {
     phase:'慢速路径', phaseClass:'phase-slow',
     fn:'lookUpImpOrForward()',
-    file:'objc-runtime-new.mm:6274',
-    desc:'C++ 核心查找函数。持有 runtimeLock（读锁）后，先检查当前类 cache（可能被其他线程填充），然后遍历 class 自身的 method_list，未找到则沿 superclass 链向上，直到根类（NSObject）或 nil。',
+    file:'objc-runtime-new.mm:7672',
+    desc:'C++ 核心查找函数。持有 runtimeLock 后，遍历当前类方法表；未找到则沿 superclass 链向上，每层先查父类 cache，再查父类方法表，直到根类或 nil。',
     code:`<span class="ck">IMP</span> <span class="cf">lookUpImpOrForward</span>(<span class="ck">id</span> inst, <span class="cf">SEL</span> sel, <span class="cf">Class</span> cls,
                             <span class="ck">int</span> behavior) {
-    <span class="cf">runtimeLock</span>.assertUnlocked();
-    <span class="cc">// 1. 再次检查 cache（其他线程可能已填充）</span>
-    <span class="ck">IMP</span> imp = <span class="cf">cache_getImp</span>(cls, sel);
-    <span class="ck">if</span> (imp) <span class="ck">goto</span> done;
-    <span class="cc">// 2. 遍历 class + superclass 方法表</span>
-    {
-        <span class="cf">runtimeLock</span>.lock();
-        <span class="ck">for</span> (<span class="cf">Class</span> curClass = cls; curClass != nil;
-             curClass = curClass-&gt;getSuperclass()) {
-            imp = <span class="cf">search_method_list_inline</span>(
-                      curClass-&gt;data()-&gt;<span class="cf">methods</span>(), sel);
-            <span class="ck">if</span> (imp) { <span class="cf">log_and_fill_cache</span>(...); <span class="ck">goto</span> done_nolock; }
-        }
+    <span class="cf">runtimeLock</span>.lock();
+    <span class="ck">for</span> (;;) {
+        meth = <span class="cf">getMethodNoSuper_nolock</span>(curClass, sel);
+        <span class="ck">if</span> (meth) { imp = meth-&gt;imp(false); <span class="ck">goto</span> done; }
+        curClass = curClass-&gt;<span class="cf">getSuperclass</span>();
+        <span class="ck">if</span> (!curClass) { imp = forward_imp; <span class="ck">break</span>; }
+        imp = <span class="cf">cache_getImp</span>(curClass, sel);
+        <span class="ck">if</span> (imp) <span class="ck">goto</span> done;
     }
-    <span class="cc">// 3. 所有超类均未找到 → 动态解析</span>
-    imp = <span class="cf">resolveMethod_locked</span>(inst, sel, cls, behavior);
-done_nolock:
-    <span class="cf">runtimeLock</span>.unlock();
+    <span class="ck">if</span> (behavior &amp; LOOKUP_RESOLVER)
+        <span class="ck">return</span> <span class="cf">resolveMethod_locked</span>(...);
 done:
+    <span class="cf">log_and_fill_cache</span>(cls, imp, sel, inst, curClass);
+    <span class="cf">runtimeLock</span>.unlock();
     <span class="ck">return</span> imp;
 }`,
-    tags:['runtimeLock 读写锁','二次 cache 检查','沿 superclass_t 链','log_and_fill_cache 写回']
+    tags:['runtimeLock','当前类方法表','沿 superclass 链','log_and_fill_cache 写回']
   },
   methodlist: {
     phase:'慢速路径', phaseClass:'phase-slow',
     fn:'search_method_list_inline()',
     file:'objc-runtime-new.mm',
     desc:'遍历 class_rw_t → methods（method_array_t）。若列表已排序（isFixedUp），用 SEL 地址二分查找（O(log n)）；否则线性扫描。Category 方法在 attachLists 时被前插，优先级最高。',
-    code:`<span class="cc">// class_rw_t 核心字段 (objc4-818)</span>
+    code:`<span class="cc">// class_rw_t 核心字段（示意）</span>
 <span class="ck">struct</span> <span class="cf">class_rw_t</span> {
     <span class="ck">uint32_t</span> flags;
     <span class="ck">uint16_t</span> witness;       <span class="cc">// 版本见证</span>
@@ -590,7 +585,7 @@ done:
     phase:'慢速路径', phaseClass:'phase-slow',
     fn:'log_and_fill_cache()',
     file:'objc-runtime-new.mm',
-    desc:'找到 IMP 后，调用 log_and_fill_cache 将 (SEL, IMP) 写入 cache_t，下次同一消息直接命中快速路径。同时通过 cache_t::insert 检查 3/4 负载因子，超过则扩容（×2）。',
+    desc:'找到 IMP 后，调用 log_and_fill_cache 将 (SEL, IMP) 写入 cache_t，下次同一消息直接命中快速路径。cache_t::insert 会按当前容量和装填策略决定是否扩容。',
     code:`<span class="ck">static</span> <span class="ck">void</span>
 <span class="cf">log_and_fill_cache</span>(<span class="cf">Class</span> cls, <span class="cf">IMP</span> imp, <span class="cf">SEL</span> sel, ...) {
     <span class="cs">#if SUPPORT_MESSAGE_LOGGING</span>
@@ -598,23 +593,23 @@ done:
         <span class="cf">log_message</span>(cls, sel, ...);
     <span class="cs">#endif</span>
     cls-&gt;<span class="cf">cache</span>.<span class="cf">insert</span>(sel, imp, receiver);
-    <span class="cc">// insert: 若 occupied > capacity*3/4 → expand×2</span>
+    <span class="cc">// insert: 按装填策略决定原表落位或 reallocate</span>
 }`,
-    tags:['3/4 负载因子扩容','insert 持有 cacheUpdateLock','写回 fast path','SUPPORT_MESSAGE_LOGGING']
+    tags:['装填策略','insert 持有 cacheUpdateLock','写回 fast path','SUPPORT_MESSAGE_LOGGING']
   },
   notfound: {
     phase:'慢速 → 动态解析', phaseClass:'phase-dyn',
     fn:'_objc_msgForward_impcache',
     file:'objc-runtime-new.mm · objc-msg-arm64.s',
-    desc:'整条 superclass 链遍历完毕仍未找到，lookUpImpOrForward 返回 _objc_msgForward_impcache（一个特殊 IMP stub），触发动态解析流程。',
+    desc:'整条 superclass 链遍历完毕仍未找到时，lookUpImpOrForward 先尝试动态解析；解析也失败后，返回 _objc_msgForward_impcache 这个特殊 IMP stub，进入消息转发。',
     code:`<span class="cc">// 找不到时返回的特殊 IMP</span>
 <span class="ck">if</span> (slowpath(!imp)) {
     imp = <span class="cf">forward_imp</span>; <span class="cc">// = _objc_msgForward_impcache</span>
-    <span class="cc">// 同时也会调用 resolveMethod_locked</span>
+    <span class="cc">// resolver 已经给过机会，仍未找到</span>
 }
 <span class="cc">// _objc_msgForward_impcache 是汇编 stub</span>
-<span class="cc">// 它恢复参数寄存器后跳入 __objc_forward_handler</span>`,
-    tags:['forward_imp 特殊 stub','不写入 cache','resolveMethod_locked 先于 forward','汇编层恢复寄存器']
+    <span class="cc">// 它跳入 _objc_msgForward，再尾调用 __objc_forward_handler</span>`,
+    tags:['forward_imp 特殊 stub','resolver 失败后进入','resolveMethod_locked 先于 forward','libobjc 交棒给 handler']
   },
   dynres: {
     phase:'动态解析', phaseClass:'phase-dyn',
@@ -630,8 +625,8 @@ done:
     } <span class="ck">else</span> {
         <span class="cf">resolveInstanceMethod</span>(inst, sel, cls);
     }
-    <span class="cc">// 解析后重新查找（最多一次）</span>
-    <span class="ck">return</span> <span class="cf">lookUpImpOrNilTryCache</span>(inst, sel, cls);
+    <span class="cc">// 解析后重新查找；behavior 已清掉 LOOKUP_RESOLVER</span>
+    <span class="ck">return</span> <span class="cf">lookUpImpOrForwardTryCache</span>(inst, sel, cls, behavior);
 }`,
     tags:['resolver 标志防死循环','class_addMethod 动态添加','元类走 resolveClassMethod','重新执行 lookup']
   },
@@ -657,13 +652,13 @@ done:
     phase:'动态解析 → 转发', phaseClass:'phase-fwd',
     fn:'resolver → NO → forwarding',
     file:'objc-runtime-new.mm',
-    desc:'动态解析未能添加方法（返回 NO 或 lookup 仍未找到），运行时将 _objc_msgForward_impcache 写入 cache（防止再次触发解析），然后正式进入消息转发三部曲。',
+    desc:'动态解析未能添加方法（返回 NO 或 lookup 仍未找到）后，运行时返回 _objc_msgForward_impcache；后续若允许缓存，会把这个占位 IMP 作为 miss 结果回填，避免同一路径反复进入 resolver。',
     code:`<span class="cc">// 解析失败后：写 forward IMP 进 cache</span>
 imp = <span class="cf">forward_imp</span>;
 <span class="cc">// 这样下次相同消息直接跳 forward</span>
 <span class="cc">// 不再触发 resolveMethod</span>
 cls-&gt;cache.<span class="cf">insert</span>(sel, forward_imp, inst);`,
-    tags:['forward_imp 写入 cache','防止重复 resolve','进入 forwardingTarget','三部曲开始']
+    tags:['forward_imp 可被回填','防止重复 resolve','进入 forwardingTarget','三部曲开始']
   },
   fwd1: {
     phase:'转发 ①', phaseClass:'phase-fwd',
@@ -790,13 +785,13 @@ cls-&gt;cache.<span class="cf">insert</span>(sel, forward_imp, inst);`,
     [self <span class="cf">doesNotRecognizeSelector</span>:
         [anInvocation selector]];
 }`,
-    tags:['NSObject 默认即崩溃','必须 override 才能拦截','不要调 super！','进入 _objc_fatal']
+    tags:['NSObject 默认即失败','必须 override 才能拦截','不要调 super！','进入 doesNotRecognize']
   },
   crash: {
     phase:'崩溃', phaseClass:'phase-crash',
-    fn:'doesNotRecognizeSelector: → _objc_fatal()',
+    fn:'doesNotRecognizeSelector: → 异常 / _objc_fatal',
     file:'NSObject.mm · objc-exception.mm',
-    desc:'NSObject 的 doesNotRecognizeSelector: 调用 _objc_fatal()，打印经典错误信息并通过 abort() / kill(SIGABRT) 终止进程。Xcode 中表现为 EXC_BAD_INSTRUCTION 或 SIGABRT，控制台输出 "unrecognized selector sent to instance"。',
+    desc:'objc4 里的 NSObject 默认实现会调用 _objc_fatal；带 CoreFoundation 的 App 里通常命中 CF 替换版，抛 NSInvalidArgumentException，控制台输出 "unrecognized selector sent to instance"。',
     code:`<span class="cc">// NSObject.mm</span>
 - (<span class="ck">void</span>)<span class="cf">doesNotRecognizeSelector</span>:(<span class="cf">SEL</span>)sel {
     <span class="cf">_objc_fatal</span>(
