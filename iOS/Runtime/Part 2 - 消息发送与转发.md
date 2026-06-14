@@ -2095,25 +2095,27 @@ static void resolveInstanceMethod(id inst, SEL sel, Class cls)
     SEL resolve_sel = @selector(resolveInstanceMethod:);
     if (!lookUpImpOrNilTryCache(cls, resolve_sel, cls->ISA(/*authenticated*/true))) {
         // Resolver not implemented.
-        return;					//类没实现 +resolveInstanceMethod: 就直接跳过
+        return;					//类没实现 +resolveInstanceMethod: 说明他不会在这里面动态添加方法，就直接跳过
     }
     
     
     BOOL (*msg)(Class, SEL, SEL) = (typeof(msg))objc_msgSend;
-    bool resolved = msg(cls, resolve_sel, sel);	//给元类发 +resolveInstanceMethod:（一次机会）
+    bool resolved = msg(cls, resolve_sel, sel);	
+    //这两句拐弯抹角的发 +resolveInstanceMethod:，Runtime 源码里不能直接写有些Objective-C 语法，所以它用 `objc_msgSend` 手动发消息。
 
     // Cache the result (good or bad) so the resolver doesn't fire next time.
     // +resolveInstanceMethod adds to self a.k.a. cls
-    IMP imp = lookUpImpOrNilTryCache(inst, sel, cls);	//解析后看是否真的加上了 sel
+    IMP imp = lookUpImpOrNilTryCache(inst, sel, cls);	//解析后通过imp看是否真的加上了 sel
 
+//   主要用于开发者的调试
     if (resolved  &&  PrintResolving) {
-        if (imp) {
+        if (imp) {  //正常的动态解析,日志告诉开发者"方法 `xxx` 被动态解析到 IMP 地址 `yyy`"。这是开发者期望看到的状态。
             _objc_inform("RESOLVE: method %c[%s %s] "
                          "dynamically resolved to %p",
                          cls->isMetaClass() ? '+' : '-',
                          cls->nameForLogging(), sel_getName(sel), imp);
         }
-        else {
+        else {   // 开发者返回了 YES 但实际没加方法——前面提到的典型 bug。日志会明确指出"`+[Class resolveInstanceMethod:xxx]` returned YES, but no new implementation was found"。
             // Method resolver didn't add anything?
             _objc_inform("RESOLVE: +[%s resolveInstanceMethod:%s] returned YES"
                          ", but no new implementation of %c[%s %s] was found",
