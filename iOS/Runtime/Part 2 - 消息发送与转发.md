@@ -2073,7 +2073,7 @@ Process exited with status = 0 (0x00000000)
 ```
 
 
-## 10. 没找到：动态方法解析（`resolveMethod_locked` :7480 → `resolveInstanceMethod` :7435）
+## 10. 没找到：动态方法解析 && 决议（`resolveMethod_locked` :7480 → `resolveInstanceMethod` :7435）
 
  **当一个 SEL 在类的继承链上找不到任何实现时，运行时会给类一次机会，让它在运行时动态注册这个方法；如果类放弃了这个机会，消息才会真正进入转发流程。​**
 
@@ -2142,7 +2142,7 @@ resolveMethod_locked(id inst, SEL sel, Class cls, int behavior)
     else {   // 元类
         // try [nonMetaClass resolveClassMethod:sel]
         // and [cls resolveInstanceMethod:sel]
-        resolveClassMethod(inst, sel, cls);  //先调用 resolveClassMethod，实际会拿到非元类并发送 [Foo resolveClassMethod:sel]
+        resolveClassMethod(inst, sel, cls);2  //先调用 resolveClassMethod，实际会拿到非元类并发送 [Foo resolveClassMethod:sel]
         if (!lookUpImpOrNilTryCache(inst, sel, cls)) {
             resolveInstanceMethod(inst, sel, cls);
             // 如果第一次解析没成功（用 lookUpImpOrNilTryCache 检查缓存里有没有），还要再调用 resolveInstanceMethod ——因为类方法在元类视角下就是实例方法，开发者也可能直接覆写元类的 +resolveInstanceMethod: 来处理。
@@ -2151,10 +2151,14 @@ resolveMethod_locked(id inst, SEL sel, Class cls, int behavior)
 
     // chances are that calling the resolver have populated the cache
     // so attempt using it
+    //如果方法解析中将其实现指向其他方法，则继续走方法查找流程
     return lookUpImpOrForwardTryCache(inst, sel, cls, behavior);
     //解析后再查一遍；这次 behavior 已去掉 RESOLVER 位 → 仍无则返回 forward_imp 转发
 }
 ```
+
+
+
 
 | 参数     | 含义             | 用途                               |
 | ------ | -------------- | -------------------------------- |
@@ -2174,6 +2178,7 @@ resolveMethod_locked(id inst, SEL sel, Class cls, int behavior)
 ```
 
 这也是 Objective-C 元类模型里最容易混的一点：**消息接收者**和**方法所在的容器**不是同一件事。`+resolveClassMethod:` 这条消息发给的是 `Foo`，但查找这条类方法时仍然会沿着 `Foo -> meta(Foo)` 这条 isa 链去元类的方法表里找实现。
+
 
 第二，类方法解析失败后，运行时还会再尝试一次 `resolveInstanceMethod`。乍看很怪：类方法都没解析出来，为什么又去问实例方法解析器？原因还是元类的双重身份。站在 `Foo` 的角度看，`meta(Foo)` 是类方法的容器；但站在 `meta(Foo)` 自己的角度看，它也是一个类，里面的方法就是它自己的「实例方法」。所以「给 `Foo` 加类方法」和「给 `meta(Foo)` 加实例方法」描述的是同一份实现，只是视角不同。
 
@@ -2201,8 +2206,6 @@ return lookUpImpOrForwardTryCache(inst, sel, cls, behavior);
 
 
 
-
-
 **LLDB 实测**（Cat 未实现解析，命中 `+[NSObject resolveInstanceMethod:]` 默认返回 NO，随后**再次**回到 `lookUpImpOrForward` 仍找不到 → `forward_imp`）：
 
 ```text
@@ -2223,6 +2226,10 @@ return lookUpImpOrForwardTryCache(inst, sel, cls, behavior);
   frame #2: _objc_msgSend_uncached + 68
   frame #3: main at main_fwd.m:14
 ```
+
+![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260614120448486.png)
+
+
 
 ---
 
