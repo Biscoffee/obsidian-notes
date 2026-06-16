@@ -1430,10 +1430,10 @@ sub   x0, x16, x17             // imp = isa - imp_offs
 
 #### 5.1 `insert`：哈希落位（:873）
 
-逐字全文：
+关键流程版（保留源码主体结构，中文注释为本文补充）：
 
 ```objc
-// objc-cache.mm:873  —— cache_t::insert（全文）
+// objc-cache.mm:873  —— cache_t::insert（关键流程版）
 void cache_t::insert(SEL sel, IMP imp, id receiver)
 {
     lockdebug::assert_locked(&runtimeLock.get());
@@ -1475,7 +1475,7 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
         //装填率没到上限：原表直接用
     }
     
-#if CACHE_ALLOW_FULL_UTILIZATION，对于容量极小的表（`FULL_UTILIZATION_CACHE_SIZE` 通常是 8），扩容的内存分配开销相对于节省的内存来说不划算，所以允许填得更满一些，推迟扩容时机。
+#if CACHE_ALLOW_FULL_UTILIZATION
     else if (capacity <= FULL_UTILIZATION_CACHE_SIZE && newOccupied + CACHE_END_MARKER <= capacity) {
         // Allow 100% cache utilization for small buckets. Use it as-is.
     }
@@ -1492,9 +1492,7 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
 
 //reallocate 内部只分配一张新的空 bucket_t[] 数组，旧表整张丢弃、不迁移——源码注释写得很直白：// Cache's old contents are not propagated.（详见 §5.2）。旧条目不会被重新哈希搬过去，而是靠之后的 miss 慢速查找重新 insert 懒填回来。扩容后 buckets() 返回的 base 地址变了，旧条目里 IMP 的 ptrauth 签名都含旧 base，本就随旧表一起被丢弃；重填时由 insert 用新 base 重新签名落位。这正是 modifierForSEL 把 base 纳入 discriminator 的好处：换表即让旧签名自然失效，无需任何额外的失效机制。
 
----
-
-//哈希定位起点
+// --- 哈希定位起点 ---
 
     bucket_t *b = buckets();
     mask_t m = capacity - 1;
@@ -1521,6 +1519,8 @@ void cache_t::insert(SEL sel, IMP imp, id receiver)
 #endif // !DEBUG_TASK_THREADS
 }
 ```
+
+这里有一个容易看漏的小分支：`CACHE_ALLOW_FULL_UTILIZATION` 打开时，容量很小的 cache（`FULL_UTILIZATION_CACHE_SIZE = 8`）允许临时用到 100%。这不是说所有 cache 都可以填满，而是小表为了避免过早扩容，允许在 `newOccupied + CACHE_END_MARKER <= capacity` 的边界内继续使用原表。对应到汇编读路径，`CacheLookup` 不能只依赖“撞到空槽”结束查找；它还必须在 wrap-around 时判断“是否绕回最初探测的 bucket”，否则满表场景会扫不完。`objc-msg-arm64.s:424` 那句 `A full cache can happen with CACHE_ALLOW_FULL_UTILIZATION.` 说的就是这个边界。
 
 
 ![[cache_t-insert-交互式流程演示.html]]
@@ -2523,7 +2523,7 @@ flowchart TD
 源码证据很直接。`class_getInstanceMethod` 里明写着 “Search method lists, try method resolver”，下一行就是带 `LOOKUP_RESOLVER` 的 `lookUpImpOrForward`：
 
 ```cpp
-// objc-runtime-new.mm:7405
+// objc-runtime-new.mm:7409
 /***********************************************************************
 * class_getInstanceMethod.  Return the instance method for the
 * specified class and selector.
