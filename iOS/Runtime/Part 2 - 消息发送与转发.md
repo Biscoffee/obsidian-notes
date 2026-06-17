@@ -82,9 +82,21 @@ objc_msgSend(id _Nullable self, SEL _Nonnull op, ...)
 
 这个宏定义在 `<objc/objc-api.h>` 里，现代工具链中默认是 `0`，也就是默认采用上面那条「`void`/`void`」的新声明；只有当你显式 `#define OBJC_OLD_DISPATCH_PROTOTYPES 1` 时，才会回到旧的可变参数声明（保留它主要是为了兼容历史上大量直接调用 `objc_msgSend` 的代码，以及 Swift 互操作场景）。
 
-默认（新）声明成 `void objc_msgSend(void)`，是因为他要透传任意 OC 方法的参数，硬给一个固定原型反而会让编译器按错误的调用约定生成代码。想要理解这件事，是先搞清楚 cast 是什么。
+
+`objc_msgSend` 是用汇编写的，它的快路径只做三件事：取出对象的类、在方法缓存里查 selector、然后**直接 `jmp` 跳到方法实现（IMP）​**。这也就意味着他要透传任意 OC 方法的参数，硬给一个固定原型反而会让编译器按错误的调用约定生成代码。唯一能确定的只有前两个参数永远是 `id self` 和 `SEL _cmd`。C 语言没法表达这种「通配」原型，于是头文件只能挑一个**占位**写法，旧声明选择用「`id` 返回 + 可变参数 `...`」来近似这个通配；新声明干脆放弃近似，写成 `void (void)`。这就是两种声明的由来。
+
+```
+???  objc_msgSend(id self, SEL _cmd, ???);   // 返回类型和后续参数都是「未知」
+```
+
+![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260617171443802.png)
+
+
+旧声明用可变参数「假装」能直接用却暗藏 ABI 陷阱，新声明用 `void/void` 把这种不可直接调用的事实摆明；而 cast 将是绕过这一矛盾的正解——它让你在调用现场补回那个「编译期缺失的真实签名」。
+
 
 **Cast 是什么**
+
 ```c
 double x = 3.14;
 int y = (int)x;   // 把 double 转成 int，y = 3
