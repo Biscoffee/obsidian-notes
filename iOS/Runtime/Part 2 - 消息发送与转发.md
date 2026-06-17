@@ -47,12 +47,10 @@
 
 > 源码定位说明：`objc_msgSend` 汇编在 951.7 里已移到 `runtime/Messengers.subproj/objc-msg-arm64.s`（不在 `runtime/` 根下）。本文以本地 objc4-951.7 源码行号为准；源码块多数是围绕本文主线裁剪后的关键片段，标注“全文”的函数/宏才表示对应范围逐字完整。中文注释为本文新增、英文原注释保留。LLDB 在 **系统 libobjc**（`/usr/lib/libobjc.A.dylib`）上下符号断点，`settings set target.disable-aslr true` 关 ASLR，环境 macOS 26 / arm64。
 >
-> 新旧对照说明：文中带 🔄 的「旧→新对照」框，旧版取自本地 **objc4-818.2**（可调试版）真实源码、新版为 **951.7**，均标注精确 `file:line`。注意：缓存早期那次著名的大改造（`_buckets`/`_mask`/`_occupied` 三个分离字段 → 融合成 `_bucketsAndMaybeMask`）发生在 **781 之前**，已用本地 **objc4-756.2**（融合前末代，真实源码 `objc-runtime-new.h:82`）补做对照（见 3.1 末）；其余对照的旧版多取自 818.2，818.2 与 951.7 同属「融合字段后」时代，是这之后的增量演进。所有旧版代码均据真实源码、绝不凭记忆杜撰。
+> 新旧对照说明：文中的「旧→新对照」框，旧版取自本地 **objc4-818.2**（可调试版）真实源码、新版为 **951.7**，均标注精确 `file:line`。注意：缓存早期那次著名的大改造（`_buckets`/`_mask`/`_occupied` 三个分离字段 → 融合成 `_bucketsAndMaybeMask`）发生在 **781 之前**，已用本地 **objc4-756.2**（融合前末代，真实源码 `objc-runtime-new.h:82`）补做对照（见 3.1 末）；其余对照的旧版多取自 818.2，818.2 与 951.7 同属「融合字段后」时代，是这之后的增量演进。所有旧版代码均据真实源码。
 
 ---
 ## objc_msgSend 简介
-
-`objc_msgSend` 是 OC **所有方法调用的统一入口**——编译器把每一句 `[obj msg]` 都翻译成对它的调用，再由它在运行期找到方法实现（IMP）并跳过去。在正式拆「快速路径 → 慢速查找 → 转发」这三条路之前，这一节先把两件「会影响后文怎么读」的事讲清楚：一是它的**声明**为什么长得那么怪（`void objc_msgSend(void)`）、为什么调用前必须 cast；二是它其实**不是一个函数，而是一整个家族**。
 
 ### 0.1 声明：`void objc_msgSend(void)`
 
@@ -82,17 +80,17 @@ objc_msgSend(id _Nullable self, SEL _Nonnull op, ...)
 #endif
 ```
 
-默认（新）声明成 `void objc_msgSend(void)`，是苹果刻意为之——它要透传任意 OC 方法的参数，硬给一个固定原型反而会让编译器按错误的调用约定生成代码。理解这件事的钥匙，是先搞清楚 cast 是什么。
+这个宏定义在 `<objc/objc-api.h>` 里，现代工具链中默认是 `0`，也就是默认采用上面那条「`void`/`void`」的新声明；只有当你显式 `#define OBJC_OLD_DISPATCH_PROTOTYPES 1` 时，才会回到旧的可变参数声明（保留它主要是为了兼容历史上大量直接调用 `objc_msgSend` 的代码，以及 Swift 互操作场景）。
+
+默认（新）声明成 `void objc_msgSend(void)`，是因为他要透传任意 OC 方法的参数，硬给一个固定原型反而会让编译器按错误的调用约定生成代码。想要理解这件事，是先搞清楚 cast 是什么。
 
 **Cast 是什么**
-Cast 写法是在值前加括号里的目标类型：
-
 ```c
 double x = 3.14;
 int y = (int)x;   // 把 double 转成 int，y = 3
 ```
 
-这种「值 cast」会真正转换数值。但**函数指针的 cast 不一样**——它不改变任何值，只改变编译器对这个指针的理解方式：
+这种「值 cast」会真正转换数值。但另一种**函数指针的 cast 不一样**——它不改变任何值，只改变编译器对这个指针的理解方式：
 
 ```c
 void foo(void);   // 声明：无参数，无返回值
@@ -135,7 +133,7 @@ double add(int a, int b);
 objc_msgSend(obj, sel, 1.0, 2.0);   //「编译不通过」——逼你显式 cast
 ```
 
-cast 之后，该这么写：
+cast 之后：
 ```objc
 // 假设 obj 有方法： - (double)addA:(CGFloat)a b:(CGFloat)b;
 // CGFloat 在 64 位即 double，和上面一样走浮点寄存器（d0/d1）
