@@ -301,6 +301,8 @@ objc_msgSendSuper2(&superInfo, @selector(class));
 
 这和 0.1 讲的是同一套东西：`id receiver` 是指针（整型），按 arm64 调用约定放 `x0`；`SEL` 也是指针，放 `x1`；后续参数按类型依次填入 `x2…` 或 `d0…`。`objc_msgSend` 之所以能从 `x0` 拿到 receiver、从 `x1` 拿到 selector，正是因为编译器在调用点按这套约定摆好了寄存器。下面这条 LLDB 实测的调用栈，直接显示了 `main` 里的一句 OC 调用最终是怎么落到 `objc_msgSend` → uncached → `lookUpImpOrForward` 的：
 
+这里还有一个前提：`SEL` 不是每次都拿字符串临时比较。Runtime 会对 selector 做唯一化（selector uniquing），同一个进程里相同方法名对应同一个 `SEL` 标识，所以 cache 和方法列表查找里可以直接比较 `SEL` 指针值。后面汇编里的 `cmp p9, p1`，本质上比较的就是 bucket 里的 `SEL` 和当前 `_cmd` 是否是同一个选择子。
+
 ```text
 (lldb) thread backtrace
 * frame #0: libobjc.A.dylib`lookUpImpOrForward
@@ -2286,7 +2288,9 @@ return lookUpImpOrForwardTryCache(inst, sel, cls, behavior);
 
 这段汇编本身很短，但信息量很集中。`__objc_msgForward_impcache` 不是一套新的转发逻辑，它只是一个可以被放进方法缓存里的占位入口；真正执行时立刻 `b __objc_msgForward`，把控制权交给外部可见的 `_objc_msgForward`。所以从慢速查找的视角看，`forward_imp` 的意义不是“这里有实现”，而是“这个 selector 已经确认找不到，下一步该进入转发”。
 
-进入 `__objc_msgForward` 之后，libobjc 先从全局变量 `__objc_forward_handler` 里取出当前进程安装的转发处理器，再用 `TailCallSignedFunctionPointer` 做一次带指针签名校验的尾调用。也就是说，libobjc 自己并不在这里展开 `forwardingTargetForSelector:`、`methodSignatureForSelector:`、`forwardInvocation:` 这些 Objective-C 层面的三部曲；它只负责把消息交给转发处理器。带 CoreFoundation 的进程里，这个 handler 会被替换成 CF 的转发实现，也就是后面第 12、13 节看到的 `___forwarding___`。
+进入 `__objc_msgForward` 之后，libobjc 先从全局变量 `__objc_forward_handler` 里取出当前进程安装的转发处理器，再用 `TailCallSignedFunctionPointer` 做一次带指针签名校验的尾调用。也就是说，libobjc 自己并不在这里展开 `forwardingTargetForSelector:`、`methodSignatureForSelector:`、`forwardInvocation:` 这些 Objective-C 层面的三部曲；它只负责把消息交给转发处理器。带 CoreFoundation 的进程里，这个 handler 会被替换成 CF 的转发实现，也就是后面第 10、11 节看到的 `___forwarding___`。
+
+补充一个边界：libobjc 里也存在设置 forward handler 的入口（常见资料会提到 `objc_setForwardHandler`），它可以改掉 `__objc_forward_handler` 指向的处理函数。但普通 App 开发基本不会直接碰这里；带 Foundation/CoreFoundation 的进程会安装自己的转发实现，所以本文只沿着 `_objc_msgForward -> __objc_forward_handler -> ___forwarding___` 这条主线往下看。
 
 因此可以把这一小段理解成两层跳板：`_objc_msgForward_impcache` 是给 cache 用的跳板，`_objc_msgForward` 是给运行时转发系统用的跳板。前者解决“缓存里该放什么”，后者解决“libobjc 如何把找不到的方法交给上层转发机制”。
 
@@ -2659,4 +2663,3 @@ lookUpImpOrForward(miss)
 一条消息：`objc_msgSend`（汇编 cache 命中→尾跳）→ miss 则 `lookUpImpOrForward`（当前类方法表→沿 superclass 链，命中即 `insert` 回填缓存）→ 仍无则动态解析一次 → 再无则 `_objc_msgForward` 交给 CF `___forwarding___` 跑转发三部曲；进入完整转发后，默认签名探测路径还可能通过 `class_getInstanceMethod` 再次回到 `lookUpImpOrForward`，给动态方法解析第二次机会；全不接则 `doesNotRecognizeSelector:` 抛异常崩溃。
 
 与 Part 1 的呼应：第 2.1 节取 isa→class 用的 **ISA_MASK `0x7ffffffffffff8`**、bucket 里 IMP 的 ptrauth，都接着 Part 1 的 isa 走位与指针签名往下讲。到这里，对象、类、元类、方法缓存、慢速查找、动态解析和消息转发已经串成了一条线。
-

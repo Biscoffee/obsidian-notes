@@ -1019,6 +1019,58 @@ methodLists ──→ [ *list1, *list2, *list3, ... ]
 Category 里声明 `@property` 没问题，它会产生属性元数据，也会让编译器知道有 getter/setter 这两个访问入口。但 Category 不能自动合成 ivar，也不会自动生成 getter/setter 实现。所以准确的说法是：**Category 可以添加属性声明/属性元数据，但不能添加真正的 ivar 存储；如果要让这个属性可用，必须自己实现 getter/setter，通常再配合关联对象存值**。
 这也是为什么用 Associated Objects 能绕过去——它根本没有修改对象的内存布局，而是在对象外部维护了一张独立的哈希表来存值，只是"看起来"像属性而已。
 
+# 例题：NSObject(Sark) 为什么不崩？
+
+看一道常见题：
+
+```objc
+@interface NSObject (Sark)
++ (void)foo;
+@end
+
+@implementation NSObject (Sark)
+- (void)foo {
+    NSLog(@"IMP: %@, self: %@", NSStringFromSelector(_cmd), self);
+}
+@end
+
+int main(int argc, char * argv[]) {
+    [NSObject foo];
+    [[NSObject new] foo];
+    return 0;
+}
+```
+
+表面上看，`@interface` 里声明的是类方法 `+foo`，但 `@implementation` 里实现的是实例方法 `-foo`。直觉可能会以为 `[NSObject foo]` 找不到类方法会崩，但实际并不会。
+
+原因还是回到前面那套模型：
+
+1. 这个 Category 会被编译进 Mach-O 的 `__objc_catlist`。
+2. Runtime 在 `_read_images` 里读到它，再经由 `addUnattachedCategoryForClass`、`remethodizeClass`、`attachCategories` 附加到目标类。
+3. `-foo` 是实例方法，所以会被附加到 `NSObject` 这个类对象的方法列表里。
+4. 类方法查找时，receiver 是类对象 `NSObject`，而类对象本身也是一个对象；如果在元类上找不到 `+foo`，沿继承链和根元类结构继续查找时，最终可能命中根类对象方法列表里的 `-foo`。
+
+这道题真正考的不是语法声明，而是两件事：
+
+- Category 的方法是按编译产物里的方法列表附加的，声明和实现不一致时，真正进入 Runtime 的是实现里的 `-foo`；
+- 类对象、元类、根类之间的查找路径，会让 `[NSObject foo]` 和 `[[NSObject new] foo]` 都有机会命中同一个 `-foo` 实现。
+
+同时，这道题也能把 Category 加载流程再串一次：
+
+```text
+_objc_init
+  -> map_images
+  -> _read_images
+  -> 读取 __objc_catlist
+  -> addUnattachedCategoryForClass
+  -> remethodizeClass
+  -> attachCategories
+  -> attachLists 前置插入
+  -> 必要时 flushCaches
+```
+
+这里的 `attachLists` 前置插入和 `flushCaches`，正好呼应前文的两个结论：Category 方法会排到更靠前的位置；如果类的 cache 里已经有旧结果，方法列表变化后必须处理缓存一致性。
+
 # 小结：Category 把 Part 1 和 Part 2 连起来
 
 回到整个 Runtime 系列的视角，Category 正好站在 Part 1 和 Part 2 的交界处。
