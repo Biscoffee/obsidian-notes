@@ -350,7 +350,7 @@ Dog
 
 ## 第一部分 · 快速路径（缓存命中）
 
-kuai su lu j拿 `sel` 在「类的方法缓存」这张哈希表里查 `imp`，查到就跳。所以在逐条读汇编之前，先把汇编要读写的两张表摊开——**§1 先讲静态结构**（`cache_t` 怎么把 buckets 指针和 mask 塞进一个字、`bucket_t` 怎么存 `{SEL, IMP}`、哈希怎么算下标、撞了怎么探测），**§2 再拿着这张地图逐条读汇编**。这样到了 §2，每条指令都能对应回 §1 的某个字段或常量，全是「印证」而不是「悬念」。
+简单来说，快速路径就是拿 `sel` 在「类的方法缓存」这张哈希表里查 `imp`，查到就跳。所以在逐条读汇编之前，先把汇编要读写的两张表摊开——**§1 先讲静态结构**（`cache_t` 怎么把 buckets 指针和 mask 塞进一个字、`bucket_t` 怎么存 `{SEL, IMP}`、哈希怎么算下标、撞了怎么探测），**§2 再拿着这张地图逐条读汇编**。这样到了 §2，每条指令都能对应回 §1 的某个字段或常量，全是「印证」而不是「悬念」。
 
 ### 1. cache_t 数据结构（`objc-runtime-new.h:337`）
 
@@ -569,9 +569,9 @@ struct bucket_t *cache_t::buckets() const {                                     
 - **`maskZeroBits = 4` 不是被浪费的 4 个位**：它垫在 mask（高 16 位）和指针区之间，专为 `objc_msgSend` 服务。msgSend 取 mask 时用的是 `LSR #44`（= `maskShift - maskZeroBits = 48 - 4`）而非 `LSR #48`，少右移 4 位，出来的值直接就是 `mask << 4`——而散列下标计算恰好需要 `mask << 4`（每个 bucket 16 = `1 << 4` 字节，即 §2.2 的 `BUCKET_SIZE`）。一条移位指令顺手把「取 mask」和「乘 bucket 大小」两件事一起做完，这正是把指针与 mask 打包进同一个字换来的性能红利。
 
 
-**🔄 旧→新对照（objc4-756.2 → 951.7）：cache_t 三字段 → 融合字段**
+**旧→新对照（objc4-756.2 → 951.7）：cache_t 三字段 → 融合字段**
 
-这是缓存结构最有名的一次重构。旧版三个独立字段，新版融合成一个 `_bucketsAndMaybeMask`。
+这是缓存结构最有名的一次重构。旧版三个独立字段在新版融合成一个 `_bucketsAndMaybeMask`。
 
 旧（756.2，`objc-runtime-new.h:82`）：
 ```objc
@@ -722,7 +722,7 @@ arm64 上 IMP 在前、SEL 在后，所以 2.2 的 `ldp p17, p9`（先 imp 后 s
 >
 > **4. 与汇编呼应** —— 正因为修饰子是 `base^sel^cls` 三项，§2.3 命中时才需要 `^sel`、`^cls` **两条 `eor`** 重算修饰子解签；756.2 时代修饰子只有 `&_imp^sel` 两项，故只需一条（见下文旧→新对照）。
 
-**🔄 旧→新对照（756.2 → 951.7）：IMP 签名修饰子从 2 项到 3 项**
+**旧→新对照（756.2 → 951.7）：IMP 签名修饰子从 2 项到 3 项**
 
 旧（756.2，`objc-runtime-new.h:51`）—— 裸字段，修饰子只有 `&_imp ^ sel` 两项：
 ```objc
@@ -746,7 +746,7 @@ arm64 上 IMP 在前、SEL 在后，所以 2.2 的 `ldp p17, p9`（先 imp 后 s
 ```
 把 `cls` 加进 ptrauth 修饰子，让同一个 IMP 在不同类的缓存里签名不同，跨类伪造更难——这也是第 2.3 节命中时汇编要算**两条** `eor`（`^sel`、`^cls`）的原因；756.2 时只需异或 `sel` 一项。字段也从裸 `uintptr_t` 升级为 `explicit_atomic` 配合无锁读。下面这条（818.2 → 951.7）则是同一行更晚的一次细化：
 
-**🔄 旧→新对照（818.2 → 951.7）：IMP 签名加入「类型判别子」**
+**旧→新对照（818.2 → 951.7）：IMP 签名加入「类型判别子」**
 
 旧（818.2，`objc-runtime-new.h:234`）—— 判别子恒为 `0`：
 ```objc
@@ -1570,7 +1570,7 @@ void cache_t::reallocate(mask_t oldCapacity, mask_t newCapacity, bool freeOld)
 
 
 
-**🔄 旧→新对照（756.2 → 951.7）：缓存写入从「三个自由函数」到「一个 insert 方法」**
+**旧→新对照（756.2 → 951.7）：缓存写入从「三个自由函数」到「一个 insert 方法」**
 
 旧（756.2）把写入拆成多块：`cache_fill_nolock()`（自由函数，`objc-cache.mm:556`）判 3/4 装填 → 满了调 `cache_t::expand()`（`:539`，`oldCapacity*2` 翻倍）→ 再 `cache_t::find()`（`:519`，开放寻址找空槽 / 同 sel）落位。
 ```objc
@@ -2656,8 +2656,7 @@ lookUpImpOrForward(miss)
 
 ### 14. 收尾
 
-一条消息的命运：`objc_msgSend`（汇编 cache 命中→尾跳）→ miss 则 `lookUpImpOrForward`（当前类方法表→沿 superclass 链，命中即 `insert` 回填缓存）→ 仍无则动态解析一次 → 再无则 `_objc_msgForward` 交给 CF `___forwarding___` 跑转发三部曲；进入完整转发后，默认签名探测路径还可能通过 `class_getInstanceMethod` 再次回到 `lookUpImpOrForward`，给动态方法解析第二次机会；全不接则 `doesNotRecognizeSelector:` 抛异常崩溃。
+一条消息：`objc_msgSend`（汇编 cache 命中→尾跳）→ miss 则 `lookUpImpOrForward`（当前类方法表→沿 superclass 链，命中即 `insert` 回填缓存）→ 仍无则动态解析一次 → 再无则 `_objc_msgForward` 交给 CF `___forwarding___` 跑转发三部曲；进入完整转发后，默认签名探测路径还可能通过 `class_getInstanceMethod` 再次回到 `lookUpImpOrForward`，给动态方法解析第二次机会；全不接则 `doesNotRecognizeSelector:` 抛异常崩溃。
 
 与 Part 1 的呼应：第 2.1 节取 isa→class 用的 **ISA_MASK `0x7ffffffffffff8`**、bucket 里 IMP 的 ptrauth，都接着 Part 1 的 isa 走位与指针签名往下讲。到这里，对象、类、元类、方法缓存、慢速查找、动态解析和消息转发已经串成了一条线。
 
-后面可以把主线从“Runtime 如何找到一个 IMP”切到“Runtime 能帮我们做什么”：Category、关联对象、Method Swizzling、KVO 这些更适合放进 Runtime 应用篇。底层机制在这两篇里打完地基，应用篇再用这些机制解释日常开发里真正会碰到的问题。
