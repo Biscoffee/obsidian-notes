@@ -1444,7 +1444,7 @@ objc_msgSendSuper2(struct objc_super *super, SEL op, ...);
 
 # 入院题三：Class 与内存地址
 
-前面两道老题分别把 `self/super`、`isKindOfClass/isMemberOfClass` 串起来了。还有一道更“野”的题，专门用来把“对象就是一段内存”这件事推到地址级别。
+前面已经用 `[self class] / [super class]` 和 `isKindOfClass / isMemberOfClass` 两道老题，把 `self/super`、类与元类的查找关系串起来了。还有一道更“野”的题，专门用来把“对象就是一段内存”这件事推到地址级别。
 
 先看代码：
 
