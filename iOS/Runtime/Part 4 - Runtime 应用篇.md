@@ -402,10 +402,9 @@ forwardingTargetForSelector:
 }
 ```
 
-## 组合对象能力透传
+## 模拟多继承
 
 Objective-C 在语言层面只支持单继承。这里讨论的不是让一个类真的继承多个父类，而是借助**消息转发（Message Forwarding）​**做组合对象能力透传：当宿主对象自己没有某个方法实现时，把这条消息在运行时"透传"给它持有的其他对象去执行。把多个能力提供方组合在一起、再通过转发让宿主对象统一对外暴露它们的方法，对外看像一个聚合了多方能力的对象，实际执行者仍是各自的真实对象。
-
 
 ### forwardingTargetForSelector 做"快速转发"​
 
@@ -447,8 +446,6 @@ Son *son = [[Son alloc] init];
 ```
 
 如果你希望这个透传行为更像“这个对象真的支持该能力”，就要同步覆写 `respondsToSelector:`、`methodSignatureForSelector:`、`conformsToProtocol:`，甚至类方法侧的 `instancesRespondToSelector:`。这也是为什么消息转发不应该被当作继承的常规替代品：它适合做组合和代理，不适合伪造类型体系。
-
-如果要记录参数、修改参数、延迟执行、转发给多个对象，才进入完整转发：
 
 ### forwardInvocation 做"完整转发"​
 
@@ -538,7 +535,7 @@ Son *son = [[Son alloc] init];
 
 `forwardInvocation:` 的强大之处在于 `NSInvocation` 把"消息调用的全部细节"都封装好了，你可以在调用前后插入逻辑、改写参数、读取返回值。这也是 AOP（面向切面编程）和很多 Hook 框架的实现基础——业务方法被替换成 `_objc_msgForward`，最终都汇聚到 `forwardInvocation:` 里统一加工。
 
-#### **​能力透传的边界：别忘了重写类型判断**
+#### **​能力透传的边界：重写类型判断**
 
 透传出来的能力是"借来"的，`NSObject` 的内省方法只认真正的继承体系，**不认转发链**。也就是说，即便 `son` 能执行 `cook`，`[son respondsToSelector:@selector(cook)]` 默认仍可能返回 `NO`，`isKindOfClass:`、`conformsToProtocol:` 同理。如果你的透传对象要对外表现成"真的拥有"这些能力（比如要骗过某些依赖内省的框架），就必须把转发算法补进这些方法里：
 
@@ -579,7 +576,8 @@ Son *son = [[Son alloc] init];
 }
 ```
 
-所以，"组合对象能力透传"不是让 Objective-C 真的拥有多继承，而是用 Runtime 把组合对象的能力在消息层面暴露出去。
+
+
 
 # 6. NSProxy + forwardInvocation: 实现 AOP
 
