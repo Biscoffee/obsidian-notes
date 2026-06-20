@@ -157,6 +157,9 @@ IMP method_setImplementation(Method m, IMP imp);
 
 # 3. Method Swizzling
 
+![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260620212834907.png)
+
+
 Method Swizzling 是 Runtime 应用里最常见、也最容易出问题的一类。
 
 它的本质不是“交换两个方法名”，而是交换两个 selector 对应的 IMP：
@@ -382,10 +385,12 @@ object pointer
 
 # 5. 消息转发应用
 
-消息转发可以用于代理转发、容错、多播等场景。它承接 Part 2 的转发链：
+消息转发可以用于代理转发、容错、多播等场景。它承接 Part 2 的转发链。严格说，完整兜底管线前面还有一次**动态方法解析**：如果 `resolveInstanceMethod:` / `resolveClassMethod:` 成功补上方法，就不会进入转发；只有动态解析也放弃，才会继续走下面三步。
 
 ```text
-forwardingTargetForSelector:
+objc_msgSend 查缓存/方法列表
+  -> resolveInstanceMethod: / resolveClassMethod:
+  -> forwardingTargetForSelector:
   -> methodSignatureForSelector:
   -> forwardInvocation:
   -> doesNotRecognizeSelector:
@@ -402,7 +407,9 @@ forwardingTargetForSelector:
 }
 ```
 
-## 模拟多继承
+这里还有一个反面边界：`forwardingTargetForSelector:` 可以返回另一个对象，也可以返回 `nil` / `[super forwardingTargetForSelector:]` 让 Runtime 继续走完整转发，但**不要返回 `self`**。返回 `self` 等于把同一条消息重新发给自己，下一轮又进 `forwardingTargetForSelector:`，最终无限递归。
+
+## 组合对象能力透传（老文所谓“模拟多继承”）
 
 Objective-C 在语言层面只支持单继承。这里讨论的不是让一个类真的继承多个父类，而是借助**消息转发（Message Forwarding）​**做组合对象能力透传：当宿主对象自己没有某个方法实现时，把这条消息在运行时"透传"给它持有的其他对象去执行。把多个能力提供方组合在一起、再通过转发让宿主对象统一对外暴露它们的方法，对外看像一个聚合了多方能力的对象，实际执行者仍是各自的真实对象。
 
@@ -487,6 +494,7 @@ Son *son = [[Son alloc] init];
 - (void)forwardInvocation:(NSInvocation *)invocation {
     SEL selector = invocation.selector;
     BOOL handled = NO;
+    BOOL rewroteObjectArgument = NO;
 
     // 示例：读取并改写参数。注意 self 和 _cmd 占 index 0、1，
     // 业务参数从 index 2 开始。
@@ -495,9 +503,16 @@ Son *son = [[Son alloc] init];
         [invocation getArgument:&food atIndex:2];
 
         if (food.length == 0) {
-            NSString *defaultFood = @"rice";
+            NSString *defaultFood = [NSString stringWithFormat:@"%@", @"rice"];
             [invocation setArgument:&defaultFood atIndex:2];
+            rewroteObjectArgument = YES;
         }
+    }
+
+    // NSInvocation 默认不持有参数。只要改写了对象参数，或者 invocation
+    // 可能被缓存、延迟、跨线程执行，就应该让它持有当前参数。
+    if (rewroteObjectArgument) {
+        [invocation retainArguments];
     }
 
     for (id target in self.forwardTargets) {
@@ -535,9 +550,11 @@ Son *son = [[Son alloc] init];
 
 `forwardInvocation:` 的强大之处在于 `NSInvocation` 把"消息调用的全部细节"都封装好了，你可以在调用前后插入逻辑、改写参数、读取返回值。这也是 AOP（面向切面编程）和很多 Hook 框架的实现基础——业务方法被替换成 `_objc_msgForward`，最终都汇聚到 `forwardInvocation:` 里统一加工。
 
-#### **​能力透传的边界：重写类型判断**
+上面 `retainArguments` 是一个很重要的边界：`NSInvocation` 默认只保存参数字节，不 retain 对象参数，也不 copy C 字符串。这个 demo 是同步调用，即使不加也大概率能跑；但只要你改写的是动态生成的对象，或者把 invocation 存起来稍后执行，就可能留下悬垂指针。实际写框架时，只要有“改写对象参数 / 延迟调用 / 跨线程调用”的可能，就应该显式调用 `retainArguments`。
 
-透传出来的能力是"借来"的，`NSObject` 的内省方法只认真正的继承体系，**不认转发链**。也就是说，即便 `son` 能执行 `cook`，`[son respondsToSelector:@selector(cook)]` 默认仍可能返回 `NO`，`isKindOfClass:`、`conformsToProtocol:` 同理。如果你的透传对象要对外表现成"真的拥有"这些能力（比如要骗过某些依赖内省的框架），就必须把转发算法补进这些方法里：
+#### **​能力透传的边界：内省要诚实**
+
+透传出来的能力是"借来"的，`NSObject` 的内省方法只认真正的继承体系，**不认转发链**。也就是说，即便 `son` 能执行 `cook`，`[son respondsToSelector:@selector(cook)]` 默认仍可能返回 `NO`。如果你的透传对象要对外表现成"能响应这些消息"，可以把转发算法补进部分内省方法里：
 
 ```objc
 - (BOOL)respondsToSelector:(SEL)aSelector {
@@ -575,6 +592,21 @@ Son *son = [[Son alloc] init];
            [Mother instancesRespondToSelector:aSelector];
 }
 ```
+
+但这里要有“诚实度”边界：
+
+| 查询方法 | 是否建议伪造 | 原因 |
+| --- | --- | --- |
+| `respondsToSelector:` | 可以谨慎伪造 | 它回答的是“能不能响应这条消息”，把转发目标算进去是自洽的。 |
+| `conformsToProtocol:` | 可以谨慎伪造 | 只对运行时查询生效，适合表达“我可以透传这个协议能力”。 |
+| `instancesRespondToSelector:` | 只适合静态透传 | 类方法不知道每个实例运行时持有哪些 target，只能回答固定能力。 |
+| `isKindOfClass:` | 不建议伪造 | `son` 的 `isa` 仍然指向 `Son`，它真的不是 `Mother`。强行返回 YES 会误导依赖真实类型和内存布局的代码。 |
+
+这类覆写只影响运行时内省，比如 `[obj respondsToSelector:]`。它不会改变编译期类型检查：形参写成 `id<SomeProtocol>`、变量静态类型、编译器警告，都不会因为你覆写了 `conformsToProtocol:` 而改变。
+
+另外，伪造 `respondsToSelector:` 也不是零成本。一旦调用方相信它返回 YES 并真的发消息，这条消息在宿主类里仍然找不到实现，每次都要走转发路径。快速转发只是多一跳，完整转发则要创建 `NSInvocation`、匹配签名、包装参数，开销明显高于直接调用。高频热路径上，优先用显式组合、协议方法或快速转发，不要把所有能力都压到 `forwardInvocation:`。
+
+所以，"组合对象能力透传"不是让 Objective-C 真的拥有多继承，而是用 Runtime 把组合对象的能力在消息层面暴露出去。
 
 
 
