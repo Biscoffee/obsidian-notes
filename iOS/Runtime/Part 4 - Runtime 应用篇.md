@@ -159,10 +159,9 @@ IMP method_setImplementation(Method m, IMP imp);
 
 ![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260620212834907.png)
 
-
 Method Swizzling 是 Runtime 应用里最常见、也最容易出问题的一类。
 
-它的本质不是“交换两个方法名”，而是交换两个 selector 对应的 IMP：
+它利用 Objective-C Runtime 修改方法的 IMP（实现指针），常用于 Hook 系统方法、埋点、AOP、异常保护等场景。核心原理可以直接接回 Part 2：`objc_msgSend(receiver, selector)` 最终要在类的方法表 / 缓存里找到 `SEL -> IMP`，Swizzling 做的就是在运行时改掉这张映射表。
 
 ```text
 Before:
@@ -183,26 +182,54 @@ BOOL class_addMethod(Class cls, SEL name, IMP imp, const char *types);
 void class_replaceMethod(Class cls, SEL name, IMP imp, const char *types);
 ```
 
-最基础的交换写法：
+## 方式一：直接交换，适合理解原理
+
+最裸的写法就是直接拿两个 `Method` 做 `method_exchangeImplementations`：
 
 ```objc
-Method original = class_getInstanceMethod([UIViewController class],
-                                          @selector(viewDidAppear:));
-Method swizzled = class_getInstanceMethod([UIViewController class],
-                                          @selector(tw_viewDidAppear:));
+- (void)tw_swizzle {
+    Class cls = [self class];
+    Method original = class_getInstanceMethod(cls, @selector(originalFunction));
+    Method swizzled = class_getInstanceMethod(cls, @selector(swizzledFunction));
 
-method_exchangeImplementations(original, swizzled);
+    method_exchangeImplementations(original, swizzled);
+}
+
+- (void)originalFunction {
+    NSLog(@"originalFunction");
+}
+
+- (void)swizzledFunction {
+    NSLog(@"swizzledFunction");
+}
 ```
 
-常见落点有三类：
+交换后：
 
-- **埋点统计**：例如统一 hook `viewDidAppear:` 做页面曝光。
-- **AOP**：在原方法前后插入日志、鉴权、缓存刷新等横切逻辑。
-- **异常保护**：例如数组越界、字典插入 nil 的兜底处理。
+```text
+originalFunction selector -> swizzledFunction 的 IMP
+swizzledFunction selector -> originalFunction 的 IMP
+```
 
-最后一类尤其要克制。系统类经常是 class cluster，表面上写的是 `NSArray` / `NSMutableArray`，真实运行类可能是 `__NSArrayI`、`__NSArrayM`、`__NSDictionaryI`、`__NSDictionaryM` 等。hook 错类，代码根本不生效；hook 太多私有真实类，又会增加系统版本升级风险。
+`method_exchangeImplementations` 底层可以粗略理解成两次 `method_setImplementation`：
 
-Category 里通常会这样写：
+```objc
+IMP impA = method_getImplementation(originalMethod);
+IMP impB = method_getImplementation(swizzledMethod);
+
+method_setImplementation(originalMethod, impB);
+method_setImplementation(swizzledMethod, impA);
+```
+
+这种写法适合在自己定义的类里做演示，两个方法都明确存在于当前类，不涉及继承链和加载时机。它的缺陷也很明显：
+
+- 没有 `dispatch_once`，重复执行会把 IMP 换回去。
+- 没有处理“方法来自父类”的情况，可能污染父类方法表。
+- 执行时机随调用点而定，不适合做全局 hook。
+
+## 方式二：Category 里的工程模板
+
+Category 里通常用 `+load + dispatch_once + class_addMethod` 这一套：
 
 ```objc
 @implementation UIViewController (TWTracking)
@@ -244,6 +271,14 @@ Category 里通常会这样写：
 
 这里最容易绕住的一点是：交换后，`tw_viewDidAppear:` 这个 selector 指向了原来的 `viewDidAppear:` IMP，所以在 `tw_viewDidAppear:` 里调用 `[self tw_viewDidAppear:animated]`，并不是递归调用自己，而是在调用原实现。
 
+常见落点有三类：
+
+- **埋点统计**：例如统一 hook `viewDidAppear:` 做页面曝光。
+- **AOP**：在原方法前后插入日志、鉴权、缓存刷新等横切逻辑。
+- **异常保护**：例如数组越界、字典插入 nil 的兜底处理。
+
+最后一类尤其要克制。系统类经常是 class cluster，表面上写的是 `NSArray` / `NSMutableArray`，真实运行类可能是 `__NSArrayI`、`__NSArrayM`、`__NSDictionaryI`、`__NSDictionaryM` 等。hook 错类，代码根本不生效；hook 太多私有真实类，又会增加系统版本升级风险。
+
 ## 为什么经常写在 `+load`
 
 `+load` 在类和 Category 被加载进 Runtime 时直接调用，不依赖消息发送，因此很适合做“尽早生效”的方法替换。
@@ -253,7 +288,7 @@ Category 里通常会这样写：
 配套还有两个规矩：
 
 - 交换动作放进 `dispatch_once`。Swizzling 执行两次就可能把实现换回去，尤其是父类、子类或多个 Category 同时操作同一个 selector 时，很容易出现“看似执行了，实际失效”的结果。
-- `+load` 里不要主动调 `[super load]`。Runtime 会按加载流程调用各自的 `+load`，手动调 super 可能让父类交换逻辑重复执行。
+- `+load` 里不要主动调 `[super load]`。Runtime 会按加载流程调用各自的 `+load`，手动调 super 可能让父类交换逻辑重复执行，导致交换两次后等于没交换。
 
 但这也意味着它有明显代价：
 
@@ -297,7 +332,14 @@ Method m = class_getClassMethod([Person class], @selector(create));
 
 这就是上面模板里 `didAdd` 分支的意义。
 
-还有一个不直观的坑：Swizzling 会影响方法内部看到的 `_cmd`。交换后，如果原实现里依赖 `_cmd` 判断当前 selector，它可能看到的是 swizzled selector，而不是原始 selector。更稳妥的做法是保存原 IMP，用函数指针显式调用旧实现：
+假设 `UIViewController` 的父类实现了某个方法，而 `UIViewController` 自己没有：
+
+- 直接 `method_exchangeImplementations`：可能改到父类的方法表，影响所有兄弟子类。
+- 先 `class_addMethod`：先把原 selector 加到当前类自己的方法表里，再交换，只影响当前类及其子类。
+
+## 方式三：函数指针式替换
+
+互相发 swizzled selector 虽然是经典模板，但阅读时容易误以为递归，而且 `_cmd` 会变成 swizzled selector。基础库里可以改用“保存原 IMP + C 函数指针”的方式：
 
 ```objc
 static void (*original_setFrame)(id self, SEL _cmd, CGRect frame);
@@ -306,9 +348,73 @@ static void tw_setFrame(id self, SEL _cmd, CGRect frame) {
     NSLog(@"%@", NSStringFromCGRect(frame));
     original_setFrame(self, @selector(setFrame:), frame);
 }
+
+static BOOL tw_replaceMethodAndStore(Class cls,
+                                     SEL originalSEL,
+                                     IMP replacementIMP,
+                                     IMP *store) {
+    Method method = class_getInstanceMethod(cls, originalSEL);
+    if (!method) return NO;
+
+    const char *types = method_getTypeEncoding(method);
+    IMP oldIMP = class_replaceMethod(cls, originalSEL, replacementIMP, types);
+    if (!oldIMP) {
+        oldIMP = method_getImplementation(method);
+    }
+
+    if (oldIMP && store) {
+        *store = oldIMP;
+    }
+    return oldIMP != NULL;
+}
 ```
 
-这种写法比在 swizzled 方法里再发一条 `[self tw_setFrame:]` 更啰嗦，但它把“调用哪个 IMP、传什么 `_cmd`”写得非常明确，适合基础库或 SDK 场景。
+这种写法的优点是意图更明确：新实现是一个 C 函数，原实现存在 `original_setFrame` 里，调用原逻辑时不再依赖“交换后的 selector 指向原 IMP”这个隐含约定。
+
+代价是每个被替换的方法都需要独立保存原 IMP。如果多个库都替换同一个 selector，后替换者可能拿到的是前一个替换实现，调用链顺序仍然要小心维护。
+
+## 方式四：运行时探测真实目标类
+
+有些系统对象不是你看到的公开类，而是 class cluster 或私有子类。AFNetworking 曾经为了 hook `NSURLSessionTask` 的 `resume` / `suspend`，做过一套运行时探测：先创建一个真实 task，拿到它的实际 class，再沿继承链寻找每一层自己实现过 `resume` 的类并分别 swizzle。
+
+核心判断是这两个 IMP 比较：
+
+```objc
+IMP classResumeIMP = method_getImplementation(class_getInstanceMethod(currentClass, @selector(resume)));
+IMP superclassResumeIMP = method_getImplementation(class_getInstanceMethod(superClass, @selector(resume)));
+
+if (classResumeIMP != superclassResumeIMP &&
+    classResumeIMP != originalAFResumeIMP) {
+    // 当前类自己实现了 resume，且还没被替换过
+    swizzle(currentClass, @selector(resume), @selector(af_resume));
+}
+```
+
+第一条过滤掉“只是继承父类实现”的中间层；第二条避免重复 swizzle。这个例子说明：当目标类不稳定、真实类来自系统内部时，Swizzling 的复杂度会迅速上升。普通业务不应该轻易照搬这种级别的 hook。
+
+## 几种写法怎么选
+
+| 写法 | 适合场景 | 主要风险 |
+| --- | --- | --- |
+| 直接 `method_exchangeImplementations` | 自己类内演示原理 | 重复交换、继承污染、时机不稳 |
+| `+load + dispatch_once + class_addMethod` | Category 工程模板 | 启动期成本、多个库顺序冲突 |
+| 函数指针保存原 IMP | 基础库、SDK、关注 `_cmd` 的场景 | 需要维护原 IMP 调用链 |
+| 运行时探测真实类 | 系统 class cluster、目标类不稳定 | 复杂、脆弱、强依赖系统实现 |
+
+## 风险清单
+
+使用 Swizzling 时要记住几条边界：
+
+- **只做小而确定的替换**：不要把复杂业务逻辑塞进 `+load`。
+- **必须幂等**：用 `dispatch_once` 防止重复交换。
+- **不要在 `+load` 里调 `[super load]`**：Runtime 会自己调用父类和分类的 `+load`。
+- **尽量保留原实现**：除非非常确定可以完全替代，否则要调用原 IMP。
+- **避免命名冲突**：Category 方法必须加明确前缀，基础库更适合用函数指针方案。
+- **注意 `_cmd` 改变**：互相调用 swizzled selector 时，原实现看到的 `_cmd` 可能不是原 selector。
+- **不要依赖多个 swizzle 的顺序**：不同库、不同 Category 的加载顺序不应成为业务前提。
+- **谨慎修改系统类**：Swizzling 改的是全局类行为，会影响所有实例和子类。
+
+一句话收束：**Swizzling 的本质只有一件事：改变 selector 到 IMP 的映射。所有写法的差异，都是在解决“怎么更安全地改”这个问题。**
 
 # 4. 关联对象应用
 
