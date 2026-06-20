@@ -179,7 +179,7 @@ SEL B -> IMP A
 void method_exchangeImplementations(Method m1, Method m2);
 IMP method_setImplementation(Method m, IMP imp);
 BOOL class_addMethod(Class cls, SEL name, IMP imp, const char *types);
-void class_replaceMethod(Class cls, SEL name, IMP imp, const char *types);
+IMP class_replaceMethod(Class cls, SEL name, IMP imp, const char *types);
 ```
 
 ## 方式一：直接交换，适合理解原理
@@ -211,7 +211,7 @@ originalFunction selector -> swizzledFunction 的 IMP
 swizzledFunction selector -> originalFunction 的 IMP
 ```
 
-`method_exchangeImplementations` 底层可以粗略理解成两次 `method_setImplementation`：
+`method_exchangeImplementations` 概念上可以理解成两次 `method_setImplementation`：
 
 ```objc
 IMP impA = method_getImplementation(originalMethod);
@@ -244,6 +244,10 @@ Category 里通常用 `+load + dispatch_once + class_addMethod` 这一套：
 
         Method originalMethod = class_getInstanceMethod(cls, originalSEL);
         Method swizzledMethod = class_getInstanceMethod(cls, swizzledSEL);
+
+        if (!originalMethod || !swizzledMethod) {
+            return;
+        }
 
         BOOL didAdd = class_addMethod(cls,
                                       originalSEL,
@@ -310,7 +314,7 @@ Method m = class_getInstanceMethod([Person class], @selector(run));
 
 ```objc
 Class metaClass = object_getClass([Person class]);
-Method m = class_getClassMethod([Person class], @selector(create));
+Method m = class_getInstanceMethod(metaClass, @selector(create));
 ```
 
 或者理解成：
@@ -375,7 +379,7 @@ static BOOL tw_replaceMethodAndStore(Class cls,
 
 ## 方式四：运行时探测真实目标类
 
-有些系统对象不是你看到的公开类，而是 class cluster 或私有子类。AFNetworking 曾经为了 hook `NSURLSessionTask` 的 `resume` / `suspend`，做过一套运行时探测：先创建一个真实 task，拿到它的实际 class，再沿继承链寻找每一层自己实现过 `resume` 的类并分别 swizzle。
+有些系统对象不是你看到的公开类，而是 class cluster 或私有子类。AFNetworking 早期为了 hook `NSURLSessionTask` 的 `resume` / `suspend`，做过一套运行时探测：先创建一个真实 task，拿到它的实际 class，再沿继承链寻找每一层自己实现过 `resume` 的类并分别 swizzle。这个例子适合理解复杂 hook 的思路，但它依赖系统内部类名和继承结构；这些细节会随系统版本变化，不适合直接照搬到现代业务代码里。
 
 核心判断是这两个 IMP 比较：
 
