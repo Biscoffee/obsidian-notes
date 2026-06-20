@@ -402,9 +402,9 @@ forwardingTargetForSelector:
 }
 ```
 
-## 组合对象能力透传  | |  多继承
+## 组合对象能力透传
 
-Objective-C 在语言层面只支持单继承，所谓"Runtime 实现多继承"本质是借助**消息转发（Message Forwarding）​**：当宿主对象自己没有某个方法实现时，把这条消息在运行时"透传"给它持有的其他对象去执行。把多个能力提供方"组织"在一起、再通过转发让宿主对象统一对外暴露它们的方法，就是所谓的"组织能力透传"——对外看像一个聚合了多方能力的类，实际执行者仍是各自的真实对象。
+Objective-C 在语言层面只支持单继承。这里讨论的不是让一个类真的继承多个父类，而是借助**消息转发（Message Forwarding）​**做组合对象能力透传：当宿主对象自己没有某个方法实现时，把这条消息在运行时"透传"给它持有的其他对象去执行。把多个能力提供方组合在一起、再通过转发让宿主对象统一对外暴露它们的方法，对外看像一个聚合了多方能力的对象，实际执行者仍是各自的真实对象。
 
 
 ### forwardingTargetForSelector 做"快速转发"​
@@ -442,8 +442,8 @@ Son *son = [[Son alloc] init];
 从调用者视角看， `Son` 同时"拥有"了 `Father`（真继承）和 `Mother`（透传借来）的能力。它的局限也很明确：**只能把消息整体转给一个对象，无法对参数和返回值做任何加工，也无法同时分发给多个对象**。 这不是真正的多继承，只是消息被转手了。`NSObject` 的很多查询默认也不理解这种“能力透传”：
 
 ```objc
-[warrior respondsToSelector:@selector(negotiate)] // 默认可能仍是 NO
-[warrior isKindOfClass:[Diplomat class]]          // 仍是 NO
+[son respondsToSelector:@selector(cook)] // 默认可能仍是 NO
+[son isKindOfClass:[Mother class]]       // 仍是 NO
 ```
 
 如果你希望这个透传行为更像“这个对象真的支持该能力”，就要同步覆写 `respondsToSelector:`、`methodSignatureForSelector:`、`conformsToProtocol:`，甚至类方法侧的 `instancesRespondToSelector:`。这也是为什么消息转发不应该被当作继承的常规替代品：它适合做组合和代理，不适合伪造类型体系。
@@ -453,22 +453,133 @@ Son *son = [[Son alloc] init];
 ### forwardInvocation 做"完整转发"​
 
 ```objc
+@interface Son : Father
+@property (nonatomic, strong) Mother *mother;
+@property (nonatomic, strong) NSMutableArray<id> *forwardTargets;
+@end
 
+@implementation Son
+
+- (instancetype)init {
+    if (self = [super init]) {
+        _mother = [Mother new];
+        _forwardTargets = [NSMutableArray arrayWithObject:_mother];
+    }
+    return self;
+}
+
+// 第一步：给找不到的方法补一份方法签名。
+// 返回 nil，Runtime 就会进入 doesNotRecognizeSelector: 崩溃。
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)aSelector {
+    NSMethodSignature *signature = [super methodSignatureForSelector:aSelector];
+    if (signature) {
+        return signature;
+    }
+
+    for (id target in self.forwardTargets) {
+        signature = [target methodSignatureForSelector:aSelector];
+        if (signature) {
+            return signature;
+        }
+    }
+
+    return nil;
+}
+
+// 第二步：Runtime 把原始调用包装成 NSInvocation 交给这里。
+- (void)forwardInvocation:(NSInvocation *)invocation {
+    SEL selector = invocation.selector;
+    BOOL handled = NO;
+
+    // 示例：读取并改写参数。注意 self 和 _cmd 占 index 0、1，
+    // 业务参数从 index 2 开始。
+    if (selector == @selector(cookWithFood:)) {
+        __unsafe_unretained NSString *food = nil;
+        [invocation getArgument:&food atIndex:2];
+
+        if (food.length == 0) {
+            NSString *defaultFood = @"rice";
+            [invocation setArgument:&defaultFood atIndex:2];
+        }
+    }
+
+    for (id target in self.forwardTargets) {
+        if (![target respondsToSelector:selector]) {
+            continue;
+        }
+
+        [invocation invokeWithTarget:target];
+        handled = YES;
+
+        // 有返回值的方法只能选择一个目标的返回值；
+        // void 方法才适合继续分发给多个对象。
+        const char *returnType = invocation.methodSignature.methodReturnType;
+        if (strcmp(returnType, @encode(void)) != 0) {
+            if (returnType[0] == '@') {
+                __unsafe_unretained id returnValue = nil;
+                [invocation getReturnValue:&returnValue];
+                NSLog(@"forward %@ return: %@",
+                      NSStringFromSelector(selector),
+                      returnValue);
+            }
+            return;
+        }
+    }
+
+    if (handled) {
+        return;
+    }
+
+    [super forwardInvocation:invocation];
+}
+
+@end
 ```
 
 `forwardInvocation:` 的强大之处在于 `NSInvocation` 把"消息调用的全部细节"都封装好了，你可以在调用前后插入逻辑、改写参数、读取返回值。这也是 AOP（面向切面编程）和很多 Hook 框架的实现基础——业务方法被替换成 `_objc_msgForward`，最终都汇聚到 `forwardInvocation:` 里统一加工。
 
-#### **​"假继承"的边界：别忘了重写类型判断**
+#### **​能力透传的边界：别忘了重写类型判断**
 
-透传出来的多继承是"假"的，`NSObject` 的内省方法只认真正的继承体系，**不认转发链**。也就是说，即便 `son` 能执行 `cook`，`[son respondsToSelector:@selector(cook)]` 默认仍会返回 `NO`，`isKindOfClass:`、`conformsToProtocol:` 同理。如果你的透传对象要对外伪装成"真的拥有"这些能力（比如要骗过某些依赖内省的框架），就必须把转发算法补进这些方法里：
+透传出来的能力是"借来"的，`NSObject` 的内省方法只认真正的继承体系，**不认转发链**。也就是说，即便 `son` 能执行 `cook`，`[son respondsToSelector:@selector(cook)]` 默认仍可能返回 `NO`，`isKindOfClass:`、`conformsToProtocol:` 同理。如果你的透传对象要对外表现成"真的拥有"这些能力（比如要骗过某些依赖内省的框架），就必须把转发算法补进这些方法里：
 
 ```objc
+- (BOOL)respondsToSelector:(SEL)aSelector {
+    if ([super respondsToSelector:aSelector]) {
+        return YES;
+    }
+
+    for (id target in self.forwardTargets) {
+        if ([target respondsToSelector:aSelector]) {
+            return YES;
+        }
+    }
+
+    return NO;
+}
+
+- (BOOL)conformsToProtocol:(Protocol *)aProtocol {
+    if ([super conformsToProtocol:aProtocol]) {
+        return YES;
+    }
+
+    for (id target in self.forwardTargets) {
+        if ([target conformsToProtocol:aProtocol]) {
+            return YES;
+        }
+    }
+
+    return NO;
+}
+
+// 类方法只能回答静态能力。如果转发目标是每个实例动态配置的，
+// 这里就不能完整表达，只能列出固定会透传的能力提供方。
++ (BOOL)instancesRespondToSelector:(SEL)aSelector {
+    return [super instancesRespondToSelector:aSelector] ||
+           [Mother instancesRespondToSelector:aSelector];
+}
 ```
 
-
-
-
-
+所以，"组合对象能力透传"不是让 Objective-C 真的拥有多继承，而是用 Runtime 把组合对象的能力在消息层面暴露出去。
 
 # 6. NSProxy + forwardInvocation: 实现 AOP
 
