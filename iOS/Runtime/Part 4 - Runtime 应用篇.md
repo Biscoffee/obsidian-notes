@@ -275,14 +275,6 @@ Category 里通常用 `+load + dispatch_once + class_addMethod` 这一套：
 
 这里最容易绕住的一点是：交换后，`tw_viewDidAppear:` 这个 selector 指向了原来的 `viewDidAppear:` IMP，所以在 `tw_viewDidAppear:` 里调用 `[self tw_viewDidAppear:animated]`，并不是递归调用自己，而是在调用原实现。
 
-常见落点有三类：
-
-- **埋点统计**：例如统一 hook `viewDidAppear:` 做页面曝光。
-- **AOP**：在原方法前后插入日志、鉴权、缓存刷新等横切逻辑。
-- **异常保护**：例如数组越界、字典插入 nil 的兜底处理。
-
-最后一类尤其要克制。系统类经常是 class cluster，表面上写的是 `NSArray` / `NSMutableArray`，真实运行类可能是 `__NSArrayI`、`__NSArrayM`、`__NSDictionaryI`、`__NSDictionaryM` 等。hook 错类，代码根本不生效；hook 太多私有真实类，又会增加系统版本升级风险。
-
 ## 为什么经常写在 `+load`
 
 `+load` 在类和 Category 被加载进 Runtime 时直接调用，不依赖消息发送，因此很适合做“尽早生效”的方法替换。
@@ -323,9 +315,6 @@ Method m = class_getInstanceMethod(metaClass, @selector(create));
 实例方法：对象 -> 类 -> 方法列表
 类方法：类对象 -> 元类 -> 方法列表
 ```
-
-这正好呼应 Part 1 的元类结构。
-
 ## 继承链上的坑
 
 如果当前类没有实现某个方法，而是继承自父类，直接 exchange 可能会影响父类的方法实现关系。更稳妥的模板通常是：
