@@ -402,7 +402,10 @@ forwardingTargetForSelector:
 }
 ```
 
-## 组合对象能力透传
+## 组合对象能力透传  | |  多继承
+
+![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260620110801491.png)
+
 
 老文章里经常把这类用法叫“模拟多继承”，但这个说法容易误导。更准确地说，它是用 `forwardingTargetForSelector:` 做**组合对象的能力透传**：目标类持有另一个对象，当收到自己处理不了的消息时，把整条消息原封不动地交给能处理它的那个对象。
 
