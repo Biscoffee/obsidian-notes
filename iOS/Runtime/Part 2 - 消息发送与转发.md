@@ -1,4 +1,14 @@
-# 【iOS】Runtime - Part 2 && 消息发送：缓存、查找与转发
+---
+title: "【iOS】Runtime - Part 2 && 消息发送与转发"
+published: 2026-06-18
+description: "从 objc_msgSend 快速缓存命中，到 lookUpImpOrForward 慢速查找、动态方法解析，再到消息转发三部曲，结合 objc4-951.7 源码与 LLDB 实测打通一条完整消息链。"
+tags: ["iOS", "Objective-C", "Runtime", "objc_msgSend", "objc4"]
+category: "iOS"
+series: "iOS Runtime 系列"
+seriesSlug: "ios-runtime"
+seriesOrder: 2
+draft: false
+---
 
 > 基于 objc4-951.7。延续 Part 1（对象/类/元类/isa 走位），打通一条完整消息链：快速路径（cache 命中）→ 慢速查找（`lookUpImpOrForward`）→ 动态解析 → 消息转发三部曲 → 崩溃。
 
@@ -2154,7 +2164,7 @@ resolveMethod_locked(id inst, SEL sel, Class cls, int behavior)
     else {   // 元类
         // try [nonMetaClass resolveClassMethod:sel]
         // and [cls resolveInstanceMethod:sel]
-        resolveClassMethod(inst, sel, cls);2  //先调用 resolveClassMethod，实际会拿到非元类并发送 [Foo resolveClassMethod:sel]
+        resolveClassMethod(inst, sel, cls);  //先调用 resolveClassMethod，实际会拿到非元类并发送 [Foo resolveClassMethod:sel]
         if (!lookUpImpOrNilTryCache(inst, sel, cls)) {
             resolveInstanceMethod(inst, sel, cls);
             // 如果第一次解析没成功（用 lookUpImpOrNilTryCache 检查缓存里有没有），还要再调用 resolveInstanceMethod ——因为类方法在元类视角下就是实例方法，开发者也可能直接覆写元类的 +resolveInstanceMethod: 来处理。

@@ -10,6 +10,18 @@ seriesOrder: 1
 draft: false
 ---
 
+---
+title: "【iOS】Runtime - Part 1 && 对象与类的本质"
+published: 2026-05-31
+description: "从 objc_object、isa_t、Tagged Pointer、对象内存布局一路拆到类与对象的本质，梳理 Objective-C Runtime 中对象如何关联到类。"
+tags: ["iOS", "Objective-C", "Runtime", "isa", "objc4"]
+category: "iOS"
+series: "iOS Runtime 系列"
+seriesSlug: "ios-runtime"
+seriesOrder: 1
+draft: false
+---
+
 # Runtime 简介
 
 写 Objective-C 的人,每天都在敲这样的代码:
@@ -114,7 +126,7 @@ public:
     // hasAssociatedObjects / isWeaklyReferenced / retain / release /
     // rootRetain / rootRelease / sidetable_* …… 全是引用计数、关联对象、
     // 弱引用、SideTable 的内容，与「对象 = isa」主线无关，
-    // 留到 Part 8（关联对象）、Part 9（weak 与 SideTable）再展开。
+    // 留到 Part 3（关联对象）、候选 Part 5（weak 与 SideTable）再展开。
 };
 ```
 
@@ -158,12 +170,12 @@ public:
     // —— 以下省略一大簇 ——
     // hasAssociatedObjects / isWeaklyReferenced / retain / release /
     // rootRetain / rootRelease / rootDealloc / sidetable_* …… 引用计数、
-    // 关联对象、weak、dealloc，留到 Part 8 / Part 9 再展开。
+    // 关联对象、weak、dealloc，留到 Part 3 / 候选 Part 5 再展开。
 };
 ```
 
 ```cpp
-// ③ objc4-951.1（本文这版）
+// ③ objc4-951.7（本文这版）
 struct objc_object {
 private:
     char  isa_storage[sizeof(isa_t)];        // 退化成「一坨裸字节」
@@ -1007,7 +1019,7 @@ struct class_ro_t {
 };
 ```
 
-|                          | 老版（objc4-750 那代）                                                                                                                | 新版 951.1（本文这版）                                                                  |
+|                          | 老版（objc4-750 那代）                                                                                                                | 新版 951.7（本文这版）                                                                  |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | `class_rw_t` 怎么存方法/属性/协议 | **直接内嵌** `method_array_t methods; property_array_t properties; protocol_array_t protocols; const class_ro_t *ro;`——不管改不改，每个类都背着 | 抽到**懒分配**的 `class_rw_ext_t`，用 `ro_or_rw_ext` 一个联合指针「ro 或 rw_ext 二选一」            |
 | 取只读数据                    | `data()->ro`（`ro` 是字段，直接 `.`）                                                                                                   | `data()->ro()`（`ro()` 是方法，从联合指针里取；realize 后才有 `data()`，未 realize 走 `safe_ro()`） |
@@ -1214,7 +1226,7 @@ struct class_rw_ext_t {
 
 #### 还有两块「不弄脏内存」的优化（同属 WWDC2020）
 
-clean / dirty 这条思路在 951.1 里不止用在 `ro`，还有两处也值得一提：
+clean / dirty 这条思路在 951.7 里不止用在 `ro`，还有两处也值得一提：
 
 ##### 相对方法列表（Relative Method Lists）
 
@@ -1452,7 +1464,7 @@ objc_msgSendSuper2(struct objc_super *super, SEL op, ...);
 
 总而言之：`super` 只换了**方法查找的起点**，没换 **receiver**；而 `class` 又只认 `object_getClass(self)`，所以 `[self class]` 和 `[super class]` 殊途同归，都打印 `Son`。
 
-# 入院题三：Class 与内存地址
+# 入院题：Class 与内存地址
 
 前面已经用 `[self class] / [super class]` 和 `isKindOfClass / isMemberOfClass` 两道老题，把 `self/super`、类与元类的查找关系串起来了。还有一道更“野”的题，专门用来把“对象就是一段内存”这件事推到地址级别。
 
@@ -1528,7 +1540,7 @@ obj[0]  必须能解释成 isa / Class
 ivar    = (char *)obj + offset
 ```
 
-正常情况下，这块内存来自 `alloc`，在堆上，首 8 字节由 Runtime 写入合法 isa，后面按 `class_ro_t.ivars` 记录的 offset 摆放成员变量。第三题故意把栈变量地址伪装成对象地址，只是为了证明：Objective-C 对象访问在底层并不神秘，最终就是“从 receiver 指针出发，按固定偏移解释内存”。
+正常情况下，这块内存来自 `alloc`，在堆上，首 8 字节由 Runtime 写入合法 isa，后面按 `class_ro_t.ivars` 记录的 offset 摆放成员变量。这道题故意把栈变量地址伪装成对象地址，只是为了证明：Objective-C 对象访问在底层并不神秘，最终就是“从 receiver 指针出发，按固定偏移解释内存”。
 
 LLDB 里可以用 `x` 命令验证这件事：
 

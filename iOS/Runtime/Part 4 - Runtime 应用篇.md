@@ -282,8 +282,9 @@ Category 里通常用 `+load + dispatch_once + class_addMethod` 这一套：
 
 ### 为什么经常写在 `+load`
 
-`+load` 在类和 Category 被加载进 Runtime 时直接调用，不依赖消息发送，因此很适合做“尽早生效”的方法替换。
-这也是很多 Swizzling 模板选择 `+load` 而不是 `+initialize` 的原因：`+initialize` 是懒触发，某个类如果一直没收到消息，它就不会执行；而 Swizzling 改的是全局行为，通常希望类一加载就完成。
+`+load` 在类和 Category 被加载进 Runtime 时直接调用，不依赖消息发送，因此很适合做“尽早生效”的方法替换。 +initialize方法是以懒加载的方式被调用的，如果程序一直没有给某个类或它的子类发送消息，那么这个类的 +initialize方法是永远不会被调用的。所以Swizzling要是写在+initialize方法中，是有可能永远都不被执行。
+
+这也是很多 Swizzling 模板选择 `+load` 而不是 `+initialize` 的原因： Swizzling 改的是全局行为，通常希望类一加载就完成。
 
 配套还有两个规矩：
 
@@ -311,6 +312,11 @@ Category 里通常用 `+load + dispatch_once + class_addMethod` 这一套：
 - 如果返回 `NO`(添加失败),说明本类已经有自己的 `originalSelector` 实现,那就放心直接 `method_exchangeImplementations` 交换两者。
 
 这一步保证了 swizzling 的影响**严格锁定在当前类**,不会顺着继承链向上扩散。
+
+### 在dispatch_once中执行
+
+
+
 
 ## 调用原实现的两种方式
 
