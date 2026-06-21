@@ -763,22 +763,13 @@ Son *son = [[Son alloc] init];
 }
 ```
 
-但这里要有“诚实度”边界：
 
-| 查询方法 | 是否建议伪造 | 原因 |
-| --- | --- | --- |
-| `respondsToSelector:` | 可以谨慎伪造 | 它回答的是“能不能响应这条消息”，把转发目标算进去是自洽的。 |
-| `conformsToProtocol:` | 可以谨慎伪造 | 只对运行时查询生效，适合表达“我可以透传这个协议能力”。 |
-| `instancesRespondToSelector:` | 只适合静态透传 | 类方法不知道每个实例运行时持有哪些 target，只能回答固定能力。 |
-| `isKindOfClass:` | 不建议伪造 | `son` 的 `isa` 仍然指向 `Son`，它真的不是 `Mother`。强行返回 YES 会误导依赖真实类型和内存布局的代码。 |
 
 这类覆写只影响运行时内省，比如 `[obj respondsToSelector:]`。它不会改变编译期类型检查：形参写成 `id<SomeProtocol>`、变量静态类型、编译器警告，都不会因为你覆写了 `conformsToProtocol:` 而改变。
 
 另外，伪造 `respondsToSelector:` 也不是零成本。一旦调用方相信它返回 YES 并真的发消息，这条消息在宿主类里仍然找不到实现，每次都要走转发路径。快速转发只是多一跳，完整转发则要创建 `NSInvocation`、匹配签名、包装参数，开销明显高于直接调用。高频热路径上，优先用显式组合、协议方法或快速转发，不要把所有能力都压到 `forwardInvocation:`。
 
 所以，"组合对象能力透传"不是让 Objective-C 真的拥有多继承，而是用 Runtime 把组合对象的能力在消息层面暴露出去。
-
-
 
 
 # 6.  AOP
