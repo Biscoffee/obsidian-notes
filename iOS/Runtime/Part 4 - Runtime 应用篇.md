@@ -313,10 +313,6 @@ Category 里通常用 `+load + dispatch_once + class_addMethod` 这一套：
 
 这一步保证了 swizzling 的影响**严格锁定在当前类**,不会顺着继承链向上扩散。
 
-### 在dispatch_once中执行
-
-
-
 
 ## 调用原实现的两种方式
 
@@ -380,6 +376,8 @@ static BOOL tw_replaceMethodAndStore(Class cls,
 
 代价是每个被替换的方法都需要独立保存原 IMP。如果多个库都替换同一个 selector，后替换者可能拿到的是前一个替换实现，调用链顺序仍然要小心维护。
 
+
+
 ## 复杂对象：class cluster / 真实类探测
 
 有些系统对象不是你看到的公开类，而是 class cluster 或私有子类。AFNetworking 早期为了 hook `NSURLSessionTask` 的 `resume` / `suspend`，做过一套运行时探测：先创建一个真实 task，拿到它的实际 class，再沿继承链寻找每一层自己实现过 `resume` 的类并分别 swizzle。这个例子适合理解复杂 hook 的思路，但它依赖系统内部类名和继承结构；这些细节会随系统版本变化，不适合直接照搬到现代业务代码里。
@@ -399,7 +397,77 @@ if (classResumeIMP != superclassResumeIMP &&
 
 第一条过滤掉“只是继承父类实现”的中间层；第二条避免重复 swizzle。这个例子说明：当目标类不稳定、真实类来自系统内部时，Swizzling 的复杂度会迅速上升。普通业务不应该轻易照搬这种级别的 hook。
 
+## 应用场景：典型用法
 
+**Method Swizzling 的核心应用场景，都指向同一类需求：想给现有方法（尤其是改不了源码的系统方法或第三方库方法）统一插入行为，又不愿用继承或逐个修改去实现——最典型的是无痕埋点、崩溃防护、AOP 切面、全局 UI/多语言定制和系统 Bug 修复这五大类。**
+
+理解了前面讲的“交换 IMP”机制后，场景这块其实就是同一个问题的不同变体：**在不碰原代码的前提下，往一个方法的执行链路里“插一脚”**。下面这张图先把全貌铺开，再逐类深入。
+
+
+### 监控统计：无痕埋点
+
+设想产品要统计“每个页面被访问了多少次”。
+最笨的办法是在每个 `ViewController` 的 `viewDidAppear:` 里手动加一行统计代码；
+稍好一点是写个 `BaseViewController` 让大家继承，但 `UITableViewController`、`UICollectionViewController` 这些不同基类各自又得写一遍。
+Swizzling 给出的是**一次性、全覆盖、零侵入**的方案——在 `UIViewController` 的 Category 里 swizzle 一次 `viewDidAppear:`，所有控制器（包括第三方库里的）自动全部生效。 
+
+```objc
+@implementation UIViewController (Analytics)
++ (void)load {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // ... 标准交换模板 ...
+    });
+}
+- (void)tw_viewDidAppear:(BOOL)animated {
+    [self tw_viewDidAppear:animated];                       // 先跑系统原实现
+    [Analytics track:NSStringFromClass([self class])];      // 再统一上报
+}
+@end
+```
+
+同一思路还能扩展到**点击事件统计**（swizzle `UIControl` 的 `sendAction:to:forEvent:`，所有按钮点击自动捕获）和**性能监控**（在原实现前后打时间戳，统计每个方法的耗时，定位卡顿）。这类场景的共同点是：埋点逻辑与业务逻辑完全无关，散落在每个角落，却又必须“无处不在”
+
+### 防护容错
+
+OC 的集合类对越界、传 nil 极其敏感，`NSArray` 越界、`NSMutableDictionary` 传 nil value 都会直接抛异常崩溃，而苹果的 API 本身不做这层保护。逐个调用点去加 `if` 判断既不现实也容易漏。Swizzling 可以一次性给这些“危险方法”套上统一的边界检查与异常捕获，把“崩溃”降级成“打条日志 + 安全返回”。
+
+```objc
+@implementation NSArray (SafeAccess)
++ (void)load {
+    // 注意真实类名：不可变数组是 __NSArrayI
+    Method from = class_getInstanceMethod(objc_getClass("__NSArrayI"), @selector(objectAtIndex:));
+    Method to   = class_getInstanceMethod(objc_getClass("__NSArrayI"), @selector(tw_objectAtIndex:));
+    method_exchangeImplementations(from, to);
+}
+- (id)tw_objectAtIndex:(NSUInteger)index {
+    if (index >= self.count) {        // 越界拦截
+        NSLog(@" NSArray 越界: index %lu, count %lu", index, self.count);
+        return nil;                   // 不崩，返回 nil
+    }
+    return [self tw_objectAtIndex:index];
+}
+@end
+```
+
+这里有个**专属于这类场景的坑**值得记住：集合类是“类簇（class cluster）”，平时用的 `NSArray`/`NSMutableArray` 只是抽象的对外门面，真正干活的是内部私有类——不可变数组是 `__NSArrayI`、可变数组是 `__NSArrayM`、字典则是 `__NSDictionaryI`/`__NSDictionaryM`。所以 swizzle 时必须用 `objc_getClass("__NSArrayI")` 拿到真实类，直接对 `NSArray` 下手是无效的。
+
+不过这类“全局兜底”是把双刃剑：它能救线上崩溃，但也会**掩盖代码里真实的逻辑错误**（越界本该在开发期暴露并修掉，被静默吞掉后问题会潜伏更久）。业界常见的折中是只在 Release 包启用兜底、Debug 包照常崩溃以便及早发现，或者兜底的同时把异常上报到监控平台。
+
+### 全局定制：换肤、多语言、统一样式
+
+这类场景的诉求是“**让某个全局行为在运行时被整体替换**”，而不想为此重启 App 或改遍代码。
+
+最经典的是**多语言热切换**。常规做法是切语言后必须重启 App 才能让 `NSLocalizedString` 重新读取对应语言包。通过 swizzle `NSBundle` 的 `localizedStringForKey:value:table:`，可以让它在运行时根据当前选择的语言去读不同的 bundle，从而做到**不重启即时切换**。同理，**换肤/夜间模式**可以 hook 颜色或图片的读取方法，让同一套 `imageNamed:` 在不同主题下返回不同资源；**统一 UI 样式**（比如全 App 导航栏字体、返回按钮）也能通过 swizzle 相应的初始化方法一次性铺开。这类用法的特点是“一处开关、全局变脸”，是 `UIAppearance` 难以覆盖的深度定制的补充手段。
+
+### 修复与改造
+
+有时系统某个 API 存在 Bug，或某个第三方库的行为不符合你的需求，但你**拿不到、也不该改它的源码**。Swizzling 这时就像一把手术刀，让你在外部“打补丁”。比如某个版本的系统控件在特定条件下会崩，你可以 swizzle 它的相关方法，在调用原实现前先规避掉触发条件；又比如第三方 SDK 的某个方法日志太吵或行为不合预期，你可以 hook 它做拦截或改写。这是“无法修改源码时的最后手段”，威力大，但也最容易引入隐蔽问题——一旦对方在新版本里改了实现，你的补丁可能失效甚至冲突。
+
+
+### 使用场景：
+
+凡是能用**继承、组合、协议、通知**这些显式手段解决的，都优先用它们，因为它们是编译期可见、可追溯、不改变全局状态的。只有当“既改不了源码、又必须全局生效、还没有别的路”三个条件同时成立时，Swizzling 才是那个最优解。而且无论用在哪个场景，前面标准模板那节强调的几条铁律——**写在 `+load`、包进 `dispatch_once`、用带 `class_addMethod` 判断的安全模板、写清楚注释**——都必须照做，否则它带来的麻烦会远大于便利。
 使用 Swizzling 时要记住几条边界：
 
 - **只做小而确定的替换**：不要把复杂业务逻辑塞进 `+load`。
@@ -713,7 +781,10 @@ Son *son = [[Son alloc] init];
 
 
 
-# 6. NSProxy + forwardInvocation: 实现 AOP
+# 6.  AOP
+
+![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260621164825648.png)
+
 
 `forwardInvocation:` 更完整的应用，是用 `NSProxy` 做一层动态代理，把一次消息调用包起来，在目标方法前后插入额外逻辑。这就是 AOP（Aspect Oriented Programming，面向切面编程）在 Objective-C 里的经典做法之一。
 

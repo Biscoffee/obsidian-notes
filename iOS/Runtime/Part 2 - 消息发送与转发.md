@@ -1,6 +1,6 @@
 ---
 title: "【iOS】Runtime - Part 2 && 消息发送与转发"
-published: 2026-06-18
+published: 2026-06-14
 description: "从 objc_msgSend 快速缓存命中，到 lookUpImpOrForward 慢速查找、动态方法解析，再到消息转发三部曲，结合 objc4-951.7 源码与 LLDB 实测打通一条完整消息链。"
 tags: ["iOS", "Objective-C", "Runtime", "objc_msgSend", "objc4"]
 category: "iOS"
