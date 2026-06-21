@@ -579,7 +579,7 @@ objc_msgSend 查缓存/方法列表
 
 这里还有一个反面边界：`forwardingTargetForSelector:` 可以返回另一个对象，也可以返回 `nil` / `[super forwardingTargetForSelector:]` 让 Runtime 继续走完整转发，但**不要返回 `self`**。返回 `self` 等于把同一条消息重新发给自己，下一轮又进 `forwardingTargetForSelector:`，最终无限递归。
 
-## 组合对象能力透传（老文所谓“模拟多继承”）
+## 组合对象能力透传（模拟多继承）
 
 Objective-C 在语言层面只支持单继承。这里讨论的不是让一个类真的继承多个父类，而是借助**消息转发（Message Forwarding）​**做组合对象能力透传：当宿主对象自己没有某个方法实现时，把这条消息在运行时"透传"给它持有的其他对象去执行。把多个能力提供方组合在一起、再通过转发让宿主对象统一对外暴露它们的方法，对外看像一个聚合了多方能力的对象，实际执行者仍是各自的真实对象。
 
