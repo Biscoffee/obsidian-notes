@@ -483,7 +483,31 @@ OC 的集合类对越界、传 nil 极其敏感，`NSArray` 越界、`NSMutableD
 # 4. 关联对象
 ![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260622175757334.png)
 
-Associated Objects是Objective-C 2.0中Runtime的特性之一。众所周知，在 Category 中，我们无法添加@property，因为添加了@property之后并不会自动帮我们生成实例变量以及存取方法。那么，我们现在就可以通过关联对象来实现在 Category 中添加属性的功能了。
+## 4.1 是什么，解决什么问题
+
+Associated Objects 是 Objective-C 2.0 Runtime 的特性之一。它要补的，是 Category 一个先天缺陷：**Category 不能添加实例变量**。往一个已经存在的类上写 `@property`，编译器既不会合成 ivar，也不会生成存取方法——`@property` 在 Category 里退化成了一句空声明，背后什么都没有。关联对象就是用来补上这块“存储”的：把值挂进 Runtime 维护的一张外部表，让对象看起来多了一个属性。
+
+官方给出的典型用途有三类：
+
+- 给已有的类添加私有变量；
+- 给已有的类添加公有属性（也就是“Category 加属性”的标准做法）；
+- **为 KVO 创建关联的观察者**——把观察者对象直接挂在被观察对象上，省去自己单独维护一张“对象 → 观察者”的映射表（正好呼应前面第 7 章的 KVO）。
+
+## 4.2 怎么用
+
+整套机制对外只有三个 API：
+
+```objc
+// 设置 / 更新关联值（value 传 nil 表示删除这个 key）
+void objc_setAssociatedObject(id object, const void *key,
+                              id value, objc_AssociationPolicy policy);
+// 读取关联值
+id   objc_getAssociatedObject(id object, const void *key);
+// 移除该对象上的全部关联值
+void objc_removeAssociatedObjects(id object);
+```
+
+最常见的用法，就是在 Category 里手写一对存取方法，把“属性”落到关联表上：
 
 ```objc
 @interface UIViewController (TWTracking)
@@ -527,32 +551,71 @@ objc_setAssociatedObject(self, @selector(tw_pageName), value, policy);
 
 `@selector(getter)` 这种写法也很常见，优点是不用额外定义 key，并且天然和属性 getter 对应。
 
-内存策略可以按属性语义选：
+## 4.3 关联策略与内存语义
 
-| 属性语义 | 关联策略 |
-| --- | --- |
-| `assign` | `OBJC_ASSOCIATION_ASSIGN` |
-| `strong, nonatomic` | `OBJC_ASSOCIATION_RETAIN_NONATOMIC` |
-| `copy, nonatomic` | `OBJC_ASSOCIATION_COPY_NONATOMIC` |
-| `strong, atomic` | `OBJC_ASSOCIATION_RETAIN` |
-| `copy, atomic` | `OBJC_ASSOCIATION_COPY` |
+第四个参数 `policy` 决定关联值的内存语义，按你想要的属性语义对号入座即可：
 
-注意：关联对象不是 ivar。它不会改变对象大小，也不会改变 ivar 偏移。它只是把值放进 Runtime 维护的外部表里。
+| 属性语义 | 关联策略 | 线程安全 |
+| --- | --- | --- |
+| `assign` | `OBJC_ASSOCIATION_ASSIGN` | 否 |
+| `strong, nonatomic` | `OBJC_ASSOCIATION_RETAIN_NONATOMIC` | 否 |
+| `copy, nonatomic` | `OBJC_ASSOCIATION_COPY_NONATOMIC` | 否 |
+| `strong, atomic` | `OBJC_ASSOCIATION_RETAIN` | 是 |
+| `copy, atomic` | `OBJC_ASSOCIATION_COPY` | 是 |
 
-这里有两个容易误用的点：
+这里有一个**必须强调**的坑：`OBJC_ASSOCIATION_ASSIGN` 不是 `weak`，它更接近 `unsafe_unretained`。被关联的对象释放后，关联表里不会自动把它置 nil，再读就是野指针。换句话说，关联对象本身**给不了 `weak` 那种“对象没了自动变 nil”的语义**——真要这个效果，得自己在合适时机清理，或者关联一个内部持 `weak` 引用的包装对象。
 
-1. `OBJC_ASSOCIATION_ASSIGN` 不是 `weak`，更接近 `unsafe_unretained`。对象释放后，关联表里不会自动置 nil，再读就可能访问野指针。
-2. `objc_removeAssociatedObjects(obj)` 会移除这个对象上的**全部**关联对象，不适合只删除自己那一个 key。删除单个关联值，应该对同一个 key 设置 `nil`。
+## 4.4 底层实现：两层哈希 + 全局锁
 
-从底层看，关联对象本质上是 Runtime 维护的外部映射。老资料常把它讲成两层哈希：先用对象地址找到这个对象的关联表，再用 key 找到具体值；新版实现细节有调整，但模型仍然可以这么理解：
+关键认知：**关联值不存在对象自己身上**，而是由 Runtime 用一张全局表统一管理。这张表可以拆成四个角色来理解（名字来自源码思路，不同版本实现细节有调整，但这个模型一直成立）：
+
+- `AssociationsManager`：总管，持有一把锁（早期是自旋锁 `spinlock`，新版已换成别的锁，本质都是给整张表加锁、保证多线程读写安全）；
+- `AssociationsHashMap`：第一层哈希，**以对象地址为 key**（地址会先做一层伪装 `disguised_ptr_t`），用来定位某个对象专属的关联表；
+- `ObjectAssociationMap`：第二层哈希，**以你传入的 key 为 key**，定位到具体那条关联记录；
+- `ObjcAssociation`：最终的记录，存着 `{ policy, value }`。
+
+串起来是这样一条两层查找链：
 
 ```text
-object pointer
-  -> association map
-      key -> { policy, value }
+AssociationsManager（持锁）
+└─ AssociationsHashMap
+      对象地址 → ObjectAssociationMap
+                     你的 key → ObjcAssociation { policy, value }
 ```
 
-第一次给对象设置关联值时，Runtime 还会标记对象“有过关联对象”。这能和 Part 1 的 `isa_t.has_assoc` 对上：对象本身的大小没有变，但对象头里会留下一个快速判断标志，方便释放对象时决定是否需要清理外部关联表。
+set / get / remove 都建立在这两层查找之上：
+
+- **set，且 value 非 nil**：加锁 → 第一层用对象地址找到（或新建）`ObjectAssociationMap` → 第二层按 key 插入或更新 `{policy, value}`。如果这是该对象**第一次**被关联，还会调用 `setHasAssociatedObjects()`，把对象 isa 里的 `has_assoc` 标志位置 1。
+- **set，且 value 为 nil**：等价于“删除这个 key”，在两层表里找到对应记录并擦除。
+- **get**：加锁 → 两层查找拿到 `ObjcAssociation` → 按 policy 决定是否对返回值做 retain / autorelease。
+- **removeAssociatedObjects**：先看 `has_assoc` 标志，没有就直接返回；有则通过 `_object_remove_assocations()` 清空该对象的整张 `ObjectAssociationMap`，再从第一层表里抹掉这个对象的条目。
+
+两点要记住：
+
+1. 关联对象**不是 ivar**。它不改变对象大小，也不改变 ivar 偏移，对象内部结构原封不动——值全在那张外部全局表里。
+2. 这张表是全局共享的，每次读写都要过锁。在高频热路径上大量使用关联对象，锁竞争是要考虑的隐性成本。
+
+## 4.5 生命周期：对象释放时自动清理
+
+最容易让人犯嘀咕的问题是：我挂上去的关联值，要不要手动释放？
+
+**不用。** 对象销毁时，Runtime 会自动回收它的全部关联值，链路大致是：
+
+```text
+[obj dealloc]
+  → object_dispose()
+     → objc_destructInstance()
+        → _object_remove_assocations()   // 若 has_assoc 为 1，清空该对象的关联表
+```
+
+`has_assoc` 标志位（对应 Part 1 的 `isa_t.has_assoc`）在这里就是一次性能优化：释放任何对象时，Runtime 先瞄一眼这个标志，为 0 就整套关联清理逻辑都跳过，省掉无谓的哈希查找。这也是为什么“第一次设置关联值”时要顺手把它置 1。
+
+按 WWDC 2011 Session 322 的说法，关联对象的擦除时机其实**比很多人直觉的要晚**——它发生在 `object_dispose()` 阶段，由 `NSObject` 的 `-dealloc` 间接触发，而不是对象一进入 `dealloc` 就立刻清。对业务代码的含义很简单：**你不需要在自己的 `dealloc` 里手动清关联对象，Runtime 已经包办了。**
+
+最后区分两个容易混的“删除”：
+
+- 删**单个** key：对同一个 key 重新 `set` 一个 `nil` 值即可；
+- 删**全部**：`objc_removeAssociatedObjects(obj)` 会清掉这个对象上的**所有**关联值，因此**不适合只删自己那一个**——别人（比如某个第三方库）挂在同一对象上的关联值会被一起抹掉。日常基本只用前者。
 
 # 5. 消息转发应用
 
