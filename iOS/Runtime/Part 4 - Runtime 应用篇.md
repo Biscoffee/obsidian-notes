@@ -1102,14 +1102,10 @@ methods           = setName:, class, dealloc, _isKVOA ...
 
 也就是说，KVO 不是直接改 `Student`，而是临时插入了一个 `Student` 的动态子类。这个动态子类通常会覆写四类方法：
 
-| 覆写方法 | 目的 |
-| --- | --- |
-| 被观察属性的 `setter` | 在真正赋值前后插入 KVO 通知逻辑 |
-| `class` | 对外伪装成原类，隐藏 `NSKVONotifying_Student` |
-| `dealloc` | 做观察关系、动态子类、isa 恢复等清理 |
-| `_isKVOA` | 私有标记，用来识别这是 KVO 生成的动态子类 |
 
 ## 7.1 重写 `class`：隐藏动态子类
+
+中间类之所以要重写 `class` 方法，是为了**在你调用它时返回与改写继承关系之前同样的内容**，也就是依旧返回 `Student`，让外界察觉不到真实类已经被偷换成了 `NSKVONotifying_Student`。
 
 ```objc
 NSLog(@"[stu class]     = %@", [stu class]);
@@ -1198,6 +1194,26 @@ _name = @"Tom";                    // 直接改 ivar 时，需要手动包 will/
 [stu didChangeValueForKey:@"name"];
 ```
 
+把上面这几条路径并排看，会发现它们其实在回答同一个问题：`will/didChangeValueForKey:` 这对通知，到底是在哪一层被插进去的。这条判据是理解 KVO 自动通知的总钥匙，值得多停留一会儿。
+
+**先看这对通知各自在做什么。** 它们不是可有可无的两声招呼，而是各自承担一半工作。`willChangeValueForKey:` 在值真正改变*之前*调用，KVO 在这一刻把当前值记下来，作为将来 change 字典里的 `NSKeyValueChangeOldKey`，并标记这个 key“正处于变化中”；
+
+`didChangeValueForKey:` 在值改变*之后*调用，KVO 这时才去读新值填进 `NSKeyValueChangeNewKey`，组装好 change 字典，最终回调 `observeValueForKeyPath:ofObject:change:context:`。
+
+所以顺序是硬约束：必须 will 在前、写值在中、did 在后。少了 will，旧值就抓不到；顺序颠倒，新旧值就会对调或错位。
+
+**再回到三条落点，它们只是把这对通知插在了不同的层。**
+
+- *有访问器方法时*，运行时重写 setter 把通知织进去。真实实现通常不是简单地 `[super setName:]`，而是走 Foundation 的 `_NSSetObjectValueAndNotify`（以及对应基础类型、结构体的 `_NSSet<Type>ValueAndNotify`）这类辅助函数——它内部正是“willChange → 原始赋值 → didChange”的封装。这也解释了 7.4 节用 `nm` 能在 Foundation 里翻出一整排这种符号：对象、整型、浮点、结构体各有一条专门的通知路径，而不是所有类型共用一个。
+
+- *没有访问器方法时*，KVC 兜底。`setValue:forKey:` 在找不到 setter、退回直接写 ivar（按 `_key`、`_isKey`、`key`、`isKey` 的顺序查找）之前，会自己补上 will/did。所以哪怕一个属性压根没声明 setter、只能靠 KVC 读写，KVO 依然监听得到——这次通知是 KVC 替你发的。
+
+- *手动调用时*，是你自己接管了这件事。要么你用 `automaticallyNotifiesObserversForKey:` 关掉了某个 key 的自动通知，要么你绕过 setter 直接改了 ivar，这时就得亲手把这对通知摆在赋值前后，做运行时本该替你做的事。
+
+**反过来，失效的边界也由这同一条判据划定。** 任何“值变了、但这对通知没按规矩发出”的路径，KVO 都是瞎的：直接 `_name = @"Tom"` 改 ivar 又不手动包通知、在 C 层面直接写底层内存、或者通过别的渠道改了背后的存储而绕开了所有 setter 和 KVC。换句话说，KVO 监听的从来不是“值”，而是“通知”——问题不在值有没有变，而在通知有没有发。
+
+`keyPathsForValuesAffectingValueForKey:`。它能让一个派生属性（比如 `fullName`）在 `firstName`、`lastName` 变化时也对外发出通知，本质上就是把“别人的通知”接到自己头上。KVO 之所以能这么玩，正是因为它认的始终是通知这件事，而不是某一句具体的赋值语句。
+
 如果你想完全接管某个 key 的通知时机，可以覆写：
 
 ```objc
@@ -1231,6 +1247,43 @@ object_getClass(stu)     // NSKVONotifying_Student
 ```
 
 `class` 是方法，可以被 KVO 子类覆写；`object_getClass` 是 Runtime API，会直接沿对象的 isa 取真实类。也正因为 isa 可能被系统换掉，工程里不要用“直接读 isa”判断类型关系，应该用 `class`、`isKindOfClass:`、协议或明确的业务字段。
+
+## 7.5 到底什么时候能监听，什么时候不能
+
+前面四节都在讲 KVO 怎么用动态子类“偷梁换柱”。落到工程里，最常被问的其实是另一个问题：我这么改值，到底能不能被监听到？把前面的机制收成一条判据，就能直接对号入座：
+
+> **改值前后，那对 `willChangeValueForKey:` / `didChangeValueForKey:` 有没有被发出。发了就能监听，没发就不能。**
+
+下面所有“能 / 不能”，本质都是在套这一条——KVO 认的从来不是“值变了”，而是“通知发了”。
+
+**能监听**——改值路径经过了某个会发通知的写入点：
+
+| 写法 | 为什么能 |
+|---|---|
+| `obj.name = x` | 编译成 `[obj setName:]`，走被重写的 setter，发通知 |
+| `[obj setName:x]` | 同上，走 setter |
+| `[obj setValue:x forKey:@"name"]`（**有** setter） | KVC 最终也调 setter，发通知 |
+| `[obj setValue:x forKey:@"name"]`（**没** setter、有 ivar） | KVC 直接写 ivar，并**自己补发**通知 |
+| 手动 `willChange…` → 改值 → `didChange…` | 你亲手发了通知 |
+| `[[obj mutableArrayValueForKey:@"items"] addObject:x]` | 集合代理会替你发集合变更通知 |
+| 派生属性（配了 `keyPathsForValuesAffectingValueForKey:`），其依赖的源属性按上面方式变化 | 源属性的通知被转发到派生属性 |
+
+**不能监听**——改值绕开了所有会发通知的写入点：
+
+| 写法 | 为什么不能 |
+|---|---|
+| `_name = x`（直接改 ivar，又不手动包通知） | 绕过 setter，没人发通知 |
+| `[_items addObject:x]` / `_dict[k] = v`（直接改可变对象内容） | 对象指针没变、setter 没被调，**最经典的坑** |
+| 关掉自动通知（`automaticallyNotifiesObserversForKey:` 返回 `NO`）又忘了手动调 will/did | 自动的没了，手动的也没补 |
+| C 层 / 底层直接写内存 | 完全绕开 ObjC 方法体系 |
+
+归纳一句：**能不能监听，只取决于“改值的那条路径会不会经过一个发通知的写入点”**。经过被重写的 setter、经过 KVC 的 `setValue:forKey:`、或你手动补，都能；直接动底层存储、或只改可变对象的内容而不替换对象，都不能。
+
+实战里九成的“KVO 不触发”都出在两处：一是直接改 ivar（`_name = x`），改成 `self.name = x` 或走 KVC 即可；二是可变集合“改内容”而非“换对象”（`[_items addObject:]` 监听不到），要么用 `mutableArrayValueForKey:` 操作，要么整体替换 `self.items = newArray`。
+
+即便是苹果官方实现的 KVO 也并非完美。它的主要问题集中在回调机制上：不能传一个 selector 或者 block 作为回调，而必须重写 `-addObserver:forKeyPath:options:context:` 所引发的一系列连锁问题。如果只监听一两个属性还好，一旦监听的属性变多，或者同时监听多个对象的属性，就会比较麻烦，往往需要在回调方法里写大量 `if-else` 判断来区分。
+
+总的来说，isa-swizzling 是一套"用动态子类偷梁换柱"的优雅设计：通过改写 `isa` 指针让对象在运行时指向中间类，再靠 `setter` 注入变更通知、靠 `class` 维持伪装、靠 `dealloc` 善后、靠 `_isKVOA` 自我标识，从而在完全不侵入原类代码的前提下实现了属性变化的自动监听。
 
 
 # 8. 基于遍历的自动归档与模型转换
