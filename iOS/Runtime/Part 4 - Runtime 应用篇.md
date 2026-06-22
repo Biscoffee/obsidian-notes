@@ -480,9 +480,10 @@ OC 的集合类对越界、传 nil 极其敏感，`NSArray` 越界、`NSMutableD
 - **谨慎修改系统类**：Swizzling 改的是全局类行为，会影响所有实例和子类。
 
 
-# 4. 关联对象应用
+# 4. 关联对象
+![image.png](https://cdn.jsdelivr.net/gh/Biscoffee/piccbes@master/img/20260622175757334.png)
 
-Part 3 已经讲过关联对象的底层结构。放到应用层，最常见的用途是在 Category 里添加“看起来像属性”的存储。
+Associated Objects是Objective-C 2.0中Runtime的特性之一。众所周知，在 Category 中，我们无法添加@property，因为添加了@property之后并不会自动帮我们生成实例变量以及存取方法。那么，我们现在就可以通过关联对象来实现在 Category 中添加属性的功能了。
 
 ```objc
 @interface UIViewController (TWTracking)
