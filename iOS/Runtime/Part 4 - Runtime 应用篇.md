@@ -1282,6 +1282,7 @@ object_getClass(stu)     // NSKVONotifying_Student
 实战里九成的“KVO 不触发”都出在两处：一是直接改 ivar（`_name = x`），改成 `self.name = x` 或走 KVC 即可；二是可变集合“改内容”而非“换对象”（`[_items addObject:]` 监听不到），要么用 `mutableArrayValueForKey:` 操作，要么整体替换 `self.items = newArray`。
 
 即便是苹果官方实现的 KVO 也并非完美。它的主要问题集中在回调机制上：不能传一个 selector 或者 block 作为回调，而必须重写 `-addObserver:forKeyPath:options:context:` 所引发的一系列连锁问题。如果只监听一两个属性还好，一旦监听的属性变多，或者同时监听多个对象的属性，就会比较麻烦，往往需要在回调方法里写大量 `if-else` 判断来区分。
+最后，官方文档上对于KVO的实现的最后，给出了需要我们注意的一点是，**永远不要用用isa来判断一个类的继承关系，而是应该用class方法来判断类的实例。**
 
 总的来说，isa-swizzling 是一套"用动态子类偷梁换柱"的优雅设计：通过改写 `isa` 指针让对象在运行时指向中间类，再靠 `setter` 注入变更通知、靠 `class` 维持伪装、靠 `dealloc` 善后、靠 `_isKVOA` 自我标识，从而在完全不侵入原类代码的前提下实现了属性变化的自动监听。
 
