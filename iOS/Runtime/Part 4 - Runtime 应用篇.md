@@ -86,7 +86,7 @@ free(properties);
 这类用法风险较低，但也要注意：**property 和 ivar 不是一回事**。`@property` 是属性元数据和访问器约定，ivar 才是真正的实例存储。Category 可以加 property 元数据，但不能加 ivar，这一点已经在 Part 3 讲过。
 
 # 2. 动态添加方法
-
+   1
 动态添加方法的核心 API 是：
 
 ```objc
