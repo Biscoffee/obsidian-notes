@@ -113,7 +113,7 @@ BOOL added = class_addMethod([Person class],
 - `v`：返回值是 `void`。
 - `@`：第一个隐藏参数 `self`，类型是对象。
 - `:`：第二个隐藏参数 `_cmd`，类型是 selector。
-
+1
 动态添加方法最经典的落点，是 Part 2 讲过的动态方法解析：
 
 ```objc
